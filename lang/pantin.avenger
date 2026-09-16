@@ -1,0 +1,68 @@
+avenger 1;
+import { lidar } from './catalog.avenger';
+
+-- | IGN LiDAR HD tile LHD_FXX_0657_6868: 17.3M points aggregated to 2 m cells,
+-- | coloured by the class of the highest point in each cell.
+chart cartesian as pantin {
+  data: {
+    table: lidar.pantin;
+  }
+  layout: {
+    plot: {
+      height: 620.0;
+      width: 620.0;
+    }
+  }
+  transform sql {
+    query:
+      SELECT "cx", "cy",
+             max("z") AS zmax,
+             CASE first_value("classification" ORDER BY "z" DESC)
+               WHEN 2 THEN 'Ground'
+               WHEN 3 THEN 'Low vegetation'
+               WHEN 4 THEN 'Medium vegetation'
+               WHEN 5 THEN 'High vegetation'
+               WHEN 6 THEN 'Building'
+               ELSE 'Other'
+             END AS class
+      FROM (
+        SELECT floor("x" / 2.0) * 2.0 + 1.0 AS cx,
+               floor("y" / 2.0) * 2.0 + 1.0 AS cy,
+               "z", "classification"
+        FROM input
+      ) AS points
+      GROUP BY "cx", "cy"
+      ORDER BY zmax;
+  }
+  mark symbol as cells {
+    fill: encoded "class" {
+      legend: {
+        title: 'LiDAR class';
+      }
+      scale: ordinal {
+        domain: ['Ground', 'Low vegetation', 'Medium vegetation', 'High vegetation', 'Building', 'Other'];
+        range: ['#8c6e4d', '#b8d666', '#59ad54', '#216e38', '#cc4040', '#9ea3ad'];
+      }
+    }
+    size: direct 4.0;
+    stroke_width: direct 0.0;
+    x: encoded "cx" {
+      axis: {
+        title: 'Easting − 657 000 (m)';
+      }
+      scale: linear {
+        domain: [0.0, 1000.0];
+        zero: false;
+      }
+    }
+    y: encoded "cy" {
+      axis: {
+        title: 'Northing − 6 867 000 (m)';
+      }
+      scale: linear {
+        domain: [0.0, 1000.0];
+        zero: false;
+      }
+    }
+  }
+}

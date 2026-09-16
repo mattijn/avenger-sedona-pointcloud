@@ -1,0 +1,6 @@
+avenger 1;
+export schema tables as lidar {
+  table parquet as pantin {
+    path: 'pantin_points.parquet';
+  }
+}

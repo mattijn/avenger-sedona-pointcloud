@@ -1,8 +1,8 @@
 # avenger-sedona-pointcloud
 
-Scatterplots of a real LiDAR point cloud, with no JSON and no browser in between:
+Scatterplots of a real LiDAR point cloud: static charts, an interactive explorer with pan and zoom, a benchmark of window queries, and the same map written in the experimental Avenger chart language.
 
-Static charts, an interactive explorer with pan and zoom, and a benchmark of window queries.
+The pipeline has no JSON and no browser in between:
 
 ```
 tile.copc.laz ─► sedona-pointcloud (DataFusion file format)
@@ -75,6 +75,39 @@ GROUP BY 1, 2
 
 Chunk statistics work well on COPC files because every LAZ chunk is an octree node, so a spatial filter skips most of the file. `copc-rs` is taken from git: the crates.io release (0.5.0) does not build with current `las`.
 
+### The same map in the Avenger chart language
+
+[`lang/pantin.avenger`](lang/pantin.avenger) describes the "class from above" map in the experimental Avenger chart language, from the [`jonmmease/facet-fresh-start`](https://github.com/jonmmease/avenger/tree/jonmmease/facet-fresh-start) branch. The chart takes 68 lines, plus 6 in [`lang/catalog.avenger`](lang/catalog.avenger). Its `transform sql` aggregates all 17.3M points into 2 m cells, and the language takes care of the axes, the legend and the layout.
+
+```
+transform sql {
+  query:
+    SELECT "cx", "cy", max("z") AS zmax,
+           CASE first_value("classification" ORDER BY "z" DESC)
+             WHEN 2 THEN 'Ground' ... ELSE 'Other' END AS class
+    FROM (SELECT floor("x" / 2.0) * 2.0 + 1.0 AS cx,
+                 floor("y" / 2.0) * 2.0 + 1.0 AS cy, "z", "classification"
+          FROM input) AS points
+    GROUP BY "cx", "cy"
+    ORDER BY zmax;
+}
+mark symbol as cells {
+  fill: encoded "class" { legend: { title: 'LiDAR class'; } scale: ordinal { domain: [...]; range: [...]; } }
+  x: encoded "cx" { axis: { title: 'Easting − 657 000 (m)'; } scale: linear { domain: [0.0, 1000.0]; } }
+  y: encoded "cy" { ... }
+}
+```
+
+`avenger watch` shows the chart in a native window and redraws it whenever the file is saved. The first open took 1.8–2.1 s; a reload after switching to 4 m cells took 1.1 s.
+
+![avenger watch lang/pantin.avenger](docs/images/avenger_watch.png)
+
+The chart language does not read LAZ directly, so `export_parquet` first writes the tile to `lang/pantin_points.parquet` (about 105 MB, 2–3 s; the file is ignored by git). Things noticed while writing this chart:
+
+- A positional `GROUP BY 1, 2` inside `transform sql` fails to plan: the positions become literals. Grouping by named columns in a subquery works.
+- The legend reuses the mark's symbol size, so with `size: 4` the legend dots are very small.
+- There is no pan or zoom yet in the language. `watch` reloads the file; it does not navigate.
+
 ## Run
 
 ```sh
@@ -85,6 +118,18 @@ cargo run --release --bin topviews      -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_I
 cargo run --release --bin explorer      -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
 cargo run --release --bin bench_window  -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
 ```
+
+To use the chart language, build the `avenger` CLI from Jon's experimental branch, then export the data and watch the chart:
+
+```sh
+git clone --branch jonmmease/facet-fresh-start https://github.com/jonmmease/avenger ../avenger-facet
+cargo build --release -p avenger-lang-cli --manifest-path ../avenger-facet/Cargo.toml   # ~12 min, ~4.5 GB target
+
+cargo run --release --bin export_parquet -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
+cd lang && ../../avenger-facet/target/release/avenger watch pantin.avenger --scale 2
+```
+
+At the time of writing, that branch does not build as-is. `avenger-typst-label/Cargo.toml` declares three optional `typst*` dependencies that point to a local `../../typst` checkout. Remove those dependency lines, empty the `upstream-typst-probe` feature, and delete the `upstream-typst-math-svg-probe` bin entry, or check out Typst at that path.
 
 Rendering needs a GPU adapter that wgpu can use (Metal, Vulkan or DX12).
 
