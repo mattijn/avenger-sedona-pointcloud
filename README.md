@@ -2,6 +2,8 @@
 
 Scatterplots of a real LiDAR point cloud, with no JSON and no browser in between:
 
+Static charts, an interactive explorer with pan and zoom, and a benchmark of window queries.
+
 ```
 tile.copc.laz ─► sedona-pointcloud (DataFusion file format)
               ─► SQL ─► Arrow arrays
@@ -46,6 +48,33 @@ FROM 'data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz'
 GROUP BY 1, 2
 ```
 
+### Interactive explorer
+
+`explorer` opens a window: drag to pan, scroll to zoom.
+
+- **At startup:** the tile is loaded into an in-memory DataFusion table (about 2 s), and overview levels of 1, 2, 4, 8 and 16 m cells are built from it (about 0.4 s).
+- **While you drag or scroll:** only the view changes. Avenger applies GPU-side scale adjustments, so no data is queried or re-uploaded, and symbols grow with the zoom so the current data stays readable.
+- **About 150 ms after the view settles:** the explorer queries data for the new view and swaps it in.
+  - When zoomed out, it uses the matching overview level (about 250k cells, 8–11 ms).
+  - When zoomed in to at least 3 px per metre, it uses the raw points for the view plus a 20% margin, drawn low to high and capped at 3M points (242,824 points in 37 ms).
+
+![Overview → zoom → reload](docs/images/explorer_zoom.png)
+
+*Top row: overview, zoomed to 350 m before the reload, after the reload (1 m cells). Bottom row: zoomed to 100 m before the reload, after the reload (raw points). These frames come from `explorer … --snapshots out`, which renders the same scene headlessly.*
+
+### Fetching a map window: benchmark
+
+`bench_window` compares four ways to fetch the points in a window from this tile (17.3M points):
+
+| Method | 120 × 120 m | 500 × 500 m | Notes |
+|---|---|---|---|
+| sedona-pointcloud, full scan | 1.1 s | 1.1 s | baseline |
+| sedona-pointcloud + chunk statistics | 69 ms | 491 ms | The first query takes 0.84 s because it builds the statistics. `las.persist_statistics` writes a 25 KB `.stats` sidecar, so a new session takes 72 ms. |
+| COPC octree via `copc-rs` | 270 ms | 2.9 s | Point-by-point decoding is the bottleneck. Selecting by resolution works: the whole tile at 2 m is 1.9M points in 0.7 s. |
+| In-memory table (DataFusion `MemTable`) | 4 ms | 7 ms | Loading takes 1–2 s, and all points stay in RAM. |
+
+Chunk statistics work well on COPC files because every LAZ chunk is an octree node, so a spatial filter skips most of the file. `copc-rs` is taken from git: the crates.io release (0.5.0) does not build with current `las`.
+
 ## Run
 
 ```sh
@@ -53,6 +82,8 @@ GROUP BY 1, 2
 mkdir -p out
 cargo run --release --bin cross_section -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz out/cross_section.png
 cargo run --release --bin topviews      -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz out
+cargo run --release --bin explorer      -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
+cargo run --release --bin bench_window  -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
 ```
 
 Rendering needs a GPU adapter that wgpu can use (Metal, Vulkan or DX12).

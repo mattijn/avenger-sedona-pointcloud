@@ -21,4 +21,12 @@ avenger-scales = { git = "https://github.com/jonmmease/avenger", rev = "34372f76
 avenger-guides = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
 avenger-scenegraph = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
 avenger-text = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
+avenger-app = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
+avenger-eventstream = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
+avenger-geometry = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
+avenger-winit-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
+winit = "0.30.11"
+async-trait = "0.1"
 avenger-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
+# COPC octree reader; 0.7.0 is unreleased (crates.io has 0.5.0, which fails to build with current las).
+copc-rs = { git = "https://github.com/pka/copc-rs", rev = "7918657abc8ba767cdccf041b7b020c218029ace", features = ["laz-parallel"] }
