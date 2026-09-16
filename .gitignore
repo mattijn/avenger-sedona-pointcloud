@@ -1,0 +1,4 @@
+/target
+/out
+/data/*.laz
+.DS_Store

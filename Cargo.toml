@@ -1,0 +1,24 @@
+[package]
+name = "avenger-sedona-pointcloud"
+version = "0.1.0"
+edition = "2021"
+description = "Scatterplots of LiDAR point clouds: SedonaDB's LAS/LAZ reader on DataFusion, rendered with Avenger"
+publish = false
+
+[dependencies]
+# Data: SedonaDB's LAS/LAZ reader, a DataFusion file format.
+# main is on DataFusion 54.1 / Arrow 58.3; the 0.4.1 release is on DataFusion 52.5 / Arrow 57.
+sedona-pointcloud = { git = "https://github.com/apache/sedona-db", rev = "2f3e37815bd998a9b9e2accc51ce261ea69a5f0f" }
+datafusion = "54.1"
+arrow = "58.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+# Charts: Avenger at the top of its core PR stack (jonmmease/avenger#120,
+# branch codex/core-15-datafusion-cache), which pins Arrow 58.3 and DataFusion 54.
+avenger-color = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
+avenger-common = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
+avenger-scales = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
+avenger-guides = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
+avenger-scenegraph = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
+avenger-text = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
+avenger-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "34372f76768d942a0ebf8fef39ae243e4d2facac" }
