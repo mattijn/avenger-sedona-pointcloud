@@ -7,7 +7,9 @@
 //!
 //! Usage: cargo run --release --bin stream_server -- <tile.copc.laz> [addr]
 //!
-//! The ticket is JSON: {"speed": 4.0} replays four times faster than reality.
+//! The ticket is JSON: {"speed": 4.0, "from": 12.5} replays four times faster
+//! than reality, starting 12.5 s into the flight. The viewer sends a new
+//! ticket whenever its replay speed changes.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -197,24 +199,33 @@ impl FlightService for LidarFeed {
         request: Request<Ticket>,
     ) -> Result<Response<Self::DoGetStream>, Status> {
         let ticket = String::from_utf8_lossy(&request.into_inner().ticket).to_string();
-        let speed = serde_json::from_str::<serde_json::Value>(&ticket)
-            .ok()
-            .and_then(|v| v.get("speed").and_then(|s| s.as_f64()))
-            .unwrap_or(1.0)
-            .max(0.01);
+        let params = serde_json::from_str::<serde_json::Value>(&ticket).ok();
+        let field = |name: &str| {
+            params
+                .as_ref()
+                .and_then(|v| v.get(name).and_then(|s| s.as_f64()))
+        };
+        let speed = field("speed").unwrap_or(1.0).max(0.01);
+        let from = field("from").unwrap_or(0.0).max(0.0);
+        let first = self
+            .feed
+            .ends
+            .partition_point(|end| *end <= from)
+            .min(self.feed.batches.len());
         println!(
-            "client connected: replaying {:.1} s at {speed}x ({:.1} s of wall clock)",
+            "client connected: {:.1} s of flight from t = {from:.1} s at {speed}x ({:.1} s of wall clock)",
             self.feed.duration_s,
-            self.feed.duration_s / speed
+            (self.feed.duration_s - from).max(0.0) / speed
         );
 
         let feed = self.feed.clone();
         let started = Instant::now();
-        let paced = stream::iter(0..feed.batches.len()).then(move |i| {
+        let paced = stream::iter(first..feed.batches.len()).then(move |i| {
             let feed = feed.clone();
             async move {
-                // Release each batch when the scanner would have finished it.
-                let due = Duration::from_secs_f64(feed.ends[i] / speed);
+                // Release each batch when the scanner would have finished it,
+                // counting from where this connection picks the flight up.
+                let due = Duration::from_secs_f64((feed.ends[i] - from).max(0.0) / speed);
                 let elapsed = started.elapsed();
                 if due > elapsed {
                     tokio::time::sleep(due - elapsed).await;

@@ -132,6 +132,20 @@ N seconds of scanning:
   coalesced: 1022 batches arriving over 25 s produced 140 scene rebuilds
   (~6 fps).
 
+The viewer controls the feed from the keyboard: **space** pauses, **↑ ↓**
+(or **+ -**) halve or double the replay speed between 0.25× and 32×, **[ ]**
+change the length of the rolling window, and **r** restarts the flight. A
+change reconnects with a new Flight ticket carrying the new speed and the
+point to resume from, so nothing in the window is lost or replayed twice:
+
+```
+client connected: 105.6 s of flight from t = 0.0 s at 8x (13.2 s of wall clock)
+client connected: 105.6 s of flight from t = 56.6 s at 2x (24.5 s of wall clock)
+```
+
+The window opens at 660 × 760 and the square map takes whatever room the
+window leaves, so resizing works and `--size 1100x1200` opens it larger.
+
 ![the scan sweeping across the tile](docs/images/stream_live.png)
 
 *Left to right: the first line covering the north, the second line sweeping
@@ -142,6 +156,7 @@ longer ago than the window.*
 ```sh
 cargo run --release --bin stream_server -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
 cargo run --release --bin stream_live   -- --speed 4 --window 12
+cargo run --release --bin stream_live   -- --speed 1 --size 1100x1200              # larger window
 cargo run --release --bin stream_live   -- --speed 8 --window 12 --snapshots out   # headless
 ```
 
