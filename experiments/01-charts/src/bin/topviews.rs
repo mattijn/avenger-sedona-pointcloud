@@ -1,8 +1,9 @@
 //! Top-view scatterplots of an IGN LiDAR HD tile, queried with
 //! sedona-pointcloud + DataFusion and rendered with Avenger.
 //!
-//! Usage: cargo run --release --bin topviews -- <tile.copc.laz> <out_dir>
+//! Usage: cargo run --release -p lidar-charts --bin topviews -- <tile.copc.laz> <out_dir>
 
+use lidar_common::{las_context, CLASSES, INK, MUTED, OTHER};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -27,34 +28,8 @@ use avenger_scenegraph::marks::text::SceneTextMark;
 use avenger_scenegraph::scene_graph::SceneGraph;
 use avenger_text::types::{FontWeight, FontWeightNameSpec, TextAlign, TextBaseline};
 use avenger_wgpu::canvas::{Canvas, PngCanvas};
-use datafusion::execution::SessionStateBuilder;
-use datafusion::prelude::{SessionConfig, SessionContext};
-use sedona_pointcloud::las::format::{Extension, LasFormatFactory};
-use sedona_pointcloud::las::options::LasOptions;
 
-const CLASSES: [(u8, &str, [f32; 4]); 5] = [
-    (2, "Ground", [0.55, 0.43, 0.30, 1.0]),
-    (3, "Low vegetation", [0.72, 0.84, 0.40, 1.0]),
-    (4, "Medium vegetation", [0.35, 0.68, 0.33, 1.0]),
-    (5, "High vegetation", [0.13, 0.43, 0.22, 1.0]),
-    (6, "Building", [0.80, 0.25, 0.25, 1.0]),
-];
-const OTHER: [f32; 4] = [0.62, 0.64, 0.68, 1.0];
-const INK: [f32; 4] = [0.1, 0.12, 0.15, 1.0];
-const MUTED: [f32; 4] = [0.38, 0.42, 0.47, 1.0];
 const PROFILE_Y: f32 = 400.0; // the cross-section from the first chart
-
-fn context() -> SessionContext {
-    let config = SessionConfig::new().with_option_extension(LasOptions::default());
-    let mut state = SessionStateBuilder::new()
-        .with_config(config)
-        .with_default_features()
-        .build();
-    state
-        .register_file_format(Arc::new(LasFormatFactory::new(Extension::Laz)), true)
-        .unwrap();
-    SessionContext::new_with_state(state).enable_url_table()
-}
 
 fn column(batches: &[RecordBatch], i: usize) -> ArrayRef {
     let parts: Vec<&dyn Array> = batches.iter().map(|b| b.column(i).as_ref()).collect();
@@ -333,7 +308,7 @@ async fn render(scene: &SceneGraph, path: &str) -> Result<(), Box<dyn std::error
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let (tile, out) = (&args[1], &args[2]);
-    let ctx = context();
+    let ctx = las_context();
     ctx.sql("SET las.geometry_encoding = 'plain'").await?;
     let tile_label =
         "tile LHD_FXX_0657_6868 (Greater Paris) · sedona-pointcloud + DataFusion → Avenger";

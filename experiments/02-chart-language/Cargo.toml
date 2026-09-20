@@ -1,0 +1,14 @@
+[package]
+name = "lidar-lang"
+description = "Experiment 2: the same map written in the Avenger chart language"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+lidar-common.workspace = true
+
+arrow.workspace = true
+datafusion.workspace = true
+sedona-pointcloud.workspace = true
+tokio.workspace = true

@@ -6,9 +6,11 @@ how it was measured, so a recheck is a command rather than an opinion.
 
 - **Checked against:** `jonmmease/avenger` `5f31c58` ([#124](https://github.com/jonmmease/avenger/pull/124), `codex/selection`), 20 Sep 2026
 - **Machine:** Apple Silicon, macOS, wgpu/Metal, Rust 1.89
-- **Recheck:** `cargo run --release --bin probe_guides` and
-  `cargo run --release --bin probe_render` print everything below except the
-  frame-rate numbers, which come from `stream_live` (see [Live charts](#live-charts)).
+- **Recheck:** `cargo run --release -p lidar-probes --bin probe_guides` and
+  `cargo run --release -p lidar-probes --bin probe_render` print everything
+  below except the frame-rate numbers, which come from the streaming viewer
+  (`cargo run --release -p lidar-stream --bin stream_live`; see
+  [Live charts](#live-charts)).
 
 | # | Area | Finding | Status |
 |---|---|---|---|
@@ -36,7 +38,7 @@ Building the scene was never the problem: 12 ms of a 235 ms frame.
 
 ### 1. The geometry index is the frame budget
 
-`probe_render` builds one symbol mark of *n* instances and times the pieces
+`probes/src/bin/probe_render.rs` builds one symbol mark of *n* instances and times the pieces
 separately. Best of three, canvas 900 × 900, scale 1.0:
 
 | Symbols | `set_scene` | `render` | `SceneGraphRTree::from_scene_graph` |
@@ -101,7 +103,7 @@ Two symptoms, both reproducible:
 - **Colorbar, flat last stop.** `make_colorbar_marks` produces a proper ramp in
   the scene — the scale's stops are correct, we print them — but the rendered
   bar is a single colour, `#ECF8B1`, which is the last stop of the range.
-  `probe_guides`, then sample the bar's pixels.
+  `probe_guides`, then sample the bar's pixels in `out/probe_guides.png`.
 
 Both look like the gradient atlas or its texture coordinates in
 `avenger-wgpu/src/marks/gradient.rs`, but we have not chased it further. Our

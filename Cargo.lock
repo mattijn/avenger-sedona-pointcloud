@@ -783,37 +783,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "avenger-sedona-pointcloud"
-version = "0.1.0"
-dependencies = [
- "arrow",
- "arrow-flight",
- "async-trait",
- "avenger-app",
- "avenger-color",
- "avenger-common",
- "avenger-datafusion-aggregate-state",
- "avenger-eventstream",
- "avenger-geometry",
- "avenger-guides",
- "avenger-resource",
- "avenger-scales",
- "avenger-scenegraph",
- "avenger-text",
- "avenger-wgpu",
- "avenger-winit-wgpu",
- "copc-rs",
- "datafusion",
- "futures",
- "image",
- "sedona-pointcloud",
- "serde_json",
- "tokio",
- "tonic",
- "winit",
-]
-
-[[package]]
 name = "avenger-text"
 version = "0.0.8"
 source = "git+https://github.com/jonmmease/avenger?rev=5f31c582c3e77dd3caa9c59707e142d24d53f178#5f31c582c3e77dd3caa9c59707e142d24d53f178"
@@ -3946,6 +3915,96 @@ dependencies = [
  "libc",
  "plain",
  "redox_syscall 0.9.4",
+]
+
+[[package]]
+name = "lidar-charts"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "async-trait",
+ "avenger-app",
+ "avenger-color",
+ "avenger-common",
+ "avenger-eventstream",
+ "avenger-geometry",
+ "avenger-guides",
+ "avenger-scales",
+ "avenger-scenegraph",
+ "avenger-text",
+ "avenger-wgpu",
+ "avenger-winit-wgpu",
+ "copc-rs",
+ "datafusion",
+ "lidar-common",
+ "sedona-pointcloud",
+ "tokio",
+ "winit",
+]
+
+[[package]]
+name = "lidar-common"
+version = "0.1.0"
+dependencies = [
+ "datafusion",
+ "sedona-pointcloud",
+]
+
+[[package]]
+name = "lidar-lang"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "datafusion",
+ "lidar-common",
+ "sedona-pointcloud",
+ "tokio",
+]
+
+[[package]]
+name = "lidar-probes"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "avenger-color",
+ "avenger-common",
+ "avenger-geometry",
+ "avenger-guides",
+ "avenger-scales",
+ "avenger-scenegraph",
+ "avenger-wgpu",
+ "image",
+ "tokio",
+]
+
+[[package]]
+name = "lidar-stream"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "arrow-flight",
+ "async-trait",
+ "avenger-app",
+ "avenger-color",
+ "avenger-common",
+ "avenger-datafusion-aggregate-state",
+ "avenger-eventstream",
+ "avenger-geometry",
+ "avenger-guides",
+ "avenger-resource",
+ "avenger-scales",
+ "avenger-scenegraph",
+ "avenger-text",
+ "avenger-wgpu",
+ "avenger-winit-wgpu",
+ "datafusion",
+ "futures",
+ "lidar-common",
+ "sedona-pointcloud",
+ "serde_json",
+ "tokio",
+ "tonic",
+ "winit",
 ]
 
 [[package]]

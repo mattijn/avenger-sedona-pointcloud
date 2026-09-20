@@ -11,7 +11,7 @@
 //! flight. A speed change reconnects with a new Flight ticket that carries the
 //! new speed and the point in the flight to resume from.
 //!
-//! Usage: cargo run --release --bin stream_live -- [--addr http://127.0.0.1:50051]
+//! Usage: cargo run --release -p lidar-stream --bin stream_live -- [--addr http://127.0.0.1:50051]
 //!                                                 [--speed 4] [--window 20]
 //!                                                 [--size 880x700]
 //!                                                 [--snapshots <dir>]

@@ -3,4 +3,4 @@
 /data/*.laz
 .DS_Store
 /data/*.stats
-/lang/*.parquet
+/experiments/02-chart-language/charts/*.parquet

@@ -1,0 +1,34 @@
+[package]
+name = "lidar-stream"
+description = "Experiment 3: a live LiDAR feed over Arrow Flight with rolling aggregates"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+lidar-common.workspace = true
+
+arrow.workspace = true
+arrow-flight.workspace = true
+async-trait.workspace = true
+datafusion.workspace = true
+futures.workspace = true
+sedona-pointcloud.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tonic.workspace = true
+winit.workspace = true
+
+avenger-app.workspace = true
+avenger-color.workspace = true
+avenger-common.workspace = true
+avenger-datafusion-aggregate-state.workspace = true
+avenger-eventstream.workspace = true
+avenger-geometry.workspace = true
+avenger-guides.workspace = true
+avenger-resource.workspace = true
+avenger-scales.workspace = true
+avenger-scenegraph.workspace = true
+avenger-text.workspace = true
+avenger-wgpu.workspace = true
+avenger-winit-wgpu.workspace = true

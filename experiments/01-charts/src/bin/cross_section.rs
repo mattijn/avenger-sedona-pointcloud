@@ -2,9 +2,9 @@
 //! DataFusion feeds Arrow arrays straight into Avenger scales, axes and the
 //! offscreen wgpu renderer.
 //!
-//! Usage: cargo run --release --bin cross_section -- <tile.copc.laz> <out.png>
+//! Usage: cargo run --release -p lidar-charts --bin cross_section -- <tile.copc.laz> <out.png>
 
-use std::sync::Arc;
+use lidar_common::{las_context, CLASSES, OTHER};
 use std::time::Instant;
 
 use arrow::array::{ArrayRef, AsArray};
@@ -24,32 +24,8 @@ use avenger_scenegraph::marks::text::SceneTextMark;
 use avenger_scenegraph::scene_graph::SceneGraph;
 use avenger_text::types::{FontWeight, FontWeightNameSpec, TextAlign, TextBaseline};
 use avenger_wgpu::canvas::{Canvas, PngCanvas};
-use datafusion::execution::SessionStateBuilder;
-use datafusion::prelude::{SessionConfig, SessionContext};
-use sedona_pointcloud::las::format::{Extension, LasFormatFactory};
-use sedona_pointcloud::las::options::LasOptions;
 
 /// ASPRS classes present in LiDAR HD, with display colours.
-const CLASSES: [(u8, &str, [f32; 4]); 5] = [
-    (2, "Ground", [0.55, 0.43, 0.30, 1.0]),
-    (3, "Low vegetation", [0.72, 0.84, 0.40, 1.0]),
-    (4, "Medium vegetation", [0.35, 0.68, 0.33, 1.0]),
-    (5, "High vegetation", [0.13, 0.43, 0.22, 1.0]),
-    (6, "Building", [0.80, 0.25, 0.25, 1.0]),
-];
-const OTHER: [f32; 4] = [0.62, 0.64, 0.68, 1.0];
-
-fn context() -> SessionContext {
-    let config = SessionConfig::new().with_option_extension(LasOptions::default());
-    let mut state = SessionStateBuilder::new()
-        .with_config(config)
-        .with_default_features()
-        .build();
-    state
-        .register_file_format(Arc::new(LasFormatFactory::new(Extension::Laz)), true)
-        .unwrap();
-    SessionContext::new_with_state(state).enable_url_table()
-}
 
 fn column(batches: &[arrow::record_batch::RecordBatch], i: usize) -> ArrayRef {
     let parts: Vec<&dyn arrow::array::Array> =
@@ -63,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (tile, out) = (&args[1], &args[2]);
 
     // ---- data: a 2 m wide west–east strip through the tile ----------------
-    let ctx = context();
+    let ctx = las_context();
     ctx.sql("SET las.geometry_encoding = 'plain'").await?;
     let (y0, y1) = (6_867_400.0, 6_867_402.0);
     let sql = format!(

@@ -1,8 +1,8 @@
-//! Export a LAS/LAZ tile to Parquet for the `.avenger` chart in `lang/`.
+//! Export a LAS/LAZ tile to Parquet for the `.avenger` chart in `charts/`.
 //! Coordinates become tile-relative metres (origin at the tile's south-west
 //! kilometre corner).
 //!
-//! Usage: cargo run --release --bin export_parquet -- <tile.copc.laz> [out.parquet]
+//! Usage: cargo run --release -p lidar-lang --bin export_parquet -- <tile.copc.laz> [out.parquet]
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -20,9 +20,9 @@ async fn main() -> datafusion::error::Result<()> {
     let tile = args
         .next()
         .expect("usage: export_parquet <tile.copc.laz> [out.parquet]");
-    let out = args
-        .next()
-        .unwrap_or_else(|| "lang/pantin_points.parquet".to_string());
+    let out = args.next().unwrap_or_else(|| {
+        "experiments/02-chart-language/charts/pantin_points.parquet".to_string()
+    });
 
     let config = SessionConfig::new().with_option_extension(LasOptions::default());
     let mut state = SessionStateBuilder::new()

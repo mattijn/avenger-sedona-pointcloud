@@ -1,0 +1,19 @@
+[package]
+name = "lidar-probes"
+description = "Re-measures the Avenger findings in FINDINGS.md against the pinned revision"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+arrow.workspace = true
+image.workspace = true
+tokio.workspace = true
+
+avenger-color.workspace = true
+avenger-common.workspace = true
+avenger-geometry.workspace = true
+avenger-guides.workspace = true
+avenger-scales.workspace = true
+avenger-scenegraph.workspace = true
+avenger-wgpu.workspace = true

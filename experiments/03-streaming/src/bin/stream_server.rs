@@ -5,7 +5,7 @@
 //! sends Arrow batches paced by that timestamp; the gaps between flight lines
 //! (the plane turning around) are collapsed to one second.
 //!
-//! Usage: cargo run --release --bin stream_server -- <tile.copc.laz> [addr]
+//! Usage: cargo run --release -p lidar-stream --bin stream_server -- <tile.copc.laz> [addr]
 //!
 //! The ticket is JSON: {"speed": 4.0, "from": 12.5} replays four times faster
 //! than reality, starting 12.5 s into the flight. The viewer sends a new

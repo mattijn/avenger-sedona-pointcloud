@@ -1,0 +1,29 @@
+[package]
+name = "lidar-charts"
+description = "Experiment 1: static charts, an interactive explorer, and a window-query benchmark"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+lidar-common.workspace = true
+
+arrow.workspace = true
+async-trait.workspace = true
+copc-rs.workspace = true
+datafusion.workspace = true
+sedona-pointcloud.workspace = true
+tokio.workspace = true
+winit.workspace = true
+
+avenger-app.workspace = true
+avenger-color.workspace = true
+avenger-common.workspace = true
+avenger-eventstream.workspace = true
+avenger-geometry.workspace = true
+avenger-guides.workspace = true
+avenger-scales.workspace = true
+avenger-scenegraph.workspace = true
+avenger-text.workspace = true
+avenger-wgpu.workspace = true
+avenger-winit-wgpu.workspace = true

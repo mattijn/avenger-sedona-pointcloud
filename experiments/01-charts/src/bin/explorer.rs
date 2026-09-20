@@ -6,9 +6,10 @@
 //! view settles, the matching overview level or the raw points for the
 //! visible window are queried and swapped in.
 //!
-//! Usage: cargo run --release --bin explorer -- <tile.copc.laz>
-//!        cargo run --release --bin explorer -- <tile.copc.laz> --snapshots <out_dir>
+//! Usage: cargo run --release -p lidar-charts --bin explorer -- <tile.copc.laz>
+//!        cargo run --release -p lidar-charts --bin explorer -- <tile.copc.laz> --snapshots <out_dir>
 
+use lidar_common::{las_context, CLASSES, INK, MUTED, OTHER};
 use std::sync::Arc;
 use std::time::Instant as StdInstant;
 
@@ -47,22 +48,8 @@ use avenger_scenegraph::{
 };
 use avenger_text::types::{FontWeight, FontWeightNameSpec, TextAlign, TextBaseline};
 use avenger_winit_wgpu::{WinitWgpuAvengerApp, WinitWgpuAvengerAppOptions};
-use datafusion::execution::SessionStateBuilder;
-use datafusion::prelude::{SessionConfig, SessionContext};
-use sedona_pointcloud::las::format::{Extension, LasFormatFactory};
-use sedona_pointcloud::las::options::LasOptions;
+use datafusion::prelude::SessionContext;
 use winit::{dpi::LogicalSize, window::WindowAttributes};
-
-const CLASSES: [(u8, &str, [f32; 4]); 5] = [
-    (2, "Ground", [0.55, 0.43, 0.30, 1.0]),
-    (3, "Low vegetation", [0.72, 0.84, 0.40, 1.0]),
-    (4, "Medium vegetation", [0.35, 0.68, 0.33, 1.0]),
-    (5, "High vegetation", [0.13, 0.43, 0.22, 1.0]),
-    (6, "Building", [0.80, 0.25, 0.25, 1.0]),
-];
-const OTHER: [f32; 4] = [0.62, 0.64, 0.68, 1.0];
-const INK: [f32; 4] = [0.1, 0.12, 0.15, 1.0];
-const MUTED: [f32; 4] = [0.38, 0.42, 0.47, 1.0];
 
 /// Overview cell sizes in metres, precomputed at startup.
 const LEVELS: [u32; 5] = [1, 2, 4, 8, 16];
@@ -143,18 +130,6 @@ impl State {
 // ---------------------------------------------------------------------------
 // Data
 // ---------------------------------------------------------------------------
-
-fn context() -> SessionContext {
-    let config = SessionConfig::new().with_option_extension(LasOptions::default());
-    let mut state = SessionStateBuilder::new()
-        .with_config(config)
-        .with_default_features()
-        .build();
-    state
-        .register_file_format(Arc::new(LasFormatFactory::new(Extension::Laz)), true)
-        .unwrap();
-    SessionContext::new_with_state(state).enable_url_table()
-}
 
 fn column(batches: &[RecordBatch], i: usize) -> ArrayRef {
     let parts: Vec<&dyn Array> = batches.iter().map(|b| b.column(i).as_ref()).collect();
@@ -642,7 +617,7 @@ fn main() {
 
     // Multi-threaded runtime for DataFusion; the window runs on its own runtime.
     let data_rt = tokio::runtime::Runtime::new().unwrap();
-    let ctx = context();
+    let ctx = las_context();
     let (total_points, _origin) = data_rt.block_on(prepare(&ctx, &tile)).expect("load tile");
 
     let (width, height) = (820.0f32, 820.0f32);

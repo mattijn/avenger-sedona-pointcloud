@@ -2,7 +2,7 @@
 //! revision this repo is pinned to. Prints where the colorbar and legend marks
 //! land and writes out/probe_guides.png.
 //!
-//! Usage: cargo run --release --bin probe_guides
+//! Usage: cargo run --release -p lidar-probes --bin probe_guides
 use std::sync::Arc;
 
 use arrow::array::{ArrayRef, Float32Array};

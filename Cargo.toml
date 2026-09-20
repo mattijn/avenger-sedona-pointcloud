@@ -1,46 +1,53 @@
-[package]
-name = "avenger-sedona-pointcloud"
+[workspace]
+resolver = "2"
+members = [
+    "common",
+    "experiments/01-charts",
+    "experiments/02-chart-language",
+    "experiments/03-streaming",
+    "probes",
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
-description = "Scatterplots of LiDAR point clouds: SedonaDB's LAS/LAZ reader on DataFusion, rendered with Avenger"
 publish = false
 
-[dependencies]
-# Data: SedonaDB's LAS/LAZ reader, a DataFusion file format.
-# main is on DataFusion 54.1 / Arrow 58.3; the 0.4.1 release is on DataFusion 52.5 / Arrow 57.
-sedona-pointcloud = { git = "https://github.com/apache/sedona-db", rev = "2f3e37815bd998a9b9e2accc51ce261ea69a5f0f" }
-datafusion = "54.1"
-arrow = "58.3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-
-# Charts: Avenger at the top of its core PR stack (jonmmease/avenger#124,
-# branch codex/selection), which pins Arrow 58.3 and DataFusion 54.
+# One place to repin the Avenger stack. It currently points at the top of the
+# core PR stack (jonmmease/avenger#124, branch codex/selection), which pins
+# Arrow 58.3 and DataFusion 54 — the same versions as SedonaDB main, so Arrow
+# arrays pass between them untouched.
+[workspace.dependencies]
+avenger-app = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-color = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-common = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
-avenger-scales = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
-avenger-guides = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
-avenger-scenegraph = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
-avenger-text = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
-avenger-app = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
+avenger-datafusion-aggregate-state = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-eventstream = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-geometry = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
-avenger-winit-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
-winit = "0.30.11"
-async-trait = "0.1"
+avenger-guides = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
+avenger-resource = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
+avenger-scales = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
+avenger-scenegraph = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
+avenger-text = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
-# COPC octree reader; 0.7.0 is unreleased (crates.io has 0.5.0, which fails to build with current las).
+avenger-winit-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
+
+# SedonaDB's LAS/LAZ reader, a DataFusion file format. main is on DataFusion
+# 54.1 / Arrow 58.3; the 0.4.1 release is on DataFusion 52.5 / Arrow 57.
+sedona-pointcloud = { git = "https://github.com/apache/sedona-db", rev = "2f3e37815bd998a9b9e2accc51ce261ea69a5f0f" }
+
+arrow = "58.3"
+arrow-flight = "58.3"
+async-trait = "0.1"
+datafusion = "54.1"
+futures = "0.3"
+image = "0.25"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tonic = "0.14"
+winit = "0.30.11"
+# COPC octree reader; 0.7.0 is unreleased (crates.io has 0.5.0, which fails to
+# build with current las).
 copc-rs = { git = "https://github.com/pka/copc-rs", rev = "7918657abc8ba767cdccf041b7b020c218029ace", features = ["laz-parallel"] }
 
-# Streaming: Arrow Flight is the standard Arrow gRPC protocol, at the same
-# Arrow version as the rest of the pipeline, so batches arrive ready to query.
-arrow-flight = "58.3"
-tonic = "0.14"
-futures = "0.3"
-# Only used by probe_render to inspect rendered pixels.
-image = "0.25"
-# Render invalidation: lets the feed thread ask the window to redraw.
-avenger-resource = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
-serde_json = "1"
-# Rolling aggregates: ClickHouse-style materializable aggregate states
-# (jonmmease/avenger#123), merged per frame over the live window.
-avenger-datafusion-aggregate-state = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
+lidar-common = { path = "common" }

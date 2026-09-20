@@ -1,30 +1,15 @@
 //! Compare ways to fetch the points inside a map window from a COPC tile.
 //!
-//! Usage: cargo run --release --bin bench_window -- <tile.copc.laz>
+//! Usage: cargo run --release -p lidar-charts --bin bench_window -- <tile.copc.laz>
 
-use std::sync::Arc;
+use lidar_common::las_context;
 use std::time::Instant;
 
 use copc_rs::{Bounds, BoundsSelection, CopcReader, LodSelection, Vector};
-use datafusion::execution::SessionStateBuilder;
-use datafusion::prelude::{SessionConfig, SessionContext};
-use sedona_pointcloud::las::format::{Extension, LasFormatFactory};
-use sedona_pointcloud::las::options::LasOptions;
+use datafusion::prelude::SessionContext;
 
 const X0: f64 = 657_000.0;
 const Y0: f64 = 6_867_000.0;
-
-fn context() -> SessionContext {
-    let config = SessionConfig::new().with_option_extension(LasOptions::default());
-    let mut state = SessionStateBuilder::new()
-        .with_config(config)
-        .with_default_features()
-        .build();
-    state
-        .register_file_format(Arc::new(LasFormatFactory::new(Extension::Laz)), true)
-        .unwrap();
-    SessionContext::new_with_state(state).enable_url_table()
-}
 
 fn window_sql(from: &str, w: [f64; 4]) -> String {
     format!(
@@ -96,14 +81,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("\n1. sedona-pointcloud, no statistics (full scan)");
-    let ctx = context();
+    let ctx = las_context();
     ctx.sql("SET las.geometry_encoding = 'plain'").await?;
     timed_rows(&ctx, "120 m window", &window_sql(&url, small)).await?;
     timed_rows(&ctx, "500 m window", &window_sql(&url, medium)).await?;
 
     println!("\n2. sedona-pointcloud with chunk statistics");
     let _ = std::fs::remove_file(format!("{tile}.stats"));
-    let ctx = context();
+    let ctx = las_context();
     for s in [
         "SET las.geometry_encoding = 'plain'",
         "SET las.collect_statistics = 'true'",
@@ -125,7 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &window_sql(&url, medium),
     )
     .await?;
-    let ctx = context();
+    let ctx = las_context();
     for s in [
         "SET las.geometry_encoding = 'plain'",
         "SET las.collect_statistics = 'true'",
@@ -173,7 +158,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     copc_rows(&tile, "whole tile, all levels", LodSelection::All, None);
 
     println!("\n4. In-memory Arrow table (DataFusion MemTable)");
-    let ctx = context();
+    let ctx = las_context();
     ctx.sql("SET las.geometry_encoding = 'plain'").await?;
     let t = Instant::now();
     ctx.sql(&format!(

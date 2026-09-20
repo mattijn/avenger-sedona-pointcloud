@@ -6,7 +6,7 @@
 //! 2. how the cost of installing and drawing a scene grows with the number of
 //!    symbol marks.
 //!
-//! Usage: cargo run --release --bin probe_render
+//! Usage: cargo run --release -p lidar-probes --bin probe_render
 
 use std::time::Instant;
 
