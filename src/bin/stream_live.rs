@@ -56,8 +56,12 @@ use futures::StreamExt;
 use tonic::transport::Channel;
 use winit::window::WindowAttributes;
 
-/// Cell size of the live map, in metres.
+/// Cell size the arriving points are folded into, in metres.
 const CELL: f32 = 2.0;
+/// How many cells the map aims to draw. Frame cost scales with this: about
+/// 1.4 us per cell per frame, so a window holding 200k cells would crawl.
+/// When the window holds more, the states are rolled up to a coarser grid.
+const TARGET_CELLS: usize = 55_000;
 const TILE_M: f32 = 1000.0;
 const SPARK_H: f32 = 64.0;
 /// Space around the map: axis labels and titles on the left and top, the
@@ -72,7 +76,6 @@ const MUTED: [f32; 4] = [0.38, 0.42, 0.47, 1.0];
 const RAMP: [&str; 5] = ["#2c3a6b", "#2c7fb8", "#41b6c4", "#a1dab4", "#ffffcc"];
 
 /// What the feed task shares with the renderer.
-#[derive(Default)]
 struct Live {
     /// Per-batch aggregate states, newest last: (stream time, state batch).
     states: VecDeque<(f64, RecordBatch)>,
@@ -84,7 +87,26 @@ struct Live {
     line: i32,
     last_batch_ms: f64,
     cells: usize,
+    /// Grid the states are rolled up to for drawing, in metres.
+    step_m: f32,
     finished: bool,
+}
+
+impl Default for Live {
+    fn default() -> Self {
+        Self {
+            states: VecDeque::new(),
+            history: VecDeque::new(),
+            stream_t: 0.0,
+            points: 0,
+            batches: 0,
+            line: 0,
+            last_batch_ms: 0.0,
+            cells: 0,
+            step_m: CELL,
+            finished: false,
+        }
+    }
 }
 
 /// What the viewer can change while the feed is running. Every change bumps
@@ -154,21 +176,26 @@ async fn fold_batch(
     Ok(arrow::compute::concat_batches(&out[0].schema(), &out)?)
 }
 
-/// Merges the retained states into the current picture of the rolling window.
+/// Merges the retained states into the current picture of the rolling window,
+/// rolled up to a `step` metre grid. States merge at any resolution, so a
+/// longer window costs a coarser map rather than a slower frame.
 async fn merge_window(
     ctx: &SessionContext,
     states: Vec<RecordBatch>,
+    step: f32,
 ) -> datafusion::error::Result<RecordBatch> {
     let schema = states[0].schema();
     let merged = arrow::compute::concat_batches(&schema, &states)?;
     ctx.register_batch("states", merged)?;
     let out = ctx
-        .sql(
-            "SELECT cx, cy,
+        .sql(&format!(
+            "SELECT CAST(floor(cx / {step}) * {step} + {half} AS DOUBLE) AS cx,
+                    CAST(floor(cy / {step}) * {step} + {half} AS DOUBLE) AS cy,
                     CAST(maxMerge(zmax_s) AS FLOAT) AS zmax,
                     CAST(countMerge(n_s) AS BIGINT) AS n
-             FROM states GROUP BY cx, cy",
-        )
+             FROM states GROUP BY 1, 2",
+            half = step / 2.0
+        ))
         .await?
         .collect()
         .await?;
@@ -213,7 +240,15 @@ async fn consume(
         let mut client = FlightClient::new(channel);
         let ticket = Ticket::new(format!("{{\"speed\": {speed}, \"from\": {resume_from}}}"));
         let mut stream = client.do_get(ticket).await?;
+        let resume_from_at_connect = resume_from;
         live.lock().unwrap().finished = false;
+        let connected_at = Instant::now();
+        // The window cannot draw faster than this, and asking more often only
+        // queues work: one redraw request per frame budget is enough.
+        let mut last_request = Instant::now() - std::time::Duration::from_secs(1);
+        let mut since_report = Instant::now();
+        let mut folded_ms = 0.0f64;
+        let mut folded_n = 0u32;
 
         let mut reconnect = false;
         while let Some(batch) = stream.next().await {
@@ -275,11 +310,29 @@ async fn consume(
             resume_from = t_end;
 
             if let Some(hub) = &hub {
-                hub.request_render(RenderInvalidationRequest::now(
-                    RenderInvalidationReason::EvaluationChanged {
-                        kind: "lidar-stream".to_string(),
-                    },
-                ));
+                if last_request.elapsed().as_millis() >= 40 {
+                    hub.request_render(RenderInvalidationRequest::now(
+                        RenderInvalidationReason::EvaluationChanged {
+                            kind: "lidar-stream".to_string(),
+                        },
+                    ));
+                    last_request = Instant::now();
+                }
+            }
+
+            folded_ms += elapsed_ms;
+            folded_n += 1;
+            if std::env::var("STREAM_DEBUG").is_ok() && since_report.elapsed().as_secs_f64() > 2.0 {
+                // How far the viewer has fallen behind the sensor's clock.
+                let due = (t_end - resume_from_at_connect).max(0.0) / speed;
+                let lag = connected_at.elapsed().as_secs_f64() - due;
+                println!(
+                    "feed: t {t_end:6.1} s · lag {lag:5.2} s · fold {:.1} ms avg over {folded_n} batches",
+                    folded_ms / folded_n as f64
+                );
+                since_report = Instant::now();
+                folded_ms = 0.0;
+                folded_n = 0;
             }
 
             if control.lock().unwrap().generation != start_gen {
@@ -347,11 +400,13 @@ struct Builder;
 #[async_trait::async_trait]
 impl SceneGraphBuilder<State> for Builder {
     async fn build(&self, s: &mut State) -> Result<SceneGraph, AvengerAppError> {
-        let (states, live) = {
+        let (states, step, live) = {
             let l = s.live.lock().unwrap();
             let states: Vec<RecordBatch> = l.states.iter().map(|(_, b)| b.clone()).collect();
+            let step = l.step_m;
             (
                 states,
+                step,
                 (
                     l.stream_t,
                     l.points,
@@ -366,9 +421,7 @@ impl SceneGraphBuilder<State> for Builder {
         let (stream_t, points, batches, line, batch_ms, history, finished) = live;
         let control = *s.control.lock().unwrap();
         let plot = s.plot();
-        if std::env::var("STREAM_DEBUG").is_ok() {
-            println!("frame: stream t {stream_t:.1} s · {batches} batches");
-        }
+        let frame_start = Instant::now();
 
         let px_per_m = plot / TILE_M;
         let mut marks: Vec<SceneMark> = Vec::new();
@@ -387,11 +440,12 @@ impl SceneGraphBuilder<State> for Builder {
         );
 
         let mut merge_ms = 0.0;
+        let mut cell_count = 0usize;
         if !states.is_empty() {
             let ctx = s.ctx.clone();
             let t0 = Instant::now();
             let cells =
-                s.rt.spawn(async move { merge_window(&ctx, states).await })
+                s.rt.spawn(async move { merge_window(&ctx, states, step).await })
                     .await
                     .map_err(|e| AvengerAppError::InternalError(e.to_string()))?
                     .map_err(|e| AvengerAppError::InternalError(e.to_string()))?;
@@ -415,6 +469,17 @@ impl SceneGraphBuilder<State> for Builder {
                 .as_primitive::<Int64Type>();
 
             let len = cells.num_rows();
+            cell_count = len;
+            // Keep the frame affordable: coarsen when the window holds too
+            // many cells, and go finer again when it empties out.
+            {
+                let mut l = s.live.lock().unwrap();
+                if len > TARGET_CELLS * 3 / 2 && l.step_m < 32.0 {
+                    l.step_m *= 2.0;
+                } else if len < TARGET_CELLS / 3 && l.step_m > CELL {
+                    l.step_m /= 2.0;
+                }
+            }
             let xs: Vec<f32> = (0..len).map(|i| cx.value(i) as f32 * px_per_m).collect();
             let ys: Vec<f32> = (0..len)
                 .map(|i| plot - cy.value(i) as f32 * px_per_m)
@@ -431,12 +496,16 @@ impl SceneGraphBuilder<State> for Builder {
             // Cells that collected more returns are drawn slightly larger.
             let sizes: Vec<f32> = counts
                 .iter()
-                .map(|c| (2.0 + c.min(40.0) * 0.12) * px_per_m * CELL)
+                .map(|c| (2.0 + c.min(40.0) * 0.12) * px_per_m * step)
                 .collect();
 
             marks.push(
                 SceneGroup {
                     origin: [0.0, 0.0],
+                    // Nothing hit-tests the map, and leaving it out of the
+                    // geometry index saves rebuilding an R-tree over every
+                    // cell on each frame.
+                    interactive: false,
                     clip: Clip::Rect {
                         x: 0.0,
                         y: 0.0,
@@ -505,6 +574,7 @@ impl SceneGraphBuilder<State> for Builder {
             marks.push(
                 SceneGroup {
                     origin: [0.0, plot + 46.0],
+                    interactive: false,
                     marks: vec![
                         SceneRectMark {
                             len: history.len() as u32,
@@ -562,7 +632,7 @@ impl SceneGraphBuilder<State> for Builder {
                 ),
                 (
                     format!(
-                        "{:.1}M points received in {batches} batches · fold {batch_ms:.0} ms/batch · merge {merge_ms:.0} ms/frame",
+                        "{:.1}M points in {batches} batches · {step:.0} m cells · fold {batch_ms:.0} ms/batch · merge {merge_ms:.0} ms/frame",
                         points as f64 / 1e6
                     ),
                     0.0,
@@ -574,6 +644,14 @@ impl SceneGraphBuilder<State> for Builder {
             ])
             .into(),
         );
+
+        if std::env::var("STREAM_DEBUG").is_ok() {
+            println!(
+                "frame: t {stream_t:6.1} s · build {:5.1} ms (merge {merge_ms:5.1} ms) · {} cells",
+                frame_start.elapsed().as_secs_f64() * 1000.0,
+                cell_count
+            );
+        }
 
         marks.push(
             text_mark(vec![(

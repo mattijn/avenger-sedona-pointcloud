@@ -128,9 +128,33 @@ N seconds of scanning:
   into the current picture (2–11 ms). Raw points are never revisited, and
   states that fall out of the window are simply dropped.
 - **Redraw:** the feed thread calls `RenderInvalidationHub::request_render`, so
-  the window rebuilds when data arrives instead of polling. Invalidations are
-  coalesced: 1022 batches arriving over 25 s produced 140 scene rebuilds
-  (~6 fps).
+  the window rebuilds when data arrives instead of polling, at most 25 times a
+  second.
+- **Adaptive grid:** frame cost scales with the number of marks, about 1.4 us
+  per cell, so a long window drawn at 2 m would crawl. When the window holds
+  more than about 55k cells the states are rolled up to a coarser grid (4 m,
+  8 m, …) and back again as it empties. States merge at any resolution, so this
+  costs nothing but the grid itself. With the default 20 s window the viewer
+  runs at about 11 frames per second instead of 3.
+
+In the viewer:
+
+| Key | Effect |
+|---|---|
+| space | pause and resume |
+| ↑ / ↓ (or + / -) | double or halve the replay speed, 0.25× to 32× |
+| [ / ] | shorten or lengthen the rolling window |
+| r | restart the flight |
+
+A speed change reconnects with a new Flight ticket carrying the new speed and
+the point to resume from, so nothing is replayed twice:
+
+```
+client connected: 105.6 s of flight from t = 56.6 s at 2x (24.5 s of wall clock)
+```
+
+The window is sized to fit a small screen and the layout follows it when you
+resize; `--size 1200x1000` starts it larger.
 
 The viewer controls the feed from the keyboard: **space** pauses, **↑ ↓**
 (or **+ -**) halve or double the replay speed between 0.25× and 32×, **[ ]**
@@ -201,6 +225,7 @@ Timings measured on an Apple Silicon Mac:
 | Rendering 1M points to a 2× PNG | 0.2–0.3 s |
 | Streaming: fold one 16k-point batch into cell states | 2–7 ms |
 | Streaming: merge a 12 s window into the current frame | 2–11 ms |
+| Streaming: whole frame, ~40k cells | ~90 ms (about 11 fps) |
 
 ## Versions and pitfalls
 
