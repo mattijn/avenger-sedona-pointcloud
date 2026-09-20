@@ -1,6 +1,6 @@
 # avenger-sedona-pointcloud
 
-Scatterplots of a real LiDAR point cloud: static charts, an interactive explorer with pan and zoom, a benchmark of window queries, and the same map written in the experimental Avenger chart language.
+Scatterplots of a real LiDAR point cloud: static charts, an interactive explorer with pan and zoom, a benchmark of window queries, a live feed over Arrow Flight, and the same map written in the experimental Avenger chart language.
 
 The pipeline has no JSON and no browser in between:
 
@@ -108,6 +108,49 @@ The chart language does not read LAZ directly, so `export_parquet` first writes 
 - The legend reuses the mark's symbol size, so with `size: 4` the legend dots are very small.
 - There is no pan or zoom yet in the language. `watch` reloads the file; it does not navigate.
 
+### Live feed over Arrow Flight
+
+The tile records a GPS timestamp for every point, and it was flown as four
+flight lines of 21–27 s each. `stream_server` replays those lines in the order
+the scanner recorded them, over [Arrow Flight](https://arrow.apache.org/docs/format/Flight.html),
+the standard Arrow gRPC protocol — the same Arrow version as the rest of the
+pipeline, so batches arrive ready to query. The replay speed is a Flight
+ticket: `{"speed": 4.0}`.
+
+`stream_live` consumes that stream and keeps a rolling window of the last
+N seconds of scanning:
+
+- **Once per batch:** fold ~16k raw points into per-2 m-cell *states* with
+  `maxState(z)` and `countState()` from
+  [`avenger-datafusion-aggregate-state`](https://github.com/jonmmease/avenger/pull/123)
+  (2–7 ms).
+- **Once per frame:** merge the retained states with `maxMerge` / `countMerge`
+  into the current picture (2–11 ms). Raw points are never revisited, and
+  states that fall out of the window are simply dropped.
+- **Redraw:** the feed thread calls `RenderInvalidationHub::request_render`, so
+  the window rebuilds when data arrives instead of polling. Invalidations are
+  coalesced: 1022 batches arriving over 25 s produced 140 scene rebuilds
+  (~6 fps).
+
+![the scan sweeping across the tile](docs/images/stream_live.png)
+
+*Left to right: the first line covering the north, the second line sweeping
+south, and the last line, where the rolling window holds only the final
+partial pass. The black area is not missing data — it is everything scanned
+longer ago than the window.*
+
+```sh
+cargo run --release --bin stream_server -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
+cargo run --release --bin stream_live   -- --speed 4 --window 12
+cargo run --release --bin stream_live   -- --speed 8 --window 12 --snapshots out   # headless
+```
+
+`STREAM_DEBUG=1` prints one line per scene rebuild.
+
+Rerun's [`re_datafusion`](https://docs.rs/re_datafusion/) would fit the same
+client unchanged — it pins arrow 58.3 and datafusion 54, exactly our versions —
+but it needs Rust 1.96, and this repo is built with 1.89.
+
 ## Run
 
 ```sh
@@ -117,6 +160,7 @@ cargo run --release --bin cross_section -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_I
 cargo run --release --bin topviews      -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz out
 cargo run --release --bin explorer      -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
 cargo run --release --bin bench_window  -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
+cargo run --release --bin probe_guides  # re-tests the guide pitfalls listed below
 ```
 
 To use the chart language, build the `avenger` CLI from Jon's experimental branch, then export the data and watch the chart:
@@ -140,6 +184,8 @@ Timings measured on an Apple Silicon Mac:
 | Full-scan aggregation over 17.3M points | 1.2 s |
 | Filtered query (strip or window) | 1.0 s (full scan; chunk statistics not enabled) |
 | Rendering 1M points to a 2× PNG | 0.2–0.3 s |
+| Streaming: fold one 16k-point batch into cell states | 2–7 ms |
+| Streaming: merge a 12 s window into the current frame | 2–11 ms |
 
 ## Versions and pitfalls
 
@@ -149,13 +195,13 @@ This repo is a snapshot of work in progress on both sides.
   - The `sedona-pointcloud` 0.4.1 release uses Arrow 57 and DataFusion 52.5.
   - Avenger `main` has `arrow = "*"`.
   - This repo therefore pins SedonaDB `main` (DataFusion 54.1, Arrow 58.3) together with the Avenger core PR stack (DataFusion 54, Arrow 58.3).
-- **The Avenger stack is a set of open PRs.** The pinned commit (`34372f7`) may disappear if the branch is rebased. If it does, update the `rev` values in `Cargo.toml`.
+- **The Avenger stack is a set of open PRs.** This repo pins the top of that stack, `5f31c58` ([#124](https://github.com/jonmmease/avenger/pull/124), `codex/selection`). A pinned commit may disappear if the branch is rebased; if it does, update the `rev` values in `Cargo.toml`. Moving from #120 to #124 needed no code changes here.
 - **Minimum Rust version.** With Rust 1.89, generate the lockfile with `CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo update`, because the newest `ordered-float` needs Rust 1.90.
-- **Workarounds for issues found in the Avenger stack:**
-  - `make_colorbar_marks` draws at (0, 0), so the caller must position it. In `PngCanvas` its fill also renders as a single colour. `topviews` draws its own colorbar from stacked rects plus an axis.
-  - The symbol legend title is placed inside the plot area, so these examples draw it separately.
-  - `LinearScale` accepts only a two-value domain. Colour ramps use evenly spaced stops.
-- **An issue on Avenger `main`** (fixed in the stack): `make_numeric_axis_marks` always sets a `band` option, which `LinearScale` rejects.
+- **Workarounds for issues found in the Avenger stack.** All of these were re-tested against #124 on 2026-09-20 with `cargo run --release --bin probe_guides`, and all are still needed:
+  - `make_colorbar_marks` draws at (0, 0), so the caller must position it; the `origin` argument is now explicitly ignored in the source. In `PngCanvas` the bar carries a real gradient fill but renders as a single colour. `topviews` draws its own colorbar from stacked rects plus an axis.
+  - The symbol legend title is placed inside the plot area (x = 8 for a 300-wide plot) while the entries are placed correctly beside it, so these examples draw the title separately.
+  - `LinearScale` accepts only a two-value domain (`numeric_interval_domain` rejects anything else). Colour ramps use evenly spaced stops.
+- **An issue on Avenger `main`** (fixed in the stack, and still fixed in #124): `make_numeric_axis_marks` always sets a `band` option, which `LinearScale` rejects.
 
 ## Data
 
