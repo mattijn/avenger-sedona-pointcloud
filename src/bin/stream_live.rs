@@ -15,6 +15,7 @@
 //!                                                 [--speed 4] [--window 20]
 //!                                                 [--size 880x700]
 //!                                                 [--snapshots <dir>]
+//!                                                 [--record <dir> --fps 12 --record-seconds 45]
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -760,6 +761,11 @@ fn main() {
     let speed: f64 = arg("--speed").and_then(|s| s.parse().ok()).unwrap_or(4.0);
     let window_s: f64 = arg("--window").and_then(|s| s.parse().ok()).unwrap_or(20.0);
     let snapshots = arg("--snapshots");
+    let record = arg("--record");
+    let fps: f64 = arg("--fps").and_then(|s| s.parse().ok()).unwrap_or(12.0);
+    let record_seconds: f64 = arg("--record-seconds")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(45.0);
     // Sized so the square map uses the width and the height about equally,
     // and the whole window fits a 1280 x 800 screen. The layout follows the
     // window from there.
@@ -795,6 +801,59 @@ fn main() {
         height,
         color,
     };
+
+    // Headless recorder: renders the same scene the window shows, at a fixed
+    // frame rate, while the feed runs at the chosen speed. The frames are
+    // meant to be handed to ffmpeg.
+    if let Some(dir) = record {
+        data_rt.block_on(async move {
+            std::fs::create_dir_all(&dir).unwrap();
+            let feed = tokio::spawn(consume(addr, live.clone(), control, None));
+            let mut state = state;
+            let mut canvas = PngCanvas::new(
+                CanvasDimensions {
+                    size: [width, height],
+                    scale: 2.0,
+                },
+                Default::default(),
+            )
+            .await
+            .unwrap();
+
+            let started = Instant::now();
+            let frame_time = std::time::Duration::from_secs_f64(1.0 / fps);
+            let mut frame = 0u32;
+            let mut late = 0u32;
+            while started.elapsed().as_secs_f64() < record_seconds {
+                let due = started + frame_time * frame;
+                let now = Instant::now();
+                if due > now {
+                    tokio::time::sleep(due - now).await;
+                } else if frame > 0 {
+                    late += 1;
+                }
+                let scene = Builder.build(&mut state).await.expect("build scene");
+                canvas.set_scene(&scene).unwrap();
+                canvas
+                    .render()
+                    .await
+                    .unwrap()
+                    .save(format!("{dir}/frame_{frame:05}.png"))
+                    .unwrap();
+                frame += 1;
+                if frame % 60 == 0 {
+                    let l = state.live.lock().unwrap();
+                    println!(
+                        "  {frame} frames · stream t {:.1} s · {} cells",
+                        l.stream_t, l.cells
+                    );
+                }
+            }
+            feed.abort();
+            println!("wrote {frame} frames to {dir} ({late} rendered late)");
+        });
+        return;
+    }
 
     if let Some(dir) = snapshots {
         data_rt.block_on(async move {

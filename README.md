@@ -159,6 +159,13 @@ takes whatever room the window leaves, so resizing works and
 
 ![the scan sweeping across the tile](docs/images/stream_live.png)
 
+A minute of the replay at half speed, recorded headlessly with
+`--record` (the first flight line finishing and the second starting):
+
+![the rolling window during the flight](docs/images/stream_live_loop.gif)
+
+The full 60 s recording is [`docs/videos/stream_live_0.5x.mp4`](docs/videos/stream_live_0.5x.mp4).
+
 *Left to right: the first line covering the north, the second line sweeping
 south, and the last line, where the rolling window holds only the final
 partial pass. The black area is not missing data — it is everything scanned
@@ -168,7 +175,9 @@ longer ago than the window.*
 cargo run --release --bin stream_server -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
 cargo run --release --bin stream_live   -- --speed 4 --window 12
 cargo run --release --bin stream_live   -- --speed 1 --size 1100x1200              # larger window
-cargo run --release --bin stream_live   -- --speed 8 --window 12 --snapshots out   # headless
+cargo run --release --bin stream_live   -- --speed 8 --window 12 --snapshots out   # headless stills
+cargo run --release --bin stream_live   -- --speed 0.5 --record out/frames --fps 12 --record-seconds 60
+ffmpeg -framerate 12 -i out/frames/frame_%05d.png -c:v libx264 -preset slow -crf 30 -pix_fmt yuv420p out.mp4
 ```
 
 `STREAM_DEBUG=1` prints one line per scene rebuild and a feed report every two
