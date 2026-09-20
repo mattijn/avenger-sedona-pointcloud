@@ -153,22 +153,9 @@ the point to resume from, so nothing is replayed twice:
 client connected: 105.6 s of flight from t = 56.6 s at 2x (24.5 s of wall clock)
 ```
 
-The window is sized to fit a small screen and the layout follows it when you
-resize; `--size 1200x1000` starts it larger.
-
-The viewer controls the feed from the keyboard: **space** pauses, **↑ ↓**
-(or **+ -**) halve or double the replay speed between 0.25× and 32×, **[ ]**
-change the length of the rolling window, and **r** restarts the flight. A
-change reconnects with a new Flight ticket carrying the new speed and the
-point to resume from, so nothing in the window is lost or replayed twice:
-
-```
-client connected: 105.6 s of flight from t = 0.0 s at 8x (13.2 s of wall clock)
-client connected: 105.6 s of flight from t = 56.6 s at 2x (24.5 s of wall clock)
-```
-
-The window opens at 660 × 760 and the square map takes whatever room the
-window leaves, so resizing works and `--size 1100x1200` opens it larger.
+The window opens at 660 × 760 so it fits a small screen, and the square map
+takes whatever room the window leaves, so resizing works and
+`--size 1100x1200` opens it larger.
 
 ![the scan sweeping across the tile](docs/images/stream_live.png)
 
@@ -184,7 +171,10 @@ cargo run --release --bin stream_live   -- --speed 1 --size 1100x1200           
 cargo run --release --bin stream_live   -- --speed 8 --window 12 --snapshots out   # headless
 ```
 
-`STREAM_DEBUG=1` prints one line per scene rebuild.
+`STREAM_DEBUG=1` prints one line per scene rebuild and a feed report every two
+seconds with how far the viewer has fallen behind the sensor's clock. The
+client keeps up with no measurable lag at every speed up to 32×, where the
+whole flight arrives in about three seconds.
 
 Rerun's [`re_datafusion`](https://docs.rs/re_datafusion/) would fit the same
 client unchanged — it pins arrow 58.3 and datafusion 54, exactly our versions —
