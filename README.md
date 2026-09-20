@@ -37,6 +37,13 @@ cargo run --release -p lidar-probes --bin probe_guides   # guide and scale pitfa
 cargo run --release -p lidar-probes --bin probe_render   # render, geometry index, gradients
 ```
 
+Avenger is developed as a stack of open PRs, so this is a cycle: Jon pushes,
+we repin to the new top of the stack, rerun everything, and record what
+changed. [CLAUDE.md](CLAUDE.md) is the runbook for that round — where the
+stack lives, how to repin, what to rerun, what to write down, and the
+gotchas this machine has already produced. Read it first if you are picking
+the repo up cold.
+
 ## Layout
 
 ```
