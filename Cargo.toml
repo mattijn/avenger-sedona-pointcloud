@@ -36,6 +36,8 @@ copc-rs = { git = "https://github.com/pka/copc-rs", rev = "7918657abc8ba767cdccf
 arrow-flight = "58.3"
 tonic = "0.14"
 futures = "0.3"
+# Only used by probe_render to inspect rendered pixels.
+image = "0.25"
 # Render invalidation: lets the feed thread ask the window to redraw.
 avenger-resource = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 serde_json = "1"

@@ -1,0 +1,183 @@
+# Findings for Avenger
+
+What this repo has run into while building real charts on the Avenger stack,
+kept as a ledger so it can be rechecked when the stack moves. Every entry says
+how it was measured, so a recheck is a command rather than an opinion.
+
+- **Checked against:** `jonmmease/avenger` `5f31c58` ([#124](https://github.com/jonmmease/avenger/pull/124), `codex/selection`), 20 Sep 2026
+- **Machine:** Apple Silicon, macOS, wgpu/Metal, Rust 1.89
+- **Recheck:** `cargo run --release --bin probe_guides` and
+  `cargo run --release --bin probe_render` print everything below except the
+  frame-rate numbers, which come from `stream_live` (see [Live charts](#live-charts)).
+
+| # | Area | Finding | Status |
+|---|---|---|---|
+| 1 | app / geometry | Rebuilding the geometry index dominates data-driven frames | open |
+| 2 | app / geometry | `interactive: false` does not avoid that cost | open |
+| 3 | winit | Invalidation-driven rebuilds always rebuild geometry | open, by design? |
+| 4 | wgpu | Gradient fills do not draw, or draw flat | open |
+| 5 | guides | Colorbar ignores its `origin` | open, documented in source |
+| 6 | guides | Symbol legend title is placed inside the plot | open |
+| 7 | scales | Linear domains must have exactly two stops | open |
+| 8 | guides | Axis always set a `band` option | fixed in the stack |
+
+## Live charts
+
+The case that produced findings 1–3: a LiDAR feed arriving over Arrow Flight,
+aggregated per batch and merged per frame, with the feed thread asking for a
+redraw through `RenderInvalidationHub`. Measured with `stream_live`:
+
+| Cells in the frame | Frames per second | Scene build (incl. DataFusion merge) |
+|---|---|---|
+| ~156k | 4.3 | 12 ms |
+| ~40k | 10.8 | 6.5 ms |
+
+Building the scene was never the problem: 12 ms of a 235 ms frame.
+
+### 1. The geometry index is the frame budget
+
+`probe_render` builds one symbol mark of *n* instances and times the pieces
+separately. Best of three, canvas 900 × 900, scale 1.0:
+
+| Symbols | `set_scene` | `render` | `SceneGraphRTree::from_scene_graph` |
+|---|---|---|---|
+| 10,000 | 0.8 ms | 4.7 ms | 8.7 ms |
+| 50,000 | 1.5 ms | 7.9 ms | 56.3 ms |
+| 150,000 | 3.6 ms | 13.9 ms | 181.3 ms |
+| 300,000 | 6.7 ms | 21.3 ms | 387.2 ms |
+
+Drawing 300k symbols costs 28 ms; indexing them costs 387 ms, about 1.2 µs per
+instance. That matches the live viewer exactly: ~156k cells, ~235 ms per frame.
+
+So the ceiling on an animated or streaming chart is currently the hit-test
+index, not the GPU.
+
+### 2. `interactive: false` does not avoid it
+
+The same scene with the enclosing group marked non-interactive:
+
+| Symbols | interactive | `interactive: false` |
+|---|---|---|
+| 150,000 | 181.3 ms | 177.0 ms |
+| 300,000 | 387.2 ms | 365.5 ms |
+
+The flag appears to affect what a query returns rather than what gets built, so
+a mark that can never be hit still pays for its geometry. (`avenger-geometry`'s
+own test is named `noninteractive_marks_are_excluded_from_scene_graph_rtree_but_not_bounds`,
+which fits what we measure.)
+
+### 3. Invalidation-driven rebuilds always rebuild geometry
+
+`avenger-winit-wgpu/src/render_invalidation.rs` calls
+`rebuild_scene_graph(true)` for an `EvaluationChanged` invalidation, so every
+push from a data thread pays finding 1, even when only colours or positions
+changed and nothing will be hit-tested before the next push.
+
+Questions rather than prescriptions, since the design intent may be deliberate:
+
+- Could the invalidation say whether geometry changed, the way `UpdateStatus`
+  does for event-driven updates?
+- Could `interactive: false` skip instance geometry construction, not only
+  index membership?
+- Could the index be built lazily on the first hit-test after a rebuild, so a
+  stream that never hit-tests never pays?
+
+**What we did instead:** roll the retained aggregate states up to a coarser
+grid whenever the window holds more than ~55k cells, which keeps the mark count
+bounded and took the viewer from 3 to 11 fps. That is a fine workaround for a
+map, but it trades detail for frames, and it is not available to a chart whose
+marks are the data.
+
+### 4. Gradient fills do not draw, or draw flat
+
+Two symptoms, both reproducible:
+
+- **Minimal scene, nothing drawn.** A `SceneRectMark` with
+  `fill: GradientIndex(0)`, the gradient declared on its parent group, renders
+  nothing at all; the identical rect with a solid fill renders. Tried with
+  `x1` of 0.25, 1, 180 and 360 (to cover both normalized and pixel
+  conventions), at canvas scale 1.0 and 2.0, and with the gradient on the
+  direct parent and on a grandparent group. `probe_render`, section 1.
+- **Colorbar, flat last stop.** `make_colorbar_marks` produces a proper ramp in
+  the scene — the scale's stops are correct, we print them — but the rendered
+  bar is a single colour, `#ECF8B1`, which is the last stop of the range.
+  `probe_guides`, then sample the bar's pixels.
+
+Both look like the gradient atlas or its texture coordinates in
+`avenger-wgpu/src/marks/gradient.rs`, but we have not chased it further. Our
+charts draw colorbars as stacked solid rects instead.
+
+## Guides and scales
+
+Re-verified on #124 with `probe_guides`; all three are still present, and all
+three still need a workaround in this repo's charts.
+
+### 5. Colorbar ignores its `origin`
+
+`make_colorbar_marks(scale, title, [320.0, 10.0], config)` returns a group at
+`[0, 0]`, so the caller must wrap it to place it. The parameter is marked dead
+in the source: `_origin: [f32; 2], // Unused - we always start at (0, 0) now`.
+If that is now the intended contract, dropping the parameter would say so more
+clearly than ignoring it.
+
+### 6. Symbol legend title sits inside the plot
+
+For a 300-wide plot, entries are placed correctly at x = 308 while the title is
+drawn at x = 8, on top of the chart. Our charts pass `title: None` and draw the
+title themselves.
+
+### 7. Linear domains must have exactly two stops
+
+`numeric_interval_domain` errors when `domain.len() != 2`, so a piecewise
+colour ramp with uneven stops (a common need for elevation or intensity) cannot
+be expressed; ranges have to be resampled to evenly spaced stops first.
+
+### 8. Fixed: axis `band` option
+
+`make_numeric_axis_marks` used to set a `band` option unconditionally, which
+`LinearScale` rejected. It now sets it only when the scale has one. Kept here
+so the ledger records the fix.
+
+## What worked well
+
+Worth saying, because it is the part that does not generate issues:
+
+- **Repinning #120 → #124 needed no code changes.** Nine crates, no API drift
+  that reached us.
+- **`RenderInvalidationHub` is a good fit for live data.** A data thread calls
+  `request_render` and the window rebuilds; invalidations coalesce sensibly
+  (1022 batches over 25 s produced 140 rebuilds).
+- **`avenger-datafusion-aggregate-state` generalises past brushing.** We use it
+  for a rolling window: fold each arriving batch once (2–7 ms for 16k points),
+  merge the retained states per frame (2–11 ms), and — the part that saved the
+  viewer — re-roll the *same* states up to a coarser grid when there are too
+  many cells. PR #123 motivates it with brush preaggregation; streaming is a
+  second use with no changes needed.
+- **Version alignment pays off.** Arrow 58.3 / DataFusion 54 matches SedonaDB
+  `main`, so LiDAR batches reach Avenger scales with no conversion, and it also
+  matches `re_datafusion` 0.38.1, which makes Rerun interop realistic (its
+  MSRV of 1.96 is the only blocker for us).
+
+## Chart language (`jonmmease/facet-fresh-start`)
+
+From an earlier round, **not re-verified on the current branch**:
+
+- A positional `GROUP BY 1, 2` inside `transform sql` fails to plan; the
+  positions become literals. Named columns in a subquery work.
+- The legend reuses the mark's symbol size, so small marks give an unreadable
+  legend.
+- No pan or zoom in the language yet.
+- `avenger-typst-label` declares optional `typst*` dependencies pointing at a
+  local `../../typst` checkout, so the branch does not build as cloned.
+- `avenger-chart`'s README describes transforms as stubs, which the code has
+  moved past.
+
+## Next round
+
+What we would like to measure when the stack next moves:
+
+1. Whether findings 1–3 change; the same two probes and the same viewer numbers.
+2. Whether a mark's data can be updated without a full scene rebuild — the
+   thing that would make streaming charts cheap.
+3. The chart-language items above, against whatever the language branch has
+   become.

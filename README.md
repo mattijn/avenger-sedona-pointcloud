@@ -130,12 +130,13 @@ N seconds of scanning:
 - **Redraw:** the feed thread calls `RenderInvalidationHub::request_render`, so
   the window rebuilds when data arrives instead of polling, at most 25 times a
   second.
-- **Adaptive grid:** frame cost scales with the number of marks, about 1.4 us
-  per cell, so a long window drawn at 2 m would crawl. When the window holds
-  more than about 55k cells the states are rolled up to a coarser grid (4 m,
-  8 m, …) and back again as it empties. States merge at any resolution, so this
-  costs nothing but the grid itself. With the default 20 s window the viewer
-  runs at about 11 frames per second instead of 3.
+- **Adaptive grid:** frame cost is dominated by rebuilding the scene's
+  geometry index, about 1.2 us per mark, so a long window drawn at 2 m would
+  crawl (see [FINDINGS.md](FINDINGS.md)). When the window holds more than about
+  55k cells the states are rolled up to a coarser grid (4 m, 8 m, …) and back
+  again as it empties. States merge at any resolution, so this costs nothing
+  but the grid itself. With the default 20 s window the viewer runs at about 11
+  frames per second instead of 3.
 
 In the viewer:
 
@@ -199,6 +200,7 @@ cargo run --release --bin topviews      -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_I
 cargo run --release --bin explorer      -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
 cargo run --release --bin bench_window  -- data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
 cargo run --release --bin probe_guides  # re-tests the guide pitfalls listed below
+cargo run --release --bin probe_render  # re-measures render, geometry-index and gradient behaviour
 ```
 
 To use the chart language, build the `avenger` CLI from Jon's experimental branch, then export the data and watch the chart:
@@ -228,6 +230,10 @@ Timings measured on an Apple Silicon Mac:
 
 ## Versions and pitfalls
 
+[FINDINGS.md](FINDINGS.md) is the ledger of what this work has run into on the
+Avenger side, with a measurement for each entry so it can be rechecked when the
+stack moves. The short version is below.
+
 This repo is a snapshot of work in progress on both sides.
 
 - **Arrow and DataFusion versions must match.** Avenger's scales take `ArrayRef`, so both crates need the *same* Arrow version.
@@ -237,7 +243,7 @@ This repo is a snapshot of work in progress on both sides.
 - **The Avenger stack is a set of open PRs.** This repo pins the top of that stack, `5f31c58` ([#124](https://github.com/jonmmease/avenger/pull/124), `codex/selection`). A pinned commit may disappear if the branch is rebased; if it does, update the `rev` values in `Cargo.toml`. Moving from #120 to #124 needed no code changes here.
 - **Minimum Rust version.** With Rust 1.89, generate the lockfile with `CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo update`, because the newest `ordered-float` needs Rust 1.90.
 - **Workarounds for issues found in the Avenger stack.** All of these were re-tested against #124 on 2026-09-20 with `cargo run --release --bin probe_guides`, and all are still needed:
-  - `make_colorbar_marks` draws at (0, 0), so the caller must position it; the `origin` argument is now explicitly ignored in the source. In `PngCanvas` the bar carries a real gradient fill but renders as a single colour. `topviews` draws its own colorbar from stacked rects plus an axis.
+  - `make_colorbar_marks` draws at (0, 0), so the caller must position it; the `origin` argument is now explicitly ignored in the source. Its gradient renders as a single flat colour (the last stop), and in a minimal scene a gradient-filled rect does not render at all. `topviews` draws its own colorbar from stacked rects plus an axis.
   - The symbol legend title is placed inside the plot area (x = 8 for a 300-wide plot) while the entries are placed correctly beside it, so these examples draw the title separately.
   - `LinearScale` accepts only a two-value domain (`numeric_interval_domain` rejects anything else). Colour ramps use evenly spaced stops.
 - **An issue on Avenger `main`** (fixed in the stack, and still fixed in #124): `make_numeric_axis_marks` always sets a `band` option, which `LinearScale` rejects.
