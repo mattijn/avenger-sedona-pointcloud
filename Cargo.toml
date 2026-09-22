@@ -5,6 +5,7 @@ members = [
     "experiments/01-charts",
     "experiments/02-chart-language",
     "experiments/03-streaming",
+    "experiments/05-coordinate-systems",
     "probes",
 ]
 
@@ -23,6 +24,7 @@ avenger-color = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c
 avenger-common = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-datafusion-aggregate-state = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-eventstream = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
+avenger-geo = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-geometry = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-guides = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-resource = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
@@ -30,6 +32,7 @@ avenger-scales = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582
 avenger-scenegraph = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-text = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
+avenger-widgets = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 avenger-winit-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "5f31c582c3e77dd3caa9c59707e142d24d53f178" }
 
 # SedonaDB's LAS/LAZ reader, a DataFusion file format. main is on DataFusion
@@ -41,7 +44,9 @@ arrow-flight = "58.3"
 async-trait = "0.1"
 datafusion = "54.1"
 futures = "0.3"
+geo-types = "0.7.16"
 image = "0.25"
+lyon_path = "1.0.7"
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tonic = "0.14"

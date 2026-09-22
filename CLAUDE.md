@@ -61,6 +61,8 @@ cargo run --release -p lidar-charts --bin bench_window  -- $T
 cargo run --release -p lidar-charts --bin explorer      -- $T --snapshots out
 cargo run --release -p lidar-probes --bin probe_guides
 cargo run --release -p lidar-probes --bin probe_render
+cargo run --release -p lidar-coords --bin coords -- $T experiments/05-coordinate-systems/images
+cargo run --release -p lidar-coords --bin coords_live -- $T --snapshots out/coords_live
 
 cargo run --release -p lidar-stream --bin stream_server -- $T          # terminal 1
 cargo run --release -p lidar-stream --bin stream_live -- --speed 8 --window 12 --snapshots out
