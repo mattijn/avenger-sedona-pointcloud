@@ -23,6 +23,7 @@ without conversion is that both sides agree on Arrow 58.3 and DataFusion 54.
 | 1 | [charts of a point cloud](experiments/01-charts/) | Can Avenger draw 17.3M points from a SQL query — statically, interactively, and how fast can a map window be fetched? |
 | 2 | [the same map in the chart language](experiments/02-chart-language/) | Can the experimental Avenger chart language express the same chart, in less code? |
 | 3 | [a live feed over Arrow Flight](experiments/03-streaming/) | Can Avenger keep up with a live sensor feed, using rolling aggregate states? |
+| 4 | [coupling patterns](experiments/04-coupling-patterns/) | Which patterns from coupler-based workflows would improve the chart language? (proposal, no crate yet) |
 
 ![the class map](experiments/01-charts/images/top_class.png)
 
@@ -51,6 +52,7 @@ common/                         the LAS session and the shared palette
 experiments/01-charts/          static charts, explorer, window benchmark
 experiments/02-chart-language/  the .avenger chart and its Parquet export
 experiments/03-streaming/       the Flight server and the live viewer
+experiments/04-coupling-patterns/  proposals for the chart language
 probes/                         re-measures everything in FINDINGS.md
 data/                           the tile (downloaded, not in git)
 scripts/download_tile.sh
