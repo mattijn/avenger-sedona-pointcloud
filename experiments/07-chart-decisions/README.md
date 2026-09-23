@@ -144,9 +144,51 @@ experiment 6's pipeline and chart package, at the same Avenger revision
 | E. While typing | The prefixes of each instruction, decided in turn with threshold and hysteresis | Flips per instruction; delay before the right chart appears |
 | F. Policies | The same cases under a narrow policy ("always bars") and a free one | Whether the narrow policy holds under every case, and what the free one chooses when a geometry column appears |
 
+Phase G, a training run as the data source, is described under
+[Advanced](#advanced-a-training-run-as-the-data-source).
+
 Deliverables, as in experiments 5 and 6: a README with measured results, a
 `decide` step in the pipeline, an autopilot switch in a live view, and a
 video of a chart following typed text and data changes.
+
+## Advanced: a training run as the data source
+
+Once phases A–F have measured the decisions on the LiDAR cases, the same
+machinery can follow a reinforcement-learning training run. There, the state
+changes at every step.
+
+- **The data change is the run.** Each training step updates the
+  observation: reward, loss, episode length, and statistics of the states the
+  agent visits. The decider is asked whether the chart should change. Most of
+  the time it should not, and the chart only takes the new data.
+- **Regime changes become visible edits.** When something shifts (reward
+  jumps, a new behaviour appears, the loss plateaus), the decider picks another
+  view: zoom in, highlight the new episodes, switch from a line to a
+  distribution. The chart shows not only the numbers moving, but what changed
+  in them.
+- **The command log is the video's timeline.** Every accepted command is a
+  chart state. Folding the log up to entry *n* and rendering it gives frame
+  *n*, headlessly, as for the experiment 5 and 6 videos. Because replay is
+  deterministic, the video can be rebuilt from the log alone.
+
+Considerations specific to this case:
+
+- **Rate.** A training loop produces far more states than a video has frames,
+  or a decider can follow. The chart works on aggregated windows, like the
+  rolling aggregate states of experiment 3's live feed. The decider is asked
+  per window, not per step, with the hysteresis of consideration 3 so that the
+  view does not flicker.
+- **Two meanings of "policy".** The agent being trained has a policy, and the
+  chart follows a policy too. In this case the terms need distinct names; for
+  example the *agent policy* and the *chart policy*.
+- **The run as a source.** The run can be a logged file (for example a
+  Parquet or Arrow log of steps) replayed through the pipeline, or a live
+  stream over Arrow Flight as in experiment 3. A logged run keeps the
+  experiment reproducible; a live one tests the rate.
+
+| Phase | Builds | Measures |
+|---|---|---|
+| G. A training run | A step log of a small RL training run as the source; windowed aggregation; the decider per window; the video from the fold of the command log | Decisions per window and how many are "no change"; whether the regime changes that are visible in the metrics are the ones the chart reacts to; frame rate of the headless render |
 
 ## Open questions
 
