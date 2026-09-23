@@ -130,7 +130,7 @@ cargo run --release -p lidar-pipeline --bin pipeline -- --render-avc out/cqrs_ch
 | [vega/compile.rs](src/vega/compile.rs) | AST → DataFusion `Expr`; analysis into row expression, chart query or interaction; SQL and Vega semantics |
 | [pipeline.rs](src/pipeline.rs) | `!` syntax, step kinds, the lazy plan, packages, save and replay |
 | [steps.rs](src/steps.rs) | The `core` steps: `read filter calc sql bin materialize count head schema explain query write save` |
-| [packages/](src/packages/) | `vega-format`, `vega-compat`, `sedona`, `terrain` (`hillshade`, `png`), `chart` (`chart set undo get domain history render`) |
+| [packages/](src/packages/) | `vega-format`, `vega-compat`, `sedona`, `terrain` (`hillshade`, `png`), `chart` (option 1: `chart set get`; option 2: `bars points title color rotate-labels zoom reset-zoom highlight describe`; both: `undo domain history render`) |
 | [corpus/](corpus/) | The 253 expressions from `avenger-vega-test-data`, and the differential cases |
 | [reference/](reference/) | The Node script that evaluates the cases with real Vega |
 | [results/](results/) | The full coverage and differential tables, the saved pipeline |
@@ -327,6 +327,9 @@ What did not work:
 
 ### E. CQRS on an Avenger chart
 
+Two command styles are implemented side by side. This section starts with
+**option 1**, generic setters; **option 2**, task commands, follows below.
+
 The `chart` package keeps a small declarative chart state. **Commands**
 (`chart`, `set`, `undo`) change it and are logged; the state is a fold of that
 log. **Queries** (`get`, `domain`, `history`, and the data queries `count`,
@@ -363,6 +366,80 @@ that way and took 4.3 s; materialising once in the sink and deriving the
 domains from that snapshot brought it to 1.2 s. A query side needs a cache,
 which is what the result cache in Jon's `avenger-datafusion-dataflow` is for.
 
+#### Option 2: task commands instead of setters
+
+Option 1's `set title …`, `set fill …` and `set x.labelAngle -45` are
+property setters on a JSON tree, and `get <key>` reads that tree back. The
+[CQRS pattern](https://learn.microsoft.com/azure/architecture/patterns/cqrs#solution)
+advises against that: commands should represent a specific task ("book a
+hotel room"), not a low-level data update ("set ReservationStatus to
+Reserved"). Queries return data shaped for their use (a DTO), not the
+internal state.
+
+Option 2 adds that style to the same `chart` package, next to option 1:
+
+| Option 1 (setter) | Option 2 (task) | What the task checks before it is accepted |
+|---|---|---|
+| `chart bar --x label --y points` | `bars points --by label` | both fields exist in the data |
+| `chart symbol --x cx --y cy` | `points --x cx --y cy` | both fields exist |
+| `set title "…"` | `title "…"` | not empty |
+| `set fill #c44e52` | `color #c44e52` | a `#rrggbb` colour |
+| `set x.labelAngle -45` | `rotate-labels x` | axis x or y, angle within ±90° |
+| `set x.domain …` + `set y.domain …` | `zoom 657500..658000 6867500..6868000` | ordered, and the range holds data |
+| – | `reset-zoom` | |
+| – | `highlight "datum.h > 60"` | the predicate compiles as Vega |
+| `get` / `get title` | `describe` | a read model: mark, fields, domains, rows, highlighted rows |
+
+Each task is validated against the data in its step; applying an accepted
+task is pure, so the log replays without re-validating, as events do in event
+sourcing. A rejected task is not logged:
+
+```
+points --x cx --y nope       → points: no field `nope` in the data (fields: cx, cy, h)
+zoom 700000..800000          → zoom: x range 700000..800000 holds no data (cx runs 657000..658000)
+zoom 658000..657500          → zoom: x range 658000..657500 is empty
+highlight "st_point(…) > 1"  → `st_point` is not a Vega function; call it from SQL
+color salmon                 → color: `salmon` is not a #rrggbb colour
+```
+
+```
+… ! points --x cx --y cy --size 5 ! title "Buildings, 5 m cells" ! color #c44e52
+  ! zoom 657500..658000 6867500..6868000 ! highlight "datum.h > 60" ! describe ! render tasks.png
+```
+
+![Option 2: zoom and highlight as tasks](images/tasks.png)
+
+`describe` answers with one document:
+`{"mark":"points","rows":11747,"title":"Buildings, 5 m cells","x":{"field":"cx","domain":[657500,658000],"zoomed":true},…,"highlight":{"where":"datum.h > 60","rows":2286}}`.
+Its row counts are for the whole data, not only the zoomed view. The history
+reads as intent: `zoom 657500..658000 6867500..6868000` is one entry, where
+option 1 needs two domain setters.
+
+| Check (`cqrs_check`) | Holds |
+|---|---|
+| Option 2 builds the same chart as option 1: same state, byte-identical PNG | yes |
+| 5 invalid tasks are rejected, and the state and log are unchanged | 5 of 5 |
+| An axis title: `set x.title …` works; option 2 has no verb for it yet | yes |
+
+That last row is the cost. A task vocabulary has to name every intent, and
+anything unnamed cannot be said. How big that would have to be, counted in
+the Vega-Lite v5 JSON schema:
+
+| In Vega-Lite v5 | Count |
+|---|---|
+| definitions | 456 |
+| property slots across all definitions | 2,423 (536 distinct names) |
+| `Axis` properties | 78 |
+| `Legend` properties | 66 |
+| `MarkDef` properties | 88 |
+| `Config` keys | 72 |
+| encoding channels | 38 |
+| mark types | 14 |
+| transforms | 20 |
+
+A hand-written verb for each of these is out of the question. The notes for
+Jon below give three ways to keep task commands without that vocabulary.
+
 ### F. Serialisation: two forms, both exact
 
 | Form | Size | Needs | Rendered in a fresh process |
@@ -395,7 +472,10 @@ data source.
    normal SQL. Vega expressions see only Vega's own function set, so they stay
    portable and the Vega layer can be deprecated later. Whole-dataset tools
    are steps, and each one is a materialisation point.
-6. **Registering independent Rust packages runs into linking before
+6. **CQRS commands can be generic setters or validated tasks.** Both build the
+   identical chart. Tasks catch mistakes and read as intent, but need a
+   vocabulary; see note 6 for Jon.
+7. **Registering independent Rust packages runs into linking before
    semantics.** Shared crates such as `geo` must agree across Avenger,
    geodatafusion and Sedona, and function names must be namespaced.
 
@@ -424,7 +504,33 @@ not requests.
 5. **The chart definition is already the VRT.** A 1,959-byte artifact rendered
    byte-identically in a fresh process. A pipeline JSON beside it gives the
    lazy recipe; the two together are GDAL's `.gdalg.json` and materialised VRT.
-6. **Small things we ran into:**
+6. **Commands: setters or tasks, and the vocabulary problem.** Option 1
+   (`set <path> <value>`) can say anything and validate nothing. Option 2
+   (`zoom`, `highlight`, `rotate-labels`, …) validates intent and gives a
+   readable history, but needs a verb for every intent. Vega-Lite v5 alone has
+   2,423 property slots (78 on `Axis`, 66 on `Legend`, 88 on `MarkDef`), and
+   `axis-title` was already missing in this small example. Three ways to keep
+   the benefits without writing that vocabulary by hand:
+   - **Noun commands derived from a schema.** `axis x --title … --labelAngle -45`,
+     `legend color --orient bottom`, `mark --opacity 0.5`. Each command is one
+     object of the chart model (Axis, Legend, MarkDef, Scale), and its options
+     are generated from the schema: Vega-Lite's, or the
+     `avenger-chart-definition` model. Every option is then available and
+     validated by type, and the log still names the concept being changed,
+     not an arbitrary path.
+   - **Verbs only where there is intent beyond a property.** `zoom`,
+     `highlight`, `select`, `facet`, `project` (a coordinate system, experiment
+     5). These are the things Vega-Lite expresses with params and selections,
+     and the 26 interaction expressions in the test corpus (phase A) fall here.
+     They are few, and they carry the validation that matters: a zoom must
+     hold data, and a predicate must compile.
+   - **A spec patch as the escape hatch.** A command that carries a Vega-Lite
+     fragment, validated against the schema. That is option 1 again, but typed.
+   A hybrid seems likely: generated noun commands for styling, a small set of
+   verbs for interaction and composition, and patches for what neither
+   covers. Where to draw the line between noun and verb is the question for
+   the discussion.
+7. **Small things we ran into:**
    - the x-axis title is not moved when labels are rotated (`label_angle`), so
      it overlaps them (see the chart above);
    - `Frame::to_png` returns a future that is not `Send`

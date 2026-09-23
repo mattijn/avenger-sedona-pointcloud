@@ -58,9 +58,69 @@ pub fn apply(state: &mut Value, call: &Call) -> Result<()> {
                 Err(_) => json!(value),
             };
         }
+        // ---- option 2: task commands. Validated in `Task::run`; applying
+        // an accepted task is pure, so the log replays without the data.
+        "bars" | "points" => {
+            let (x, y) = if call.name == "bars" {
+                (call.flag("by").unwrap_or_default(), call.arg(0)?)
+            } else {
+                (
+                    call.flag("x").unwrap_or_default(),
+                    call.flag("y").unwrap_or_default(),
+                )
+            };
+            state["mark"] = json!(if call.name == "bars" { "bar" } else { "symbol" });
+            state["x"]["field"] = json!(x);
+            state["y"]["field"] = json!(y);
+            if let Some(v) = call.flag("size") {
+                state["size"] = json!(v);
+            }
+        }
+        "title" => state["title"] = json!(call.arg(0)?),
+        "color" => state["fill"] = json!(call.arg(0)?),
+        "rotate-labels" => {
+            let angle: f64 = call
+                .flag("angle")
+                .and_then(|a| a.parse().ok())
+                .unwrap_or(-45.0);
+            state[call.arg(0)?]["labelAngle"] = json!(angle);
+        }
+        "zoom" => {
+            for (i, channel) in ["x", "y"].iter().enumerate() {
+                if let Some(r) = call.args.get(i) {
+                    let (lo, hi) = range(r)?;
+                    state[*channel]["domain"] = json!(format!("{lo},{hi}"));
+                }
+            }
+        }
+        "reset-zoom" => {
+            for channel in ["x", "y"] {
+                if let Some(o) = state[channel].as_object_mut() {
+                    o.remove("domain");
+                }
+            }
+        }
+        "highlight" => {
+            state["highlight"] = json!({
+                "where": call.arg(0)?,
+                "color": call.flag("color").unwrap_or("#f28e2b"),
+            });
+        }
         other => return Err(err(format!("`{other}` is not a chart command"))),
     }
     Ok(())
+}
+
+/// `a..b` as two numbers.
+fn range(s: &str) -> Result<(f64, f64)> {
+    let parts: Vec<&str> = s.split("..").collect();
+    match parts.as_slice() {
+        [a, b] => match (a.trim().parse::<f64>(), b.trim().parse::<f64>()) {
+            (Ok(a), Ok(b)) => Ok((a, b)),
+            _ => Err(err(format!("`{s}` is not a range like 657500..658000"))),
+        },
+        _ => Err(err(format!("`{s}` is not a range like 657500..658000"))),
+    }
 }
 
 /// Rebuild the state from a command log.
@@ -161,7 +221,18 @@ async fn domain(p: &Pipeline, channel: &str) -> Result<(f64, f64)> {
     }
     let field = p.chart[channel]["field"]
         .as_str()
-        .ok_or_else(|| err(format!("no {channel} field: use `chart` first")))?;
+        .ok_or_else(|| err(format!("no {channel} field: use `chart` first")))?
+        .to_string();
+    let (lo, hi) = data_extent(p, &field).await?;
+    Ok(if p.chart["mark"] == "bar" && channel == "y" {
+        (lo.min(0.0), hi)
+    } else {
+        (lo, hi)
+    })
+}
+
+/// The data's extent for a field, whatever the chart state says.
+async fn data_extent(p: &Pipeline, field: &str) -> Result<(f64, f64)> {
     let batches = p
         .dataframe()?
         .aggregate(
@@ -175,12 +246,149 @@ async fn domain(p: &Pipeline, channel: &str) -> Result<(f64, f64)> {
             .unwrap();
         arrow::array::AsArray::as_primitive::<arrow::datatypes::Float64Type>(&a).value(0)
     };
-    let (lo, hi) = (get(0), get(1));
-    Ok(if p.chart["mark"] == "bar" && channel == "y" {
-        (lo.min(0.0), hi)
-    } else {
-        (lo, hi)
-    })
+    Ok((get(0), get(1)))
+}
+
+fn field_names(p: &Pipeline) -> Result<Vec<String>> {
+    Ok(p.plan()?
+        .schema()
+        .fields()
+        .iter()
+        .map(|f| f.name().to_string())
+        .collect())
+}
+
+/// Option 2: a task command. Each task checks its intent against the data
+/// before it is accepted; a rejected task is not logged.
+struct Task;
+
+#[async_trait]
+impl Step for Task {
+    fn kind(&self) -> Kind {
+        Kind::Command
+    }
+    fn help(&self) -> &'static str {
+        "bars <y> --by <x> · points --x f --y f · title <text> · color <css> · rotate-labels x|y [--angle] · zoom <x0..x1> [<y0..y1>] · reset-zoom · highlight <vega predicate>"
+    }
+    async fn run(&self, p: &mut Pipeline, c: &Call) -> Result<Option<String>> {
+        let fields = field_names(p)?;
+        let known = |f: &str| {
+            if fields.iter().any(|x| x == f) {
+                Ok(())
+            } else {
+                Err(err(format!(
+                    "{}: no field `{f}` in the data (fields: {})",
+                    c.name,
+                    fields.join(", ")
+                )))
+            }
+        };
+        match c.name.as_str() {
+            "bars" => {
+                known(c.arg(0)?)?;
+                known(
+                    c.flag("by")
+                        .ok_or_else(|| err("bars needs --by <category field>"))?,
+                )?;
+            }
+            "points" => {
+                known(c.flag("x").ok_or_else(|| err("points needs --x"))?)?;
+                known(c.flag("y").ok_or_else(|| err("points needs --y"))?)?;
+            }
+            "title" if c.arg(0)?.trim().is_empty() => return Err(err("title: empty")),
+            "color" => {
+                let v = c.arg(0)?;
+                let hex = v.len() == 7
+                    && v.starts_with('#')
+                    && v[1..].chars().all(|h| h.is_ascii_hexdigit());
+                if !hex {
+                    return Err(err(format!("color: `{v}` is not a #rrggbb colour")));
+                }
+            }
+            "rotate-labels" => {
+                if !matches!(c.arg(0)?, "x" | "y") {
+                    return Err(err("rotate-labels: axis is x or y"));
+                }
+                let a: f64 = c
+                    .flag("angle")
+                    .and_then(|a| a.parse().ok())
+                    .unwrap_or(-45.0);
+                if !(-90.0..=90.0).contains(&a) {
+                    return Err(err("rotate-labels: angle between -90 and 90"));
+                }
+            }
+            "zoom" => {
+                // A zoom must be ordered and must show some data.
+                for (i, channel) in ["x", "y"].iter().enumerate() {
+                    let Some(r) = c.args.get(i) else { continue };
+                    let (lo, hi) = range(r)?;
+                    if lo >= hi {
+                        return Err(err(format!("zoom: {channel} range {r} is empty")));
+                    }
+                    let field = p.chart[*channel]["field"]
+                        .as_str()
+                        .ok_or_else(|| err("zoom: draw something first (bars or points)"))?
+                        .to_string();
+                    let (dlo, dhi) = data_extent(p, &field).await?;
+                    if hi < dlo || lo > dhi {
+                        return Err(err(format!(
+                            "zoom: {channel} range {r} holds no data ({field} runs {dlo}..{dhi})"
+                        )));
+                    }
+                }
+            }
+            "highlight" => {
+                // The predicate must compile against the data (Vega stays Vega).
+                p.vega(c.arg(0)?)?;
+            }
+            _ => {}
+        }
+        apply(&mut p.chart, c)?;
+        Ok(None)
+    }
+}
+
+/// Option 2's read model: what the chart shows, answered as one document
+/// (a DTO), rather than the internal state by key.
+struct Describe;
+
+#[async_trait]
+impl Step for Describe {
+    fn kind(&self) -> Kind {
+        Kind::Query
+    }
+    fn help(&self) -> &'static str {
+        "describe: what the chart shows (mark, fields, domains, rows, highlight)"
+    }
+    async fn run(&self, p: &mut Pipeline, _c: &Call) -> Result<Option<String>> {
+        let s = &p.chart;
+        let mark = s["mark"]
+            .as_str()
+            .ok_or_else(|| err("describe: no chart yet"))?;
+        let mut out = json!({
+            "mark": if mark == "bar" { "bars" } else { "points" },
+            "title": s["title"],
+            "rows": p.dataframe()?.count().await?,
+        });
+        for channel in ["x", "y"] {
+            let field = s[channel]["field"].as_str().unwrap_or_default();
+            let numeric = !(mark == "bar" && channel == "x");
+            out[channel] = json!({"field": field});
+            if numeric {
+                let (lo, hi) = domain(p, channel).await?;
+                out[channel]["domain"] = json!([lo, hi]);
+                out[channel]["zoomed"] = json!(s[channel]["domain"].is_string());
+            }
+            if let Some(a) = s[channel]["labelAngle"].as_f64() {
+                out[channel]["label_angle"] = json!(a);
+            }
+        }
+        if let Some(pred) = s["highlight"]["where"].as_str() {
+            let n = p.dataframe()?.filter(p.vega(pred)?)?.count().await?;
+            out["highlight"] = json!({"where": pred, "rows": n});
+        }
+        Ok(Some(out.to_string()))
+    }
 }
 
 struct DomainQuery;
@@ -336,6 +544,26 @@ pub async fn build_definition(p: &Pipeline) -> Result<(ChartDefinition, usize)> 
         )
         .map_err(e)?;
     let table = flow.table_output("rows", &source).map_err(e)?;
+    // `highlight`: the rows matching a Vega predicate, drawn again on top.
+    let highlight = match s["highlight"]["where"].as_str() {
+        Some(pred) => {
+            let hl = p.dataframe()?.filter(p.vega(pred)?)?;
+            let hl_schema = Arc::new(hl.schema().as_arrow().clone());
+            let hl_batches = hl.collect().await?;
+            let node = flow
+                .table_snapshot(
+                    "highlight",
+                    TableSnapshot::from_batches(hl_schema, hl_batches).map_err(e)?,
+                )
+                .map_err(e)?;
+            let color = s["highlight"]["color"]
+                .as_str()
+                .unwrap_or("#f28e2b")
+                .to_string();
+            Some((flow.table_output("highlighted", &node).map_err(e)?, color))
+        }
+        None => None,
+    };
     let mut chart = ChartDefinition::builder(flow.finish().map_err(e)?);
     if let Some(t) = s["title"].as_str() {
         chart.title(t);
@@ -381,6 +609,18 @@ pub async fn build_definition(p: &Pipeline) -> Result<(ChartDefinition, usize)> 
                         .y2(y.constant(0.0))
                         .fill(fill.clone()),
                 )?;
+                if let Some((hl, color)) = &highlight {
+                    plot.rect(
+                        "highlight",
+                        hl,
+                        RectEncoding::new()
+                            .x(x.field(&xf))
+                            .width(x.bandwidth())
+                            .y(y.field(&yf))
+                            .y2(y.constant(0.0))
+                            .fill(color.clone()),
+                    )?;
+                }
                 plot.axis(axis(Axis::bottom(&x), "x", &x_title))?;
                 plot.axis(axis(Axis::left(&y), "y", &y_title))?;
             } else {
@@ -401,6 +641,17 @@ pub async fn build_definition(p: &Pipeline) -> Result<(ChartDefinition, usize)> 
                         .size(size)
                         .fill(fill.clone()),
                 )?;
+                if let Some((hl, color)) = &highlight {
+                    plot.symbol(
+                        "highlight",
+                        hl,
+                        SymbolEncoding::new()
+                            .x(x.field(&xf))
+                            .y(y.field(&yf))
+                            .size(size)
+                            .fill(color.clone()),
+                    )?;
+                }
                 plot.axis(axis(Axis::bottom(&x), "x", &x_title))?;
                 plot.axis(axis(Axis::left(&y), "y", &y_title))?;
             }
@@ -422,6 +673,16 @@ pub fn package() -> Package {
             ("history", Arc::new(History)),
             ("domain", Arc::new(DomainQuery)),
             ("render", Arc::new(Render)),
+            // option 2: task commands and a read model
+            ("bars", Arc::new(Task)),
+            ("points", Arc::new(Task)),
+            ("title", Arc::new(Task)),
+            ("color", Arc::new(Task)),
+            ("rotate-labels", Arc::new(Task)),
+            ("zoom", Arc::new(Task)),
+            ("reset-zoom", Arc::new(Task)),
+            ("highlight", Arc::new(Task)),
+            ("describe", Arc::new(Describe)),
         ],
     }
 }

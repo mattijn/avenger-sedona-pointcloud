@@ -152,6 +152,69 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         String::new(),
     );
 
+    // Option 2: task commands instead of setters, for the same chart.
+    let setters = [
+        "chart bar --x label --y points",
+        "set title \"Heights\"",
+        "set x.labelAngle -45",
+        "set fill #c44e52",
+    ];
+    let tasks = [
+        "bars points --by label",
+        "title \"Heights\"",
+        "rotate-labels x",
+        "color #c44e52",
+    ];
+    let mut o1 = pipeline().await?;
+    o1.run(&data).await?;
+    for c in setters {
+        o1.run(c).await?;
+    }
+    let mut o2 = pipeline().await?;
+    o2.run(&data).await?;
+    for c in tasks {
+        o2.run(c).await?;
+    }
+    let (d1, _) = chart::build_definition(&o1).await?;
+    let (d2, _) = chart::build_definition(&o2).await?;
+    let same_png = chart::render_blocking(d1)? == chart::render_blocking(d2)?;
+    check(
+        "Option 2 (tasks) builds the same chart as option 1 (setters)",
+        o1.chart == o2.chart && same_png,
+        "same state and byte-identical PNG".into(),
+    );
+
+    // A rejected task leaves no trace: not logged, state unchanged.
+    let before = (o2.chart.clone(), o2.log.clone());
+    let bad = [
+        "bars nope --by label",
+        "zoom 700000..800000",
+        "rotate-labels z",
+        "color salmon",
+        "highlight \"st_point(datum.height) > 1\"",
+    ];
+    let rejected = {
+        let mut n = 0;
+        for c in bad {
+            n += o2.run(c).await.is_err() as usize;
+        }
+        n
+    };
+    check(
+        "Invalid tasks are rejected and leave no trace",
+        rejected == bad.len() && (o2.chart.clone(), o2.log.clone()) == before,
+        format!("{rejected} of {} rejected", bad.len()),
+    );
+
+    // The vocabulary gap: option 1 can set any key, option 2 only has verbs.
+    let axis_title_setter = o1.run("set x.title \"height above 42 m\"").await.is_ok();
+    let axis_title_task = o2.run("axis-title x \"height above 42 m\"").await.is_ok();
+    check(
+        "An axis title: option 1 can say it, option 2 has no verb for it yet",
+        axis_title_setter && !axis_title_task,
+        "`set x.title …` works; `axis-title` is not a step".into(),
+    );
+
     // The chart definition artifact: native plans and a data snapshot.
     std::fs::write(format!("{out}/cqrs_chart.avc"), &avc)?;
     let c = chart::render_avc(avc.clone())?;
