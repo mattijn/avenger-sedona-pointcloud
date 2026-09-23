@@ -3,23 +3,24 @@
 Status: plan. No crate yet.
 
 Can a chart be driven by a decider that picks from typed options, rather than
-by a person writing commands? Two starting points from the discussion:
+by a person writing commands? Two starting points:
 
-- **Jon:** [Jev](https://innfactory.ai/en/blog/jev-system-one-model-classifier-not-llm/)
-  is a classifier that turns natural language into enums: fast, cheap, and
-  typed. What would a chart library designed to be driven by it look like?
-  Someone at Hex wired up a demo where chart edits happen while you type.
-- **Mattijn:** the chart keeps its current and previous state. It evaluates
-  whether it is on track for a *policy* by looking at the difference between
-  states, and a decider picks the visual that suits that change. The policy can
-  be narrow ("whatever changes, always a bar chart") or free (connected to a
-  database, a new geometry column appears, so the decider chooses a map).
+- **A chart library designed to be driven by a typed classifier.**
+  Classifiers such as [Jev](https://innfactory.ai/en/blog/jev-system-one-model-classifier-not-llm/)
+  turn natural language into enums, quickly and cheaply. That makes chart
+  edits possible while someone types.
+- **A chart that follows a policy.** The chart keeps its current and previous
+  state. It evaluates whether it is on track for a *policy* by looking at the
+  difference between states, and a decider picks the visual that suits that
+  change. The policy can be narrow ("whatever changes, always a bar chart") or
+  free (connected to a database, a new geometry column appears, so the decider
+  chooses a map).
 
 ## Why now
 
 Experiment 6 ended on the question this depends on. Option 2 there replaced
-setters with task commands (`bars`, `zoom`, `highlight`, …), and the notes for
-Jon ask how large that vocabulary has to be: Vega-Lite v5 has 2,423 property
+setters with task commands (`bars`, `zoom`, `highlight`, …), and its notes ask
+how large that vocabulary has to be: Vega-Lite v5 has 2,423 property
 slots. A decider that picks from options needs exactly that vocabulary as its
 option list. This experiment puts the vocabulary under real use instead of
 arguing about it.
@@ -124,7 +125,7 @@ is accepted. A decider never writes the chart state directly.
    means a map, a time column a line, low cardinality means bars) is the floor.
    If Jev does not beat it on the cases that need language, the measurement
    says so.
-7. **Not tested yet.** Neither we nor the write-ups above have used Jev for
+7. **Not tested yet.** Neither this repository nor the write-ups above have used Jev for
    chart decisions. The latency and cost figures are TypeSafe's and
    reviewers'; they get re-measured here.
 
@@ -147,7 +148,7 @@ Deliverables, as in experiments 5 and 6: a README with measured results, a
 `decide` step in the pipeline, an autopilot switch in a live view, and a
 video of a chart following typed text and data changes.
 
-## Open questions for the discussion
+## Open questions
 
 - Should a chart library expose its vocabulary *as* the option list, so any
   decider (Jev, an LLM, a UI) drives it through the same typed surface?
