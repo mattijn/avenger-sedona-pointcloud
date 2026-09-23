@@ -1,0 +1,29 @@
+{
+  "note": "Rows chosen for edge cases. Special numbers are written as {\"$\": \"NaN\"} etc. t is epoch milliseconds.",
+  "rows": [
+    {"a": 0,                  "b": 0,    "s": "",    "f": true,  "t": 0},
+    {"a": 1,                  "b": 2,    "s": "abc", "f": false, "t": 86400000},
+    {"a": 2.5,                "b": 0,    "s": "10",  "f": true,  "t": 1000000000000},
+    {"a": -3,                 "b": 4,    "s": null,  "f": null,  "t": null},
+    {"a": {"$": "NaN"},       "b": 1,    "s": "A b", "f": false, "t": 1700000000000},
+    {"a": null,               "b": 3,    "s": " 5 ", "f": true,  "t": 951782400000},
+    {"a": {"$": "Infinity"},  "b": null, "s": "x",   "f": false, "t": 1234567890123},
+    {"a": -2.5,               "b": -2,   "s": "0",   "f": true,  "t": 1609459200000}
+  ],
+  "expressions": [
+    "datum.a + datum.b", "datum.a / datum.b", "datum.a % datum.b", "-datum.a", "datum.a * 2 + 1",
+    "datum.b / 0", "datum.t / 1000",
+    "datum.s + datum.a", "'n=' + datum.a", "datum.a + datum.s", "'v' + datum.f",
+    "datum.a == datum.b", "datum.s == datum.a", "datum.s === datum.a", "datum.a < datum.b", "datum.s < 'b'",
+    "datum.a ? 'yes' : 'no'", "datum.s ? 'yes' : 'no'", "datum.f ? 1 : 0", "!datum.a",
+    "datum.a && datum.b", "datum.a || datum.b", "datum.s || 'empty'",
+    "isValid(datum.a)", "isValid(datum.s)", "isFinite(datum.a)", "isNaN(datum.a)",
+    "toNumber(datum.s)", "+datum.s", "toString(datum.a)", "toBoolean(datum.s)",
+    "round(datum.a)", "floor(datum.a)", "log(datum.a)", "sqrt(datum.a)", "pow(datum.a, 2)",
+    "max(datum.a, datum.b)", "min(datum.a, datum.b)", "clamp(datum.a, 0, 2)", "abs(datum.a)",
+    "upper(datum.s)", "length(datum.s)", "substring(datum.s, 0, 2)", "indexof(datum.s, 'b')",
+    "replace(datum.s, 'b', 'B')", "if(datum.a > 1, 'big', 'small')", "inrange(datum.a, [0, 2])",
+    "format(datum.a, ',.2f')", "format(datum.a, '.1%')", "timeFormat(datum.t, '%Y-%m-%d')",
+    "year(datum.t)", "month(datum.t)"
+  ]
+}

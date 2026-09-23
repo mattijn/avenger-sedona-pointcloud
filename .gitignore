@@ -4,3 +4,4 @@
 .DS_Store
 /data/*.stats
 /experiments/02-chart-language/charts/*.parquet
+/experiments/06-pipelines/reference/node_modules

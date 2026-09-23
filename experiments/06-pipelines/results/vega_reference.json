@@ -1,0 +1,715 @@
+{
+ "vega": "6.4.0",
+ "results": {
+  "datum.a + datum.b": {
+   "values": [
+    0,
+    3,
+    2.5,
+    1,
+    {
+     "$": "NaN"
+    },
+    3,
+    {
+     "$": "Infinity"
+    },
+    -4.5
+   ]
+  },
+  "datum.a / datum.b": {
+   "values": [
+    {
+     "$": "NaN"
+    },
+    0.5,
+    {
+     "$": "Infinity"
+    },
+    -0.75,
+    {
+     "$": "NaN"
+    },
+    0,
+    {
+     "$": "Infinity"
+    },
+    1.25
+   ]
+  },
+  "datum.a % datum.b": {
+   "values": [
+    {
+     "$": "NaN"
+    },
+    1,
+    {
+     "$": "NaN"
+    },
+    -3,
+    {
+     "$": "NaN"
+    },
+    0,
+    {
+     "$": "NaN"
+    },
+    -0.5
+   ]
+  },
+  "-datum.a": {
+   "values": [
+    0,
+    -1,
+    -2.5,
+    3,
+    {
+     "$": "NaN"
+    },
+    0,
+    {
+     "$": "-Infinity"
+    },
+    2.5
+   ]
+  },
+  "datum.a * 2 + 1": {
+   "values": [
+    1,
+    3,
+    6,
+    -5,
+    {
+     "$": "NaN"
+    },
+    1,
+    {
+     "$": "Infinity"
+    },
+    -4
+   ]
+  },
+  "datum.b / 0": {
+   "values": [
+    {
+     "$": "NaN"
+    },
+    {
+     "$": "Infinity"
+    },
+    {
+     "$": "NaN"
+    },
+    {
+     "$": "Infinity"
+    },
+    {
+     "$": "Infinity"
+    },
+    {
+     "$": "Infinity"
+    },
+    {
+     "$": "NaN"
+    },
+    {
+     "$": "-Infinity"
+    }
+   ]
+  },
+  "datum.t / 1000": {
+   "values": [
+    0,
+    86400,
+    1000000000,
+    0,
+    1700000000,
+    951782400,
+    1234567890.123,
+    1609459200
+   ]
+  },
+  "datum.s + datum.a": {
+   "values": [
+    "0",
+    "abc1",
+    "102.5",
+    -3,
+    "A bNaN",
+    " 5 null",
+    "xInfinity",
+    "0-2.5"
+   ]
+  },
+  "'n=' + datum.a": {
+   "values": [
+    "n=0",
+    "n=1",
+    "n=2.5",
+    "n=-3",
+    "n=NaN",
+    "n=null",
+    "n=Infinity",
+    "n=-2.5"
+   ]
+  },
+  "datum.a + datum.s": {
+   "values": [
+    "0",
+    "1abc",
+    "2.510",
+    -3,
+    "NaNA b",
+    "null 5 ",
+    "Infinityx",
+    "-2.50"
+   ]
+  },
+  "'v' + datum.f": {
+   "values": [
+    "vtrue",
+    "vfalse",
+    "vtrue",
+    "vnull",
+    "vfalse",
+    "vtrue",
+    "vfalse",
+    "vtrue"
+   ]
+  },
+  "datum.a == datum.b": {
+   "values": [
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "datum.s == datum.a": {
+   "values": [
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "datum.s === datum.a": {
+   "values": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "datum.a < datum.b": {
+   "values": [
+    false,
+    true,
+    false,
+    true,
+    false,
+    true,
+    false,
+    true
+   ]
+  },
+  "datum.s < 'b'": {
+   "values": [
+    true,
+    true,
+    true,
+    false,
+    true,
+    true,
+    false,
+    true
+   ]
+  },
+  "datum.a ? 'yes' : 'no'": {
+   "values": [
+    "no",
+    "yes",
+    "yes",
+    "yes",
+    "no",
+    "no",
+    "yes",
+    "yes"
+   ]
+  },
+  "datum.s ? 'yes' : 'no'": {
+   "values": [
+    "no",
+    "yes",
+    "yes",
+    "no",
+    "yes",
+    "yes",
+    "yes",
+    "yes"
+   ]
+  },
+  "datum.f ? 1 : 0": {
+   "values": [
+    1,
+    0,
+    1,
+    0,
+    0,
+    1,
+    0,
+    1
+   ]
+  },
+  "!datum.a": {
+   "values": [
+    true,
+    false,
+    false,
+    false,
+    true,
+    true,
+    false,
+    false
+   ]
+  },
+  "datum.a && datum.b": {
+   "values": [
+    0,
+    2,
+    0,
+    4,
+    {
+     "$": "NaN"
+    },
+    null,
+    null,
+    -2
+   ]
+  },
+  "datum.a || datum.b": {
+   "values": [
+    0,
+    1,
+    2.5,
+    -3,
+    1,
+    3,
+    {
+     "$": "Infinity"
+    },
+    -2.5
+   ]
+  },
+  "datum.s || 'empty'": {
+   "values": [
+    "empty",
+    "abc",
+    "10",
+    "empty",
+    "A b",
+    " 5 ",
+    "x",
+    "0"
+   ]
+  },
+  "isValid(datum.a)": {
+   "values": [
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    true,
+    true
+   ]
+  },
+  "isValid(datum.s)": {
+   "values": [
+    true,
+    true,
+    true,
+    false,
+    true,
+    true,
+    true,
+    true
+   ]
+  },
+  "isFinite(datum.a)": {
+   "values": [
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    true
+   ]
+  },
+  "isNaN(datum.a)": {
+   "values": [
+    false,
+    false,
+    false,
+    false,
+    true,
+    false,
+    false,
+    false
+   ]
+  },
+  "toNumber(datum.s)": {
+   "values": [
+    null,
+    {
+     "$": "NaN"
+    },
+    10,
+    null,
+    {
+     "$": "NaN"
+    },
+    5,
+    {
+     "$": "NaN"
+    },
+    0
+   ]
+  },
+  "+datum.s": {
+   "values": [
+    0,
+    {
+     "$": "NaN"
+    },
+    10,
+    0,
+    {
+     "$": "NaN"
+    },
+    5,
+    {
+     "$": "NaN"
+    },
+    0
+   ]
+  },
+  "toString(datum.a)": {
+   "values": [
+    "0",
+    "1",
+    "2.5",
+    "-3",
+    "NaN",
+    null,
+    "Infinity",
+    "-2.5"
+   ]
+  },
+  "toBoolean(datum.s)": {
+   "values": [
+    null,
+    true,
+    true,
+    null,
+    true,
+    true,
+    true,
+    false
+   ]
+  },
+  "round(datum.a)": {
+   "values": [
+    0,
+    1,
+    3,
+    -3,
+    {
+     "$": "NaN"
+    },
+    0,
+    {
+     "$": "Infinity"
+    },
+    -2
+   ]
+  },
+  "floor(datum.a)": {
+   "values": [
+    0,
+    1,
+    2,
+    -3,
+    {
+     "$": "NaN"
+    },
+    0,
+    {
+     "$": "Infinity"
+    },
+    -3
+   ]
+  },
+  "log(datum.a)": {
+   "values": [
+    {
+     "$": "-Infinity"
+    },
+    0,
+    0.9162907318741551,
+    {
+     "$": "NaN"
+    },
+    {
+     "$": "NaN"
+    },
+    {
+     "$": "-Infinity"
+    },
+    {
+     "$": "Infinity"
+    },
+    {
+     "$": "NaN"
+    }
+   ]
+  },
+  "sqrt(datum.a)": {
+   "values": [
+    0,
+    1,
+    1.5811388300841898,
+    {
+     "$": "NaN"
+    },
+    {
+     "$": "NaN"
+    },
+    0,
+    {
+     "$": "Infinity"
+    },
+    {
+     "$": "NaN"
+    }
+   ]
+  },
+  "pow(datum.a, 2)": {
+   "values": [
+    0,
+    1,
+    6.25,
+    9,
+    {
+     "$": "NaN"
+    },
+    0,
+    {
+     "$": "Infinity"
+    },
+    6.25
+   ]
+  },
+  "max(datum.a, datum.b)": {
+   "values": [
+    0,
+    2,
+    2.5,
+    4,
+    {
+     "$": "NaN"
+    },
+    3,
+    {
+     "$": "Infinity"
+    },
+    -2
+   ]
+  },
+  "min(datum.a, datum.b)": {
+   "values": [
+    0,
+    1,
+    0,
+    -3,
+    {
+     "$": "NaN"
+    },
+    0,
+    0,
+    -2.5
+   ]
+  },
+  "clamp(datum.a, 0, 2)": {
+   "values": [
+    0,
+    1,
+    2,
+    0,
+    {
+     "$": "NaN"
+    },
+    0,
+    2,
+    0
+   ]
+  },
+  "abs(datum.a)": {
+   "values": [
+    0,
+    1,
+    2.5,
+    3,
+    {
+     "$": "NaN"
+    },
+    0,
+    {
+     "$": "Infinity"
+    },
+    2.5
+   ]
+  },
+  "upper(datum.s)": {
+   "values": [
+    "",
+    "ABC",
+    "10",
+    "NULL",
+    "A B",
+    " 5 ",
+    "X",
+    "0"
+   ]
+  },
+  "length(datum.s)": {
+   "error": "Cannot read properties of null (reading 'map')"
+  },
+  "substring(datum.s, 0, 2)": {
+   "values": [
+    "",
+    "ab",
+    "10",
+    "nu",
+    "A ",
+    " 5",
+    "x",
+    "0"
+   ]
+  },
+  "indexof(datum.s, 'b')": {
+   "error": "Cannot read properties of null (reading 'map')"
+  },
+  "replace(datum.s, 'b', 'B')": {
+   "values": [
+    "",
+    "aBc",
+    "10",
+    "null",
+    "A B",
+    " 5 ",
+    "x",
+    "0"
+   ]
+  },
+  "if(datum.a > 1, 'big', 'small')": {
+   "values": [
+    "small",
+    "small",
+    "big",
+    "small",
+    "small",
+    "small",
+    "big",
+    "small"
+   ]
+  },
+  "inrange(datum.a, [0, 2])": {
+   "values": [
+    true,
+    true,
+    false,
+    false,
+    false,
+    true,
+    false,
+    false
+   ]
+  },
+  "format(datum.a, ',.2f')": {
+   "values": [
+    "0.00",
+    "1.00",
+    "2.50",
+    "−3.00",
+    "NaN",
+    "null",
+    "Infinity",
+    "−2.50"
+   ]
+  },
+  "format(datum.a, '.1%')": {
+   "values": [
+    "0.0%",
+    "100.0%",
+    "250.0%",
+    "−300.0%",
+    "NaN%",
+    "null",
+    "Infinity%",
+    "−250.0%"
+   ]
+  },
+  "timeFormat(datum.t, '%Y-%m-%d')": {
+   "values": [
+    "1970-01-01",
+    "1970-01-02",
+    "2001-09-09",
+    "null",
+    "2023-11-14",
+    "2000-02-29",
+    "2009-02-13",
+    "2021-01-01"
+   ]
+  },
+  "year(datum.t)": {
+   "values": [
+    1970,
+    1970,
+    2001,
+    1970,
+    2023,
+    2000,
+    2009,
+    2021
+   ]
+  },
+  "month(datum.t)": {
+   "values": [
+    0,
+    0,
+    8,
+    0,
+    10,
+    1,
+    1,
+    0
+   ]
+  }
+ }
+}

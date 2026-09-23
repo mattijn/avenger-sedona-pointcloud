@@ -1,0 +1,29 @@
+[package]
+name = "lidar-pipeline"
+description = "Experiment 6: Vega expressions, SQL and chained pipelines"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+lidar-common.workspace = true
+
+arrow.workspace = true
+image.workspace = true
+async-trait.workspace = true
+datafusion.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+# This experiment uses crates from the top of the stack (#129,
+# codex/dataflow-incremental), newer than the workspace pin. It pins them here
+# so experiments 1–5 keep their revision until the next repin round.
+avenger-transform = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
+avenger-format-number = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
+avenger-format-datetime = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
+chrono = "0.4.41"
+chrono-tz = "0.10.3"
+sedona-functions = { git = "https://github.com/apache/sedona-db", rev = "2f3e37815bd998a9b9e2accc51ce261ea69a5f0f" }
+sedona-expr = { git = "https://github.com/apache/sedona-db", rev = "2f3e37815bd998a9b9e2accc51ce261ea69a5f0f" }
+avenger-chart = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257", default-features = false, features = ["png"] }
+avenger-chart-definition = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }

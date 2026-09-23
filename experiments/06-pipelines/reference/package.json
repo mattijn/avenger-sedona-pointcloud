@@ -1,0 +1,7 @@
+{
+  "name": "vega-reference",
+  "private": true,
+  "type": "module",
+  "description": "Evaluates Vega expressions with real Vega, as the reference for experiment 6 phase B",
+  "dependencies": { "vega": "^6" }
+}

@@ -1,0 +1,1520 @@
+[
+ {
+  "expr": "isValid(datum[\"data\"]) && isFinite(+datum[\"data\"])",
+  "spec": "arc/arcs_with_variable_outer_radius.vg.json",
+  "path": "data/1/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"data: \" + (format(datum[\"data\"], \"\"))",
+  "spec": "arc/arcs_with_variable_outer_radius.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "width",
+  "spec": "arc/arcs_with_variable_outer_radius.vg.json",
+  "path": "marks/0/encode/update/x/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "height",
+  "spec": "arc/arcs_with_variable_outer_radius.vg.json",
+  "path": "marks/0/encode/update/y/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "min(width,height)/2",
+  "spec": "arc/arcs_with_variable_outer_radius.vg.json",
+  "path": "scales/1/range/1/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"date (year-month): \" + (timeFormat(datum[\"yearmonth_date\"], '%Y')) + \"; Sum of count: \" + (format(datum[\"sum_count_end\"]-datum[\"sum_count_start\"], \".0%\")) + \"; series: \" + (isValid(datum[\"series\"]) ? datum[\"series\"] : \"\"+datum[\"series\"])",
+  "spec": "area/100_percent_stacked_area.vg.json",
+  "path": "marks/0/marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"yearmonth_date\"]) && isFinite(+datum[\"yearmonth_date\"]) && isValid(datum[\"sum_count\"]) && isFinite(+datum[\"sum_count\"])",
+  "spec": "area/100_percent_stacked_area.vg.json",
+  "path": "marks/0/marks/0/encode/update/defined/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"date (year-month): \" + (timeFormat(datum[\"yearmonth_date\"], '%Y')) + \"; count: \" + (format(datum[\"sum_count\"], \"\"))",
+  "spec": "area/simple_unemployment.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"date (year-month): \" + (timeFormat(datum[\"yearmonth_date\"], '%Y')) + \"; Sum of count: \" + (format(datum[\"sum_count\"], \"\")) + \"; series: \" + (isValid(datum[\"series\"]) ? datum[\"series\"] : \"\"+datum[\"series\"])",
+  "spec": "area/stacked_area.vg.json",
+  "path": "marks/0/marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "toNumber(datum[\"u\"])",
+  "spec": "area/with_undefined.vg.json",
+  "path": "data/1/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "bandspace(domain('x').length, 0.1, 0.05) * x_step",
+  "spec": "clip/bar_rounded.vg.json",
+  "path": "signals/1/update",
+  "key": "update"
+ },
+ {
+  "expr": "max(0.25, bandwidth('x'))",
+  "spec": "clip/bar_rounded.vg.json",
+  "path": "marks/0/encode/update/width/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "min(scale('y',datum[\"min___count_start\"]),scale('y',datum[\"max___count_start\"]),scale('y',datum[\"min___count_end\"]),scale('y',datum[\"max___count_end\"]))",
+  "spec": "clip/bar_rounded.vg.json",
+  "path": "marks/0/encode/update/y/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "max(scale('y',datum[\"min___count_start\"]),scale('y',datum[\"max___count_start\"]),scale('y',datum[\"min___count_end\"]),scale('y',datum[\"max___count_end\"]))",
+  "spec": "clip/bar_rounded.vg.json",
+  "path": "marks/0/encode/update/y2/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"date (month): \" + (timeFormat(datum[\"month_date\"], timeUnitSpecifier([\"month\"], {\"year-month\":\"%b %Y \",\"year-month-date\":\"%b %d, %Y \"}))) + \"; Count of Records: \" + (format(datum[\"__count\"], \"\")) + \"; weather: \" + (isValid(datum[\"weather\"]) ? datum[\"weather\"] : \"\"+datum[\"weather\"])",
+  "spec": "clip/bar_rounded.vg.json",
+  "path": "marks/0/marks/0/marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "x_step",
+  "spec": "clip/bar_rounded.vg.json",
+  "path": "scales/0/range/step/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "ceil(height/40)",
+  "spec": "clip/bar_rounded.vg.json",
+  "path": "axes/0/tickCount/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "timeUnitSpecifier([\"month\"], {\"year-month\":\"%b %Y \",\"year-month-date\":\"%b %d, %Y \"})",
+  "spec": "clip/bar_rounded.vg.json",
+  "path": "axes/1/format/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "datetime(2001, 1, 1, 0, 0, 0, 0) - datetime(2001, 0, 1, 0, 0, 0, 0)",
+  "spec": "clip/bar_rounded.vg.json",
+  "path": "axes/1/tickMinStep/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "datum.symbol==='GOOG'",
+  "spec": "gradients/area_line_with_gradient.vg.json",
+  "path": "data/0/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"date: \" + (timeFormat(datum[\"date\"], '%b %d, %Y')) + \"; price: \" + (format(datum[\"price\"], \"\"))",
+  "spec": "gradients/area_line_with_gradient.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"date\"]) && isFinite(+datum[\"date\"]) && isValid(datum[\"price\"]) && isFinite(+datum[\"price\"])",
+  "spec": "gradients/area_line_with_gradient.vg.json",
+  "path": "marks/0/encode/update/defined/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "ceil(width/40)",
+  "spec": "gradients/area_line_with_gradient.vg.json",
+  "path": "axes/0/tickCount/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"b\"]) && isFinite(+datum[\"b\"])",
+  "spec": "gradients/default_gradient_bars_rounded_stroke.vg.json",
+  "path": "data/1/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"a: \" + (isValid(datum[\"a\"]) ? datum[\"a\"] : \"\"+datum[\"a\"]) + \"; b: \" + (format(datum[\"b\"], \"\"))",
+  "spec": "gradients/default_gradient_bars_rounded_stroke.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"max_temp_max\"]) && isFinite(+datum[\"max_temp_max\"])",
+  "spec": "gradients/heatmap_with_colorbar.vg.json",
+  "path": "data/0/transform/3/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "bandspace(domain('x').length, 0, 0) * x_step",
+  "spec": "gradients/heatmap_with_colorbar.vg.json",
+  "path": "signals/1/update",
+  "key": "update"
+ },
+ {
+  "expr": "bandspace(domain('y').length, 0, 0) * y_step",
+  "spec": "gradients/heatmap_with_colorbar.vg.json",
+  "path": "signals/3/update",
+  "key": "update"
+ },
+ {
+  "expr": "\"Day: \" + (timeFormat(datum[\"date_date\"], '%e')) + \"; Month: \" + (timeFormat(datum[\"month_date\"], timeUnitSpecifier([\"month\"], {\"year-month\":\"%b %Y \",\"year-month-date\":\"%b %d, %Y \"}))) + \"; Max of temp_max: \" + (format(datum[\"max_temp_max\"], \"\"))",
+  "spec": "gradients/heatmap_with_colorbar.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "max(0.25, bandwidth('y'))",
+  "spec": "gradients/heatmap_with_colorbar.vg.json",
+  "path": "marks/0/encode/update/height/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "y_step",
+  "spec": "gradients/heatmap_with_colorbar.vg.json",
+  "path": "scales/1/range/step/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "clamp(height, 64, 200)",
+  "spec": "gradients/heatmap_with_colorbar.vg.json",
+  "path": "legends/0/gradientLength/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "datum['IMDB Rating'] != null",
+  "spec": "gradients/residuals_colorscale.vg.json",
+  "path": "data/0/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "time(datetime(year(datum[\"Release Date\"]), 0, 1, 0, 0, 0, 0)) <= time(datetime(2019, 0, 1, 0, 0, 0, 0))",
+  "spec": "gradients/residuals_colorscale.vg.json",
+  "path": "data/0/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "datum['IMDB Rating'] - datum.AverageRating",
+  "spec": "gradients/residuals_colorscale.vg.json",
+  "path": "data/0/transform/3/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "(isDate(datum[\"Release Date\"]) || (isValid(datum[\"Release Date\"]) && isFinite(+datum[\"Release Date\"]))) && isValid(datum[\"RatingDelta\"]) && isFinite(+datum[\"RatingDelta\"])",
+  "spec": "gradients/residuals_colorscale.vg.json",
+  "path": "data/0/transform/4/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"Release Date: \" + (timeFormat(datum[\"Release Date\"], '%b %d, %Y')) + \"; Rating Delta: \" + (format(datum[\"RatingDelta\"], \"\"))",
+  "spec": "gradients/residuals_colorscale.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "bin_maxbins_10_IMDB_Rating_extent",
+  "spec": "gradients/symbol_circles_gradient_stroke.vg.json",
+  "path": "data/0/transform/0/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "bin_maxbins_10_IMDB_Rating_bins",
+  "spec": "gradients/symbol_circles_gradient_stroke.vg.json",
+  "path": "data/0/transform/1/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "bin_maxbins_10_Rotten_Tomatoes_Rating_extent",
+  "spec": "gradients/symbol_circles_gradient_stroke.vg.json",
+  "path": "data/0/transform/2/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "bin_maxbins_10_Rotten_Tomatoes_Rating_bins",
+  "spec": "gradients/symbol_circles_gradient_stroke.vg.json",
+  "path": "data/0/transform/3/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"bin_maxbins_10_IMDB Rating\"]) && isFinite(+datum[\"bin_maxbins_10_IMDB Rating\"]) && isValid(datum[\"bin_maxbins_10_Rotten Tomatoes Rating\"]) && isFinite(+datum[\"bin_maxbins_10_Rotten Tomatoes Rating\"])",
+  "spec": "gradients/symbol_circles_gradient_stroke.vg.json",
+  "path": "data/0/transform/5/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "scale(\"x\", 0.5 * datum[\"bin_maxbins_10_IMDB Rating\"] + 0.5 * datum[\"bin_maxbins_10_IMDB Rating_end\"])",
+  "spec": "gradients/symbol_circles_gradient_stroke.vg.json",
+  "path": "marks/0/encode/update/x/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "scale(\"y\", 0.5 * datum[\"bin_maxbins_10_Rotten Tomatoes Rating\"] + 0.5 * datum[\"bin_maxbins_10_Rotten Tomatoes Rating_end\"])",
+  "spec": "gradients/symbol_circles_gradient_stroke.vg.json",
+  "path": "marks/0/encode/update/y/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "[bin_maxbins_10_IMDB_Rating_bins.start, bin_maxbins_10_IMDB_Rating_bins.stop]",
+  "spec": "gradients/symbol_circles_gradient_stroke.vg.json",
+  "path": "scales/0/domain/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "[bin_maxbins_10_Rotten_Tomatoes_Rating_bins.start, bin_maxbins_10_Rotten_Tomatoes_Rating_bins.stop]",
+  "spec": "gradients/symbol_circles_gradient_stroke.vg.json",
+  "path": "scales/1/domain/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "pow(0.95 * min(width / ((bin_maxbins_10_IMDB_Rating_bins.stop - bin_maxbins_10_IMDB_Rating_bins.start) / bin_maxbins_10_IMDB_Rating_bins.step), height / ((bin_maxbins_10_Rotten_Tomatoes_Rating_bins.stop - bin_maxbins_10_Rotten_Tomatoes_Rating_bins.start) / bin_maxbins_10_Rotten_Tomatoes_Rating_bins.step)), 2)",
+  "spec": "gradients/symbol_circles_gradient_stroke.vg.json",
+  "path": "scales/2/range/1/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "datum.symbol === 'GOOG'",
+  "spec": "gradients/trail_gradient.vg.json",
+  "path": "data/0/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"date: \" + (timeFormat(datum[\"date\"], '%b %d, %Y')) + \"; price: \" + (format(datum[\"price\"], \"\")) + \"; symbol: \" + (isValid(datum[\"symbol\"]) ? datum[\"symbol\"] : \"\"+datum[\"symbol\"])",
+  "spec": "gradients/trail_gradient.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"x\"]) && isFinite(+datum[\"x\"]) && isValid(datum[\"y\"]) && isFinite(+datum[\"y\"])",
+  "spec": "image/large_images.vg.json",
+  "path": "data/1/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"x: \" + (format(datum[\"x\"], \"\")) + \"; y: \" + (format(datum[\"y\"], \"\")) + \"; img: \" + (isValid(datum[\"img\"]) ? datum[\"img\"] : \"\"+datum[\"img\"])",
+  "spec": "image/large_images.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"img\"]) ? datum[\"img\"] : \"\"+datum[\"img\"]",
+  "spec": "image/large_images.vg.json",
+  "path": "marks/0/encode/update/url/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"miles\"]) && isFinite(+datum[\"miles\"]) && isValid(datum[\"gas\"]) && isFinite(+datum[\"gas\"])",
+  "spec": "line/connected_scatter.vg.json",
+  "path": "data/1/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"miles: \" + (format(datum[\"miles\"], \"\")) + \"; gas: \" + (format(datum[\"gas\"], \"\")) + \"; year: \" + (isValid(datum[\"year\"]) ? datum[\"year\"] : \"\"+datum[\"year\"])",
+  "spec": "line/connected_scatter.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "(isDate(datum[\"year_date\"]) || (isValid(datum[\"year_date\"]) && isFinite(+datum[\"year_date\"]))) && isValid(datum[\"mean_price\"]) && isFinite(+datum[\"mean_price\"])",
+  "spec": "line/lines_with_open_symbols.vg.json",
+  "path": "data/1/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"date (year): \" + (timeFormat(datum[\"year_date\"], timeUnitSpecifier([\"year\"], {\"year-month\":\"%b %Y \",\"year-month-date\":\"%b %d, %Y \"}))) + \"; Mean of price: \" + (format(datum[\"mean_price\"], \"\")) + \"; symbol: \" + (isValid(datum[\"symbol\"]) ? datum[\"symbol\"] : \"\"+datum[\"symbol\"])",
+  "spec": "line/lines_with_open_symbols.vg.json",
+  "path": "marks/0/marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"year_date\"]) && isFinite(+datum[\"year_date\"]) && isValid(datum[\"mean_price\"]) && isFinite(+datum[\"mean_price\"])",
+  "spec": "line/lines_with_open_symbols.vg.json",
+  "path": "marks/0/marks/0/encode/update/defined/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "bandspace(domain('x').length, 1, 0.5) * x_step",
+  "spec": "line/simple_dashed.vg.json",
+  "path": "signals/1/update",
+  "key": "update"
+ },
+ {
+  "expr": "\"a: \" + (isValid(datum[\"a\"]) ? datum[\"a\"] : \"\"+datum[\"a\"]) + \"; b: \" + (format(datum[\"b\"], \"\")) + \"; predicted: \" + (isValid(datum[\"predicted\"]) ? datum[\"predicted\"] : \"\"+datum[\"predicted\"])",
+  "spec": "line/simple_dashed.vg.json",
+  "path": "marks/0/marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "toDate(datum[\"date\"])",
+  "spec": "line/stocks-legend.vg.json",
+  "path": "data/0/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"date: \" + (timeFormat(datum[\"date\"], '%b %d, %Y')) + \"; price: \" + (format(datum[\"AAPL\"], \"\"))",
+  "spec": "line/stocks-legend.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"date\"]) && isFinite(+datum[\"date\"]) && isValid(datum[\"AAPL\"]) && isFinite(+datum[\"AAPL\"])",
+  "spec": "line/stocks-legend.vg.json",
+  "path": "marks/0/encode/update/defined/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"date: \" + (timeFormat(datum[\"date\"], '%b %d, %Y')) + \"; price: \" + (format(datum[\"AMZN\"], \"\"))",
+  "spec": "line/stocks-legend.vg.json",
+  "path": "marks/2/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"date\"]) && isFinite(+datum[\"date\"]) && isValid(datum[\"AMZN\"]) && isFinite(+datum[\"AMZN\"])",
+  "spec": "line/stocks-legend.vg.json",
+  "path": "marks/2/encode/update/defined/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"date: \" + (timeFormat(datum[\"date\"], '%b %d, %Y')) + \"; price: \" + (format(datum[\"GOOG\"], \"\"))",
+  "spec": "line/stocks-legend.vg.json",
+  "path": "marks/4/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"date\"]) && isFinite(+datum[\"date\"]) && isValid(datum[\"GOOG\"]) && isFinite(+datum[\"GOOG\"])",
+  "spec": "line/stocks-legend.vg.json",
+  "path": "marks/4/encode/update/defined/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"date: \" + (timeFormat(datum[\"date\"], '%b %d, %Y')) + \"; price: \" + (format(datum[\"IBM\"], \"\"))",
+  "spec": "line/stocks-legend.vg.json",
+  "path": "marks/6/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"date\"]) && isFinite(+datum[\"date\"]) && isValid(datum[\"IBM\"]) && isFinite(+datum[\"IBM\"])",
+  "spec": "line/stocks-legend.vg.json",
+  "path": "marks/6/encode/update/defined/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"date: \" + (timeFormat(datum[\"date\"], '%b %d, %Y')) + \"; price: \" + (format(datum[\"MSFT\"], \"\"))",
+  "spec": "line/stocks-legend.vg.json",
+  "path": "marks/8/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"date\"]) && isFinite(+datum[\"date\"]) && isValid(datum[\"MSFT\"]) && isFinite(+datum[\"MSFT\"])",
+  "spec": "line/stocks-legend.vg.json",
+  "path": "marks/8/encode/update/defined/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "(isValid(datum[\"IMDB Rating\"]) && isFinite(+datum[\"IMDB Rating\"])) && (isValid(datum[\"Rotten Tomatoes Rating\"]) && isFinite(+datum[\"Rotten Tomatoes Rating\"]))",
+  "spec": "rect/heatmap.vg.json",
+  "path": "data/0/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "bin_maxbins_60_IMDB_Rating_extent",
+  "spec": "rect/heatmap.vg.json",
+  "path": "data/0/transform/1/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "bin_maxbins_60_IMDB_Rating_bins",
+  "spec": "rect/heatmap.vg.json",
+  "path": "data/0/transform/2/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "bin_maxbins_40_Rotten_Tomatoes_Rating_extent",
+  "spec": "rect/heatmap.vg.json",
+  "path": "data/0/transform/3/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "bin_maxbins_40_Rotten_Tomatoes_Rating_bins",
+  "spec": "rect/heatmap.vg.json",
+  "path": "data/0/transform/4/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"bin_maxbins_60_IMDB Rating\"]) && isFinite(+datum[\"bin_maxbins_60_IMDB Rating\"]) && isValid(datum[\"bin_maxbins_40_Rotten Tomatoes Rating\"]) && isFinite(+datum[\"bin_maxbins_40_Rotten Tomatoes Rating\"])",
+  "spec": "rect/heatmap.vg.json",
+  "path": "data/0/transform/6/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"IMDB Rating (binned): \" + (!isValid(datum[\"bin_maxbins_60_IMDB Rating\"]) || !isFinite(+datum[\"bin_maxbins_60_IMDB Rating\"]) ? \"null\" : format(datum[\"bin_maxbins_60_IMDB Rating\"], \"\") + \" – \" + format(datum[\"bin_maxbins_60_IMDB Rating_end\"], \"\")) + \"; Rotten Tomatoes Rating (binned): \" + (!isValid(datum[\"bin_maxbins_40_Rotten Tomatoes Rating\"]) || !isFinite(+datum[\"bin_maxbins_40_Rotten Tomatoes Rating\"]) ? \"null\" : format(datum[\"bin_maxbins_40_Rotten Tomatoes Rating\"], \"\") + \" – \" + format(datum[\"bin_maxbins_40_Rotten Tomatoes Rating_end\"], \"\")) + \"; Count of Records: \" + (format(datum[\"__count\"], \"\"))",
+  "spec": "rect/heatmap.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "0.5 + (abs(scale(\"x\", datum[\"bin_maxbins_60_IMDB Rating_end\"]) - scale(\"x\", datum[\"bin_maxbins_60_IMDB Rating\"])) < 0.25 ? -0.5 * (0.25 - (abs(scale(\"x\", datum[\"bin_maxbins_60_IMDB Rating_end\"]) - scale(\"x\", datum[\"bin_maxbins_60_IMDB Rating\"])))) : 0)",
+  "spec": "rect/heatmap.vg.json",
+  "path": "marks/0/encode/update/x2/offset/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "0.5 + (abs(scale(\"x\", datum[\"bin_maxbins_60_IMDB Rating_end\"]) - scale(\"x\", datum[\"bin_maxbins_60_IMDB Rating\"])) < 0.25 ? 0.5 * (0.25 - (abs(scale(\"x\", datum[\"bin_maxbins_60_IMDB Rating_end\"]) - scale(\"x\", datum[\"bin_maxbins_60_IMDB Rating\"])))) : 0)",
+  "spec": "rect/heatmap.vg.json",
+  "path": "marks/0/encode/update/x/offset/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "0.5 + (abs(scale(\"y\", datum[\"bin_maxbins_40_Rotten Tomatoes Rating_end\"]) - scale(\"y\", datum[\"bin_maxbins_40_Rotten Tomatoes Rating\"])) < 0.25 ? 0.5 * (0.25 - (abs(scale(\"y\", datum[\"bin_maxbins_40_Rotten Tomatoes Rating_end\"]) - scale(\"y\", datum[\"bin_maxbins_40_Rotten Tomatoes Rating\"])))) : 0)",
+  "spec": "rect/heatmap.vg.json",
+  "path": "marks/0/encode/update/y2/offset/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "0.5 + (abs(scale(\"y\", datum[\"bin_maxbins_40_Rotten Tomatoes Rating_end\"]) - scale(\"y\", datum[\"bin_maxbins_40_Rotten Tomatoes Rating\"])) < 0.25 ? -0.5 * (0.25 - (abs(scale(\"y\", datum[\"bin_maxbins_40_Rotten Tomatoes Rating_end\"]) - scale(\"y\", datum[\"bin_maxbins_40_Rotten Tomatoes Rating\"])))) : 0)",
+  "spec": "rect/heatmap.vg.json",
+  "path": "marks/0/encode/update/y/offset/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "[bin_maxbins_60_IMDB_Rating_bins.start, bin_maxbins_60_IMDB_Rating_bins.stop]",
+  "spec": "rect/heatmap.vg.json",
+  "path": "scales/0/domain/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "[bin_maxbins_40_Rotten_Tomatoes_Rating_bins.start, bin_maxbins_40_Rotten_Tomatoes_Rating_bins.stop]",
+  "spec": "rect/heatmap.vg.json",
+  "path": "scales/1/domain/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "30",
+  "spec": "rule/wide_rule_axes.vg.json",
+  "path": "marks/0/encode/update/x/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "60",
+  "spec": "rule/wide_rule_axes.vg.json",
+  "path": "marks/0/encode/update/x2/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "15",
+  "spec": "rule/wide_rule_axes.vg.json",
+  "path": "marks/0/encode/update/y/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "80",
+  "spec": "rule/wide_rule_axes.vg.json",
+  "path": "marks/0/encode/update/y2/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "indexof (datum.name,' ') > 0  ? substring(datum.name,0,indexof(datum.name, ' ')) : datum.name",
+  "spec": "shape/london_tubes.vg.json",
+  "path": "data/2/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "layer_1_geojson_0",
+  "spec": "shape/london_tubes.vg.json",
+  "path": "data/2/transform/1/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "[width, height]",
+  "spec": "shape/london_tubes.vg.json",
+  "path": "projections/0/size/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "[data('source_0'), layer_1_geojson_0, data('source_2')]",
+  "spec": "shape/london_tubes.vg.json",
+  "path": "projections/0/fit/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"id: \" + (isValid(datum[\"id\"]) ? datum[\"id\"] : \"\"+datum[\"id\"])",
+  "spec": "shape/london_tubes.vg.json",
+  "path": "marks/1/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"rate\"]) && isFinite(+datum[\"rate\"])",
+  "spec": "shape/us-counties.vg.json",
+  "path": "data/1/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "data('source_0')",
+  "spec": "shape/us-counties.vg.json",
+  "path": "projections/0/fit/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"rate: \" + (format(datum[\"rate\"], \"\"))",
+  "spec": "shape/us-counties.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "layer_1_layer_0_geojson_0",
+  "spec": "shape/us-map.vg.json",
+  "path": "data/1/transform/0/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "[data('source_0'), layer_1_layer_0_geojson_0]",
+  "spec": "shape/us-map.vg.json",
+  "path": "projections/0/fit/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"lon: \" + (format(datum[\"lon\"], \"\")) + \"; lat: \" + (format(datum[\"lat\"], \"\"))",
+  "spec": "shape/us-map.vg.json",
+  "path": "marks/1/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"Flipper Length (mm)\"]) && isFinite(+datum[\"Flipper Length (mm)\"]) && isValid(datum[\"Body Mass (g)\"]) && isFinite(+datum[\"Body Mass (g)\"])",
+  "spec": "symbol/mixed_symbols.vg.json",
+  "path": "data/0/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "isValid(datum[\"Horsepower\"]) && isFinite(+datum[\"Horsepower\"]) && isValid(datum[\"Miles_per_Gallon\"]) && isFinite(+datum[\"Miles_per_Gallon\"]) && isValid(datum[\"Acceleration\"]) && isFinite(+datum[\"Acceleration\"])",
+  "spec": "symbol/scatter_transparent_stroke.vg.json",
+  "path": "data/0/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"Horsepower: \" + (format(datum[\"Horsepower\"], \"\")) + \"; Miles_per_Gallon: \" + (format(datum[\"Miles_per_Gallon\"], \"\")) + \"; Acceleration: \" + (format(datum[\"Acceleration\"], \"\"))",
+  "spec": "symbol/scatter_transparent_stroke.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "geojson_0",
+  "spec": "symbol/wind_vector.vg.json",
+  "path": "data/0/transform/0/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"dir\"]) && isFinite(+datum[\"dir\"]) && isValid(datum[\"speed\"]) && isFinite(+datum[\"speed\"])",
+  "spec": "symbol/wind_vector.vg.json",
+  "path": "data/0/transform/2/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "format(datum[\"data\"], \"\")",
+  "spec": "text/arc_radial.vg.json",
+  "path": "marks/1/encode/update/text/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "scale(\"theta\", 0.5 * datum[\"data_start\"] + 0.5 * datum[\"data_end\"])",
+  "spec": "text/arc_radial.vg.json",
+  "path": "marks/1/encode/update/theta/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "datum.Time/datum.TotalTime * 100",
+  "spec": "text/bar_axis_labels.vg.json",
+  "path": "data/1/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "isValid(datum[\"PercentOfTotal\"]) && isFinite(+datum[\"PercentOfTotal\"])",
+  "spec": "text/bar_axis_labels.vg.json",
+  "path": "data/1/transform/3/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "bandspace(domain('y').length, 0.1, 0.05) * y_step",
+  "spec": "text/bar_axis_labels.vg.json",
+  "path": "signals/1/update",
+  "key": "update"
+ },
+ {
+  "expr": "\"% of total Time: \" + (format(datum[\"PercentOfTotal\"], \"\")) + \"; Activity: \" + (isValid(datum[\"Activity\"]) ? datum[\"Activity\"] : \"\"+datum[\"Activity\"])",
+  "spec": "text/bar_axis_labels.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "{'cattle': '🐄', 'pigs': '🐖', 'sheep': '🐏'}[datum.animal]",
+  "spec": "text/emoji.vg.json",
+  "path": "data/1/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "isValid(parent[\"country\"]) ? parent[\"country\"] : \"\"+parent[\"country\"]",
+  "spec": "text/emoji.vg.json",
+  "path": "marks/0/title/text/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "child_height",
+  "spec": "text/emoji.vg.json",
+  "path": "marks/0/encode/update/height/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "child_width",
+  "spec": "text/emoji.vg.json",
+  "path": "marks/1/encode/update/width/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"x: \" + (isValid(datum[\"x\"]) ? datum[\"x\"] : \"\"+datum[\"x\"]) + \"; animal: \" + (isValid(datum[\"animal\"]) ? datum[\"animal\"] : \"\"+datum[\"animal\"]) + \"; emoji: \" + (isValid(datum[\"emoji\"]) ? datum[\"emoji\"] : \"\"+datum[\"emoji\"])",
+  "spec": "text/emoji.vg.json",
+  "path": "marks/1/marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"emoji\"]) ? datum[\"emoji\"] : \"\"+datum[\"emoji\"]",
+  "spec": "text/emoji.vg.json",
+  "path": "marks/1/marks/0/encode/update/text/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "(datum.symbol !== 'GOOG')",
+  "spec": "text/lasagna_plot.vg.json",
+  "path": "data/0/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "isValid(datum[\"sum_price\"]) && isFinite(+datum[\"sum_price\"])",
+  "spec": "text/lasagna_plot.vg.json",
+  "path": "data/0/transform/3/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"Time: \" + (timeFormat(datum[\"yearmonthdate_date\"], '%Y')) + \"; symbol: \" + (isValid(datum[\"symbol\"]) ? datum[\"symbol\"] : \"\"+datum[\"symbol\"]) + \"; Price: \" + (format(datum[\"sum_price\"], \"\"))",
+  "spec": "text/lasagna_plot.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "datetime(2001, 0, 2, 0, 0, 0, 0) - datetime(2001, 0, 1, 0, 0, 0, 0)",
+  "spec": "text/lasagna_plot.vg.json",
+  "path": "axes/0/tickMinStep/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "month(datum.value) == 1 && date(datum.value) == 1",
+  "spec": "text/lasagna_plot.vg.json",
+  "path": "axes/0/encode/labels/update/fill/0/test",
+  "key": "test"
+ },
+ {
+  "expr": "datum.Origin[0]",
+  "spec": "text/letter_scatter.vg.json",
+  "path": "data/0/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "isValid(datum[\"Horsepower\"]) && isFinite(+datum[\"Horsepower\"]) && isValid(datum[\"Miles_per_Gallon\"]) && isFinite(+datum[\"Miles_per_Gallon\"])",
+  "spec": "text/letter_scatter.vg.json",
+  "path": "data/0/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"Horsepower: \" + (format(datum[\"Horsepower\"], \"\")) + \"; Miles_per_Gallon: \" + (format(datum[\"Miles_per_Gallon\"], \"\")) + \"; Origin: \" + (isValid(datum[\"Origin\"]) ? datum[\"Origin\"] : \"\"+datum[\"Origin\"]) + \"; OriginInitial: \" + (isValid(datum[\"OriginInitial\"]) ? datum[\"OriginInitial\"] : \"\"+datum[\"OriginInitial\"])",
+  "spec": "text/letter_scatter.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"OriginInitial\"]) ? datum[\"OriginInitial\"] : \"\"+datum[\"OriginInitial\"]",
+  "spec": "text/letter_scatter.vg.json",
+  "path": "marks/0/encode/update/text/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"p\"]) && isFinite(+datum[\"p\"])",
+  "spec": "vl-convert/bar_chart_trellis_compact.vg.json",
+  "path": "data/1/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "length(data('column_domain'))",
+  "spec": "vl-convert/bar_chart_trellis_compact.vg.json",
+  "path": "layout/columns/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(parent[\"a\"]) ? parent[\"a\"] : \"\"+parent[\"a\"]",
+  "spec": "vl-convert/bar_chart_trellis_compact.vg.json",
+  "path": "marks/2/title/text/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(parent[\"b\"]) ? parent[\"b\"] : \"\"+parent[\"b\"]",
+  "spec": "vl-convert/bar_chart_trellis_compact.vg.json",
+  "path": "marks/3/title/text/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "ceil(child_width/40)",
+  "spec": "vl-convert/bar_chart_trellis_compact.vg.json",
+  "path": "marks/4/axes/0/tickCount/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"p: \" + (format(datum[\"p\"], \"%\")) + \"; c: \" + (isValid(datum[\"c\"]) ? datum[\"c\"] : \"\"+datum[\"c\"]) + \"; settings: \" + (isValid(datum[\"c\"]) ? datum[\"c\"] : \"\"+datum[\"c\"])",
+  "spec": "vl-convert/bar_chart_trellis_compact.vg.json",
+  "path": "marks/5/marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"IMDB Rating (binned): \" + (!isValid(datum[\"bin_maxbins_10_IMDB Rating\"]) || !isFinite(+datum[\"bin_maxbins_10_IMDB Rating\"]) ? \"null\" : format(datum[\"bin_maxbins_10_IMDB Rating\"], \"\") + \" – \" + format(datum[\"bin_maxbins_10_IMDB Rating_end\"], \"\")) + \"; Rotten Tomatoes Rating (binned): \" + (!isValid(datum[\"bin_maxbins_10_Rotten Tomatoes Rating\"]) || !isFinite(+datum[\"bin_maxbins_10_Rotten Tomatoes Rating\"]) ? \"null\" : format(datum[\"bin_maxbins_10_Rotten Tomatoes Rating\"], \"\") + \" – \" + format(datum[\"bin_maxbins_10_Rotten Tomatoes Rating_end\"], \"\")) + \"; Count of Records: \" + (format(datum[\"__count\"], \"\"))",
+  "spec": "vl-convert/circle_binned.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "ceil(width/10)",
+  "spec": "vl-convert/circle_binned.vg.json",
+  "path": "axes/0/tickCount/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "ceil(height/10)",
+  "spec": "vl-convert/circle_binned.vg.json",
+  "path": "axes/1/tickCount/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"longitude: \" + (format(datum[\"longitude\"], \"\")) + \"; latitude: \" + (format(datum[\"latitude\"], \"\"))",
+  "spec": "vl-convert/custom_projection.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "toNumber(datum[\"a\"])",
+  "spec": "vl-convert/font_with_quotes.vg.json",
+  "path": "data/1/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"a: \" + (format(datum[\"a\"], \"\")) + \"; b: \" + (format(datum[\"b\"], \"\"))",
+  "spec": "vl-convert/font_with_quotes.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"a\"]) && isFinite(+datum[\"a\"]) && isValid(datum[\"b\"]) && isFinite(+datum[\"b\"])",
+  "spec": "vl-convert/font_with_quotes.vg.json",
+  "path": "marks/0/encode/update/defined/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "sequence(0, 20)",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "data/3/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "'https://tile.openstreetmap.org/' + zoom_ceil + '/' + ((datum.a + dii_floor + max_one_side_tiles_count) % max_one_side_tiles_count) + '/' + (datum.b + djj_floor) + '.png'",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "data/3/transform/3/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "datum.a * tile_size + dx + (tile_size / 2)",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "data/3/transform/4/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "datum.b * tile_size + dy + (tile_size / 2)",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "data/3/transform/5/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "datum.x < (width + tile_size / 2) && datum.y < (height + tile_size / 2)",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "data/3/transform/6/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "((datum.a + dii_floor + max_one_side_tiles_count) % max_one_side_tiles_count) >= 0 && (datum.b + djj_floor) >= 0 && ((datum.a + dii_floor + max_one_side_tiles_count) % max_one_side_tiles_count) <= (max_one_side_tiles_count - 1) && (datum.b + djj_floor) <= (max_one_side_tiles_count - 1)",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "data/3/transform/7/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "data('data-d796ccc73f9696bc387a819d32762211')",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "projections/0/fit/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "geoScale('projection')",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "signals/1/update",
+  "key": "update"
+ },
+ {
+  "expr": "log((2 * PI * pr_scale) / base_tile_size) / log(2)",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "signals/2/update",
+  "key": "update"
+ },
+ {
+  "expr": "ceil(zoom_level)",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "signals/3/update",
+  "key": "update"
+ },
+ {
+  "expr": "pow(2, zoom_ceil)",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "signals/4/update",
+  "key": "update"
+ },
+ {
+  "expr": "base_tile_size * pow(2, zoom_level - zoom_ceil)",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "signals/5/update",
+  "key": "update"
+ },
+ {
+  "expr": "invert('projection', [0, 0])",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "signals/6/update",
+  "key": "update"
+ },
+ {
+  "expr": "(base_point[0] + 180) / 360 * max_one_side_tiles_count",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "signals/7/update",
+  "key": "update"
+ },
+ {
+  "expr": "floor(dii)",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "signals/8/update",
+  "key": "update"
+ },
+ {
+  "expr": "(dii_floor - dii) * tile_size",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "signals/9/update",
+  "key": "update"
+ },
+ {
+  "expr": "(1 - log(tan(base_point[1] * PI / 180) + 1 / cos(base_point[1] * PI / 180)) / PI) / 2 * max_one_side_tiles_count",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "signals/10/update",
+  "key": "update"
+ },
+ {
+  "expr": "floor(djj)",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "signals/11/update",
+  "key": "update"
+ },
+ {
+  "expr": "round((djj_floor - djj) * tile_size)",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "signals/12/update",
+  "key": "update"
+ },
+ {
+  "expr": "\"x: \" + (format(datum[\"x\"], \"\")) + \"; y: \" + (format(datum[\"y\"], \"\")) + \"; url: \" + (isValid(datum[\"url\"]) ? datum[\"url\"] : \"\"+datum[\"url\"])",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "tile_size + 1",
+  "spec": "vl-convert/geoScale.vg.json",
+  "path": "marks/0/encode/update/width/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"year: \" + (isValid(datum[\"year\"]) ? datum[\"year\"] : \"\"+datum[\"year\"]) + \"; Sum of people: \" + (format(datum[\"sum_people\"], \"\"))",
+  "spec": "vl-convert/line_with_log_scale.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"sum_people\"]) && isFinite(+datum[\"sum_people\"])",
+  "spec": "vl-convert/line_with_log_scale.vg.json",
+  "path": "marks/0/encode/update/defined/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"a: \" + (isValid(datum[\"a\"]) ? datum[\"a\"] : \"\"+datum[\"a\"]) + \"; b: \" + (format(datum[\"b\"], \"\")) + \"; c: \" + (isValid(datum[\"c\"]) ? datum[\"c\"] : \"\"+datum[\"c\"])",
+  "spec": "vl-convert/long_legend_label.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"geo\"])",
+  "spec": "vl-convert/lookup_urls.vg.json",
+  "path": "data/1/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "isValid(datum[\"pct\"]) && isFinite(+datum[\"pct\"])",
+  "spec": "vl-convert/lookup_urls.vg.json",
+  "path": "data/1/transform/3/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "{\"name\": isValid(datum[\"name\"]) ? datum[\"name\"] : \"\"+datum[\"name\"], \"pct\": format(datum[\"pct\"], \"\")}",
+  "spec": "vl-convert/lookup_urls.vg.json",
+  "path": "marks/0/encode/update/tooltip/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"pct: \" + (format(datum[\"pct\"], \"\")) + \"; geo: \" + (isValid(datum[\"geo\"]) ? datum[\"geo\"] : \"\"+datum[\"geo\"]) + \"; name: \" + (isValid(datum[\"name\"]) ? datum[\"name\"] : \"\"+datum[\"name\"])",
+  "spec": "vl-convert/lookup_urls.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "sequence(0, 4)",
+  "spec": "vl-convert/maptile_background.vg.json",
+  "path": "data/2/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "'https://tile.openstreetmap.org/' + zoom_ceil + '/' + ((datum.a + dii_floor + tiles_count) % tiles_count) + '/' + (datum.b + djj_floor) + '.png'",
+  "spec": "vl-convert/maptile_background.vg.json",
+  "path": "data/2/transform/3/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "((datum.a + dii_floor + tiles_count) % tiles_count) >= 0 && (datum.b + djj_floor) >= 0 && ((datum.a + dii_floor + tiles_count) % tiles_count) <= (tiles_count - 1) && (datum.b + djj_floor) <= (tiles_count - 1)",
+  "spec": "vl-convert/maptile_background.vg.json",
+  "path": "data/2/transform/6/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "isValid(datum[\"id\"]) && isFinite(+datum[\"id\"])",
+  "spec": "vl-convert/maptile_background.vg.json",
+  "path": "data/3/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "[width / 2, height / 2]",
+  "spec": "vl-convert/maptile_background.vg.json",
+  "path": "projections/0/translate/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "(2 * PI * pr_scale) / pow(2, zoom_level)",
+  "spec": "vl-convert/maptile_background.vg.json",
+  "path": "signals/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "400",
+  "spec": "vl-convert/maptile_background.vg.json",
+  "path": "signals/1/update",
+  "key": "update"
+ },
+ {
+  "expr": "(base_point[0] + 180) / 360 * tiles_count",
+  "spec": "vl-convert/maptile_background.vg.json",
+  "path": "signals/7/update",
+  "key": "update"
+ },
+ {
+  "expr": "(1 - log(tan(base_point[1] * PI / 180) + 1 / cos(base_point[1] * PI / 180)) / PI) / 2 * tiles_count",
+  "spec": "vl-convert/maptile_background.vg.json",
+  "path": "signals/10/update",
+  "key": "update"
+ },
+ {
+  "expr": "tile_size - 10",
+  "spec": "vl-convert/maptile_background.vg.json",
+  "path": "marks/0/encode/update/width/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"id: \" + (format(datum[\"id\"], \"\"))",
+  "spec": "vl-convert/maptile_background.vg.json",
+  "path": "marks/1/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"previous_sum\"]) && isFinite(+datum[\"previous_sum\"])",
+  "spec": "vl-convert/no_text_in_font_metrics.vg.json",
+  "path": "data/1/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"column_name: \" + (isValid(datum[\"column_name\"]) ? datum[\"column_name\"] : \"\"+datum[\"column_name\"]) + \"; previous_sum: \" + (format(datum[\"previous_sum\"], \"\"))",
+  "spec": "vl-convert/no_text_in_font_metrics.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "datum.value == 'Prior' || datum.value == 'Final score' ? '' : datum.value",
+  "spec": "vl-convert/no_text_in_font_metrics.vg.json",
+  "path": "axes/1/encode/labels/update/text/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "view_10_geojson_0",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "data/2/transform/1/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"mag\"]) && isFinite(+datum[\"mag\"])",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "data/2/transform/3/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "isTuple(group()) ? group() : unit",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/0/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "geo_interval_init_tick === null ? {} : geo_interval_init_tick",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/1/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "vlSelectionResolve(\"param_9_store\", \"union\")",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/2/update",
+  "key": "update"
+ },
+ {
+  "expr": "invert(\"projection\", [width/2, height/2])",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/3/update",
+  "key": "update"
+ },
+ {
+  "expr": "[x(unit), x(unit)]",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/5/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "[param_9_longitude[0], clamp(x(unit), 0, width)]",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/5/on/1/update",
+  "key": "update"
+ },
+ {
+  "expr": "[0, 0]",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/5/on/2/update",
+  "key": "update"
+ },
+ {
+  "expr": "param_9_translate_delta",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/5/on/3/events/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "clampRange(panLinear(param_9_translate_anchor.extent_x, param_9_translate_delta.x / span(param_9_translate_anchor.extent_x)), 0, width)",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/5/on/3/update",
+  "key": "update"
+ },
+ {
+  "expr": "param_9_zoom_delta",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/5/on/4/events/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "clampRange(zoomLinear(param_9_longitude, param_9_zoom_anchor.x, param_9_zoom_delta), 0, width)",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/5/on/4/update",
+  "key": "update"
+ },
+ {
+  "expr": "param_9_longitude",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/6/on/0/events/0/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "geo_interval_init_tick",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/6/on/0/events/1/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "vlSelectionTuples(intersect([[param_9_longitude[0], 0],[param_9_longitude[1], height]], {markname: \"view_10_marks\"}, unit.mark), {unit: \"view_10\"})",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/6/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "{x: x(unit), y: y(unit), extent_x: slice(param_9_longitude)}",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/7/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "{x: param_9_translate_anchor.x - x(unit), y: param_9_translate_anchor.y - y(unit)}",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/8/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "{x: x(unit), y: y(unit)}",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/9/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "pow(1.001, event.deltaY * pow(16, event.deltaMode))",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/10/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "param_9_tuple",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/11/on/0/events/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "modify(\"param_9_store\", param_9_tuple, true)",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "signals/11/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "data(\"param_9_store\").length && data(\"param_9_store\")[0].unit === \"view_10\"",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "marks/0/encode/update/x/0/test",
+  "key": "test"
+ },
+ {
+  "expr": "param_9_longitude[0]",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "marks/0/encode/update/x/0/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "param_9_longitude[1]",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "marks/0/encode/update/x2/0/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "{\"lon\": format(datum[\"lon\"], \"\"), \"lat\": format(datum[\"lat\"], \"\"), \"mag\": format(datum[\"mag\"], \"\")}",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "marks/1/encode/update/tooltip/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "length(data(\"param_9_store\")) && vlSelectionIdTest(\"param_9_store\", datum)",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "marks/1/encode/update/fill/0/test",
+  "key": "test"
+ },
+ {
+  "expr": "\"lon: \" + (format(datum[\"lon\"], \"\")) + \"; lat: \" + (format(datum[\"lat\"], \"\")) + \"; mag: \" + (format(datum[\"mag\"], \"\"))",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "marks/1/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "param_9_longitude[0] !== param_9_longitude[1]",
+  "spec": "vl-convert/quakes_initial_selection.vg.json",
+  "path": "marks/2/encode/update/stroke/0/test",
+  "key": "test"
+ },
+ {
+  "expr": "!length(data(\"click_store\")) || vlSelectionTest(\"click_store\", datum)",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "data/3/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "(isDate(datum[\"monthdate_date\"]) || (isValid(datum[\"monthdate_date\"]) && isFinite(+datum[\"monthdate_date\"]))) && isValid(datum[\"temp_max\"]) && isFinite(+datum[\"temp_max\"]) && isValid(datum[\"precipitation\"]) && isFinite(+datum[\"precipitation\"])",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "data/3/transform/2/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "!length(data(\"brush_store\")) || vlSelectionTest(\"brush_store\", datum)",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "data/4/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "bandspace(domain('concat_1_y').length, 0.1, 0.05) * concat_1_y_step",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "signals/2/update",
+  "key": "update"
+ },
+ {
+  "expr": "vlSelectionResolve(\"brush_store\", \"union\")",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "signals/4/update",
+  "key": "update"
+ },
+ {
+  "expr": "vlSelectionResolve(\"click_store\", \"union\", true, true)",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "signals/5/update",
+  "key": "update"
+ },
+ {
+  "expr": "concat_0_height",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/encode/update/height/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "[brush_x[0], clamp(x(unit), 0, width)]",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/0/on/1/update",
+  "key": "update"
+ },
+ {
+  "expr": "brush_scale_trigger",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/0/on/2/events/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "[scale(\"concat_0_x\", brush_monthdate_date[0]), scale(\"concat_0_x\", brush_monthdate_date[1])]",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/0/on/2/update",
+  "key": "update"
+ },
+ {
+  "expr": "brush_translate_delta",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/0/on/4/events/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "clampRange(panLinear(brush_translate_anchor.extent_x, brush_translate_delta.x / span(brush_translate_anchor.extent_x)), 0, width)",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/0/on/4/update",
+  "key": "update"
+ },
+ {
+  "expr": "brush_zoom_delta",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/0/on/5/events/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "clampRange(zoomLinear(brush_x, brush_zoom_anchor.x, brush_zoom_delta), 0, width)",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/0/on/5/update",
+  "key": "update"
+ },
+ {
+  "expr": "brush_x",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/1/on/0/events/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "brush_x[0] === brush_x[1] ? null : invert(\"concat_0_x\", brush_x)",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/1/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "(!isArray(brush_monthdate_date) || (+invert(\"concat_0_x\", brush_x)[0] === +brush_monthdate_date[0] && +invert(\"concat_0_x\", brush_x)[1] === +brush_monthdate_date[1])) ? brush_scale_trigger : {}",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/2/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "brush_monthdate_date",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/3/on/0/events/0/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "brush_monthdate_date ? {unit: \"concat_0\", fields: brush_tuple_fields, values: [brush_monthdate_date]} : null",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/3/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "{x: x(unit), y: y(unit), extent_x: slice(brush_x)}",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/5/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "{x: brush_translate_anchor.x - x(unit), y: brush_translate_anchor.y - y(unit)}",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/6/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "brush_tuple",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/9/on/0/events/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "modify(\"brush_store\", brush_tuple, true)",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/signals/9/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "data(\"brush_store\").length && data(\"brush_store\")[0].unit === \"concat_0\"",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/marks/0/encode/update/x/0/test",
+  "key": "test"
+ },
+ {
+  "expr": "brush_x[0]",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/marks/0/encode/update/x/0/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "brush_x[1]",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/marks/0/encode/update/x2/0/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "\"Date: \" + (timeFormat(datum[\"monthdate_date\"], '%b')) + \"; Maximum Daily Temperature (C): \" + (format(datum[\"temp_max\"], \"\")) + \"; Weather: \" + (isValid(datum[\"weather\"]) ? datum[\"weather\"] : \"\"+datum[\"weather\"]) + \"; Precipitation: \" + (format(datum[\"precipitation\"], \"\"))",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/marks/1/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "brush_x[0] !== brush_x[1]",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/marks/2/encode/update/stroke/0/test",
+  "key": "test"
+ },
+ {
+  "expr": "ceil(concat_0_height/40)",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/0/axes/1/tickCount/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "concat_1_height",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/1/encode/update/height/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "datum && item().mark.marktype !== 'group' && indexof(item().mark.role, 'legend') < 0 ? {unit: \"concat_1\", fields: click_tuple_fields, values: [(item().isVoronoi ? datum.datum : datum)[\"weather\"]]} : null",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/1/signals/0/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "null",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/1/signals/0/on/1/update",
+  "key": "update"
+ },
+ {
+  "expr": "event.shiftKey",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/1/signals/2/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "false",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/1/signals/2/on/1/update",
+  "key": "update"
+ },
+ {
+  "expr": "click_tuple",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/1/signals/3/on/0/events/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "modify(\"click_store\", click_toggle ? null : click_tuple, click_toggle ? null : true, click_toggle ? click_tuple : null)",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/1/signals/3/on/0/update",
+  "key": "update"
+ },
+ {
+  "expr": "\"Count of Records: \" + (format(datum[\"__count\"], \"\")) + \"; Weather: \" + (isValid(datum[\"weather\"]) ? datum[\"weather\"] : \"\"+datum[\"weather\"]) + \"; weather: \" + (isValid(datum[\"weather\"]) ? datum[\"weather\"] : \"\"+datum[\"weather\"])",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/1/marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "max(0.25, bandwidth('concat_1_y'))",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "marks/1/marks/0/encode/update/height/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "concat_1_y_step",
+  "spec": "vl-convert/seattle-weather.vg.json",
+  "path": "scales/5/range/step/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"sum_yield\"]) && isFinite(+datum[\"sum_yield\"])",
+  "spec": "vl-convert/stacked_bar_h.vg.json",
+  "path": "data/0/transform/2/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"Sum of yield: \" + (format(datum[\"sum_yield\"], \"\")) + \"; variety: \" + (isValid(datum[\"variety\"]) ? datum[\"variety\"] : \"\"+datum[\"variety\"]) + \"; site: \" + (isValid(datum[\"site\"]) ? datum[\"site\"] : \"\"+datum[\"site\"])",
+  "spec": "vl-convert/stacked_bar_h.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "year(datum.date) == 2009",
+  "spec": "vl-convert/stocks_locale.vg.json",
+  "path": "data/0/transform/0/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"date: \" + (timeFormat(datum[\"date\"], '%b %d, %Y')) + \"; price: \" + (format(datum[\"price\"], \"$.0f\")) + \"; symbol: \" + (isValid(datum[\"symbol\"]) ? datum[\"symbol\"] : \"\"+datum[\"symbol\"])",
+  "spec": "vl-convert/stocks_locale.vg.json",
+  "path": "marks/0/marks/0/encode/update/description/signal",
+  "key": "signal"
+ },
+ {
+  "expr": "isValid(datum[\"mean_Horsepower\"]) && isFinite(+datum[\"mean_Horsepower\"])",
+  "spec": "vl-convert/table_heatmap.vg.json",
+  "path": "data/0/transform/1/expr",
+  "key": "expr"
+ },
+ {
+  "expr": "\"Cylinders: \" + (isValid(datum[\"Cylinders\"]) ? datum[\"Cylinders\"] : \"\"+datum[\"Cylinders\"]) + \"; Origin: \" + (isValid(datum[\"Origin\"]) ? datum[\"Origin\"] : \"\"+datum[\"Origin\"]) + \"; Mean of Horsepower: \" + (format(datum[\"mean_Horsepower\"], \"\"))",
+  "spec": "vl-convert/table_heatmap.vg.json",
+  "path": "marks/0/encode/update/description/signal",
+  "key": "signal"
+ }
+]

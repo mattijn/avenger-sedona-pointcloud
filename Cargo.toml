@@ -6,6 +6,7 @@ members = [
     "experiments/02-chart-language",
     "experiments/03-streaming",
     "experiments/05-coordinate-systems",
+    "experiments/06-pipelines",
     "probes",
 ]
 

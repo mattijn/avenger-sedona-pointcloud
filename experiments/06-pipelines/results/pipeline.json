@@ -1,0 +1,17 @@
+{
+  "commands": [
+    "chart bar --x label --y points",
+    "set title \"Building points per 2 m of height above 42 m\"",
+    "set x.title \"height above 42 m\"",
+    "set x.labelAngle -45",
+    "set fill #c44e52"
+  ],
+  "data": [
+    "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics true",
+    "filter --vega \"datum.classification == 6\"",
+    "calc height --vega \"floor((datum.z - 42) / 2) * 2\"",
+    "sql \"SELECT height, count(*) AS points FROM input WHERE height BETWEEN 0 AND 40 GROUP BY height ORDER BY height\"",
+    "calc label --vega \"toString(datum.height) + ' m'\""
+  ],
+  "semantics": "vega"
+}

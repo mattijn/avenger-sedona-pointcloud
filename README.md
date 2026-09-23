@@ -25,6 +25,7 @@ without conversion is that both sides agree on Arrow 58.3 and DataFusion 54.
 | 3 | [a live feed over Arrow Flight](experiments/03-streaming/) | Can Avenger keep up with a live sensor feed, using rolling aggregate states? |
 | 4 | [coupling patterns](experiments/04-coupling-patterns/) | Which patterns from coupler-based workflows would improve the chart language? (proposal, no crate yet) |
 | 5 | [one coordinate system](experiments/05-coordinate-systems/) | What does a general coordinate transform take, with Cartesian as the default and map projections as options? Includes a live viewer and two videos. |
+| 6 | [Vega expressions, SQL and pipelines](experiments/06-pipelines/) | Can Vega expressions compile to DataFusion, chain with SQL and tool steps in one lazy GDAL-style pipeline, and split into commands and queries? |
 
 ![the class map](experiments/01-charts/images/top_class.png)
 
@@ -55,6 +56,7 @@ experiments/02-chart-language/  the .avenger chart and its Parquet export
 experiments/03-streaming/       the Flight server and the live viewer
 experiments/04-coupling-patterns/  proposals for the chart language
 experiments/05-coordinate-systems/ one coordinate-system trait for charts and maps
+experiments/06-pipelines/       Vega expressions, SQL and chained pipelines
 probes/                         re-measures everything in FINDINGS.md
 data/                           the tile (downloaded, not in git)
 scripts/download_tile.sh
