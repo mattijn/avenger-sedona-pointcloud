@@ -1,0 +1,10 @@
+{
+  "commands": [],
+  "data": [
+    "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics true",
+    "filter --sql \"x < 658000 AND y < 6868000\"",
+    "sql \"SELECT CAST(floor((x - 657000) / 100) * 100 + 50 AS DOUBLE) AS gx, CAST(floor((y - 6867000) / 100) * 100 + 50 AS DOUBLE) AS gy, CAST(CASE WHEN classification BETWEEN 2 AND 6 THEN classification ELSE 7 END AS INT) AS cat, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY 1, 2, 3\"",
+    "sql \"SELECT gx, gy, cat, n, sum(n) OVER (PARTITION BY gx, gy ORDER BY cat ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) - n AS start, sum(n) OVER (PARTITION BY gx, gy) AS total FROM input ORDER BY gx, gy, cat\""
+  ],
+  "semantics": "sql"
+}

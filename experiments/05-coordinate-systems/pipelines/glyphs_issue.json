@@ -1,0 +1,8 @@
+{
+  "commands": [],
+  "data": [
+    "sql \"SELECT CAST(x AS DOUBLE) AS gx, CAST(y AS DOUBLE) AS gy, category AS cat, CAST(value AS DOUBLE) AS n FROM (VALUES (1,4,1,2),(2,6,1,2),(3,10,1,2),(4,3,1,2),(5,7,1,2),(6,8,1,2),(1,4,2,1),(2,6,2,1),(3,10,2,1),(4,3,2,1),(5,7,2,1),(6,8,2,1)) AS t(category, value, x, y)\"",
+    "sql \"SELECT gx, gy, cat, n, sum(n) OVER (PARTITION BY gx, gy ORDER BY cat ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) - n AS start, sum(n) OVER (PARTITION BY gx, gy) AS total FROM input ORDER BY gx, gy, cat\""
+  ],
+  "semantics": "sql"
+}

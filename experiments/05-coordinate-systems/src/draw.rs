@@ -151,6 +151,38 @@ pub fn rects(
     (mark.into(), cost)
 }
 
+/// One filled path per ring, each with its own colour: pie slices, for
+/// example. Rings are in the system's input space and are sampled by it.
+pub fn rings(
+    cs: &dyn CoordinateSystem,
+    rings: &[Vec<Vec<f64>>],
+    fill: &[[f32; 4]],
+    stroke: [f32; 4],
+) -> (SceneMark, Cost) {
+    let mut paths = vec![];
+    let mut vertices = 0;
+    for r in rings {
+        let (path, n) = path_of(&cs.project_line(r, true), true);
+        vertices += n;
+        paths.push(path);
+    }
+    let mark = ScenePathMark {
+        interactive: false,
+        len: paths.len() as u32,
+        path: paths.into(),
+        fill: fill.iter().map(|c| color(*c)).collect::<Vec<_>>().into(),
+        stroke: color(stroke).into(),
+        stroke_width: Some(0.75),
+        ..Default::default()
+    };
+    let cost = Cost {
+        instances: rings.len(),
+        vertices,
+        as_rects: false,
+    };
+    (mark.into(), cost)
+}
+
 /// A geoshape: closed rings in input space, filled as one path.
 pub fn shape(
     cs: &dyn CoordinateSystem,

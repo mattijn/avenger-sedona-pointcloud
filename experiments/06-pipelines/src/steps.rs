@@ -90,9 +90,11 @@ step!(
 step!(
     Sql,
     Kind::Transform,
-    "sql <query>: the data so far is the table `input`",
+    "sql <query>: the data so far is the table `input`; first in a pipeline, a source (e.g. VALUES)",
     |p, c| {
-        p.expose_input()?;
+        if p.plan.is_some() {
+            p.expose_input()?;
+        }
         let df = p.ctx.sql(c.arg(0)?).await?;
         p.plan = Some(df.into_unoptimized_plan());
         Ok(None)

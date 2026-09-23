@@ -280,6 +280,102 @@ the 40,098-cell map takes about 16 ms to build, render and write as PNG
 (420 frames in 6.7 s; the tour's 1,125 frames took 15.2 s). The window's frame
 rate was not measured.
 
+### Composing systems: a pie at every point (vega-lite#7848)
+
+[vega-lite#7848](https://github.com/vega/vega-lite/issues/7848), "Composing
+cartesian and polar coordinates", has been open since 2021. It asks for a
+scatter plot whose points are pie charts. Vega-Lite gets close with `arc` and
+`detail`, but the theta scale is computed over the whole dataset rather than
+per point, and x/y and theta live in one flat encoding. The thread's
+suggestion is to facet by x and y before computing the theta scale.
+The workaround posted there computes the angles with extra transforms.
+
+Both halves are small in this design:
+
+- **Composition is a coordinate system.** `Nested { outer, radius }` takes
+  the outer system's channels, then θ and r. The glyph's centre goes through
+  the outer system; θ and r are drawn in screen space around it, so the pies
+  stay round under any outer system, a map projection included. The slices are
+  rings in (outer…, θ, r) space, drawn by the same generic line sampler as
+  every other system; nothing pie-specific is needed.
+- **Per-group normalisation is SQL.** The "facet first, then scale" of the
+  issue is a window function:
+
+  ```sql
+  SELECT gx, gy, cat, n,
+         sum(n) OVER (PARTITION BY gx, gy ORDER BY cat
+                      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) - n AS start,
+         sum(n) OVER (PARTITION BY gx, gy) AS total
+  FROM groups
+  ```
+
+  θ runs from `start / total` to `(start + n) / total`. This is the same query
+  for the issue's two points and for the tile.
+
+The data side is two Avenger pipelines (experiment 6), saved in
+[pipelines/](pipelines/). The first starts from the issue's rows with a `sql`
+step over `VALUES`; the second reads the tile. Both end in the window query
+above and write their slices to Parquet. `glyphs` only draws:
+
+```sh
+T=data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz
+WINDOW='sql "SELECT gx, gy, cat, n,
+  sum(n) OVER (PARTITION BY gx, gy ORDER BY cat ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) - n AS start,
+  sum(n) OVER (PARTITION BY gx, gy) AS total FROM input ORDER BY gx, gy, cat"'
+
+# the issue's example: a pipeline can start with sql (VALUES)
+cargo run --release -p lidar-pipeline --bin pipeline -- "sql \"SELECT CAST(x AS DOUBLE) AS gx, CAST(y AS DOUBLE) AS gy,
+    category AS cat, CAST(value AS DOUBLE) AS n
+    FROM (VALUES (1,4,1,2),(2,6,1,2),(3,10,1,2),(4,3,1,2),(5,7,1,2),(6,8,1,2),
+                 (1,4,2,1),(2,6,2,1),(3,10,2,1),(4,3,2,1),(5,7,2,1),(6,8,2,1)) AS t(category, value, x, y)\"
+  ! $WINDOW ! write out/glyphs_issue.parquet"
+
+# the tile: class mix per 100 m block; half-open, so edge points belong to the next tile
+cargo run --release -p lidar-pipeline --bin pipeline -- "read $T --statistics
+  ! filter --sql \"x < 658000 AND y < 6868000\"
+  ! sql \"SELECT CAST(floor((x - 657000) / 100) * 100 + 50 AS DOUBLE) AS gx,
+               CAST(floor((y - 6867000) / 100) * 100 + 50 AS DOUBLE) AS gy,
+               CAST(CASE WHEN classification BETWEEN 2 AND 6 THEN classification ELSE 7 END AS INT) AS cat,
+               CAST(count(*) AS DOUBLE) AS n
+        FROM input GROUP BY 1, 2, 3\"
+  ! $WINDOW ! write out/glyphs_tile.parquet"
+
+cargo run --release -p lidar-coords --bin glyphs -- \
+  out/glyphs_issue.parquet out/glyphs_tile.parquet experiments/05-coordinate-systems/images/glyphs.png
+```
+
+Or replay the saved pipelines instead of typing them:
+
+```sh
+cargo run --release -p lidar-pipeline --bin pipeline -- --replay experiments/05-coordinate-systems/pipelines/glyphs_issue.json "write out/glyphs_issue.parquet"
+cargo run --release -p lidar-pipeline --bin pipeline -- --replay experiments/05-coordinate-systems/pipelines/glyphs_tile.json "write out/glyphs_tile.parquet"
+```
+
+Checked: the typed pipelines and the replayed ones both give a PNG
+byte-identical to the one rendered when the same SQL ran inside `glyphs`.
+The tile pipeline takes 1.1 s for 17.3 M points; the issue's takes 15 ms.
+The pies are drawn by `glyphs`, not by the pipeline's `render` sink, because
+`avenger-chart` has no arc or path marks yet.
+
+![Pies on a scatter plot and on a map](images/glyphs.png)
+
+- **Left:** the issue's own data. Each pie is normalised within its (x, y).
+- **Middle:** the tile's class mix per 100 m block. There are 100 blocks and 563
+  slices, from one pipeline over 17.3 M points. Pie area is
+  proportional to the block's point count: the thread's `sqrt(total)` for the
+  radius.
+- **Right:** the same pies, with `spatial` conic conformal as the outer system.
+  The block centres are projected from lon/lat and the pies stay round.
+
+The tile pipeline treats the tile as half-open (x < 658,000, y < 6,868,000). Without
+that, 19 extra "blocks" of 4–10 points appear, made of points lying exactly
+on the tile's east and north edges.
+
+The open design choice is where the glyph lives. Here it is in screen space
+(radius in pixels, as Vega-Lite's `radius`). A glyph in data space, such as a
+pie whose radius is in metres and which a map projection distorts, is the same
+`Nested` with the polar offset added before the outer transform.
+
 ## What it takes
 
 Measured against the hypothesis:
@@ -366,7 +462,12 @@ useful when coordinate systems land in the chart layer.
    screen positions folds shapes between strip and ring. Transitions from
    planar to spatial need every position in both encodings, which argues for a
    CRS on the data, separate from the coordinate system.
-7. **The pinned host's wake-ups and widgets were enough for an animated,
+7. **Composition answers vega-lite#7848.** `Nested { outer, radius }` puts a
+   polar glyph at every position of any outer system, and per-group
+   normalisation is a SQL window function. Between them they give pies on a
+   scatter plot and pies on a projected map. The system itself is about 30
+   lines (`Nested` in `coords.rs`); the figure is `bin/glyphs.rs`.
+8. **The pinned host's wake-ups and widgets were enough for an animated,
    interactive viewer.** Nothing extra was needed beyond `RequestWakeup` and
    `avenger-widgets`. One small thing we ran into: `SymbolShape` has only
    `Circle` and `Path`, so square cells need a path.

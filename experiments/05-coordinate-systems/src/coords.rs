@@ -645,3 +645,42 @@ impl CoordinateSystem for Twirl {
         Some(unit_to_screen(q, self.width, self.height))
     }
 }
+
+/// Composition: a polar glyph at every position of an outer system
+/// (vega-lite#7848). Inputs are the outer system's channels, then θ (unit
+/// turn) and r (unit radius). The glyph lives in screen space, `radius`
+/// pixels at r = 1, so pies stay round under any outer system, including a
+/// map projection; only their centres go through the outer transform.
+pub struct Nested<'a> {
+    pub outer: &'a dyn CoordinateSystem,
+    /// Number of outer input values at the start of each position.
+    pub split: usize,
+    pub radius: f64,
+}
+
+impl CoordinateSystem for Nested<'_> {
+    fn name(&self) -> String {
+        format!("{} × polar glyph", self.outer.name())
+    }
+    fn channels(&self) -> Vec<Channel> {
+        let mut c = self.outer.channels();
+        c.truncate(self.split);
+        c.push(Channel {
+            name: "theta",
+            default: Some(0.0),
+            extent: (0.0, 1.0),
+        });
+        c.push(Channel {
+            name: "r",
+            default: Some(1.0),
+            extent: (0.0, 1.0),
+        });
+        c
+    }
+    fn project(&self, p: &[f64]) -> Option<Screen> {
+        let o = self.outer.project(&p[..self.split])?;
+        let theta = p[self.split] * std::f64::consts::TAU;
+        let r = p[self.split + 1] * self.radius;
+        Some([o[0] + r * theta.sin(), o[1] - r * theta.cos()])
+    }
+}
