@@ -1,9 +1,10 @@
 //! Vega expression AST → DataFusion `Expr`.
 //!
-//! Every function is resolved by name through the session's function
-//! registry, so a Vega built-in is only a mapping onto an SQL function, and
-//! any function a package registers (geodatafusion, Sedona) is callable from
-//! Vega expressions as well. Truthiness comes from `avenger-transform`, so
+//! Vega stays Vega: only the functions of the Vega expression reference are
+//! callable, mapped onto SQL functions or provided by a package under their
+//! Vega name (`vega-format` provides `format` and `timeFormat`). Package
+//! functions such as Sedona's `ST_*` are SQL and are rejected here with a
+//! pointer to the `sql` step. Truthiness comes from `avenger-transform`, so
 //! the semantics match Jon's `filter` and `formula`.
 //!
 //! Expressions that read the chart (`scale`, `domain`, `bandwidth`, `data`)
@@ -74,6 +75,144 @@ pub const INTERACTION: [&str; 26] = [
     "treePath",
     "treeAncestors",
     "pinchDistance",
+];
+
+/// Every function in the Vega expression reference
+/// (<https://vega.github.io/vega/docs/expressions/>). Nothing else is callable
+/// from a Vega expression, so Vega stays Vega and can be deprecated as a unit.
+pub const VEGA_FUNCTIONS: &[&str] = &[
+    "isArray",
+    "isBoolean",
+    "isDate",
+    "isDefined",
+    "isNumber",
+    "isObject",
+    "isRegExp",
+    "isString",
+    "isValid",
+    "toBoolean",
+    "toDate",
+    "toNumber",
+    "toString",
+    "if",
+    "isNaN",
+    "isFinite",
+    "abs",
+    "acos",
+    "asin",
+    "atan",
+    "atan2",
+    "ceil",
+    "clamp",
+    "cos",
+    "exp",
+    "floor",
+    "hypot",
+    "log",
+    "max",
+    "min",
+    "pow",
+    "random",
+    "round",
+    "sin",
+    "sqrt",
+    "tan",
+    "sampleNormal",
+    "cumulativeNormal",
+    "densityNormal",
+    "quantileNormal",
+    "sampleLogNormal",
+    "cumulativeLogNormal",
+    "densityLogNormal",
+    "quantileLogNormal",
+    "sampleUniform",
+    "cumulativeUniform",
+    "densityUniform",
+    "quantileUniform",
+    "now",
+    "datetime",
+    "date",
+    "day",
+    "dayofyear",
+    "year",
+    "quarter",
+    "month",
+    "week",
+    "isoweek",
+    "hours",
+    "minutes",
+    "seconds",
+    "milliseconds",
+    "time",
+    "timezoneoffset",
+    "timeOffset",
+    "timeSequence",
+    "utc",
+    "utcdate",
+    "utcday",
+    "utcdayofyear",
+    "utcyear",
+    "utcquarter",
+    "utcmonth",
+    "utcweek",
+    "utcisoweek",
+    "utchours",
+    "utcminutes",
+    "utcseconds",
+    "utcmilliseconds",
+    "utcOffset",
+    "utcSequence",
+    "extent",
+    "clampRange",
+    "indexof",
+    "inrange",
+    "join",
+    "lastindexof",
+    "length",
+    "lerp",
+    "interpolateLinear",
+    "peek",
+    "pluck",
+    "reverse",
+    "sequence",
+    "slice",
+    "sort",
+    "span",
+    "lower",
+    "pad",
+    "parseFloat",
+    "parseInt",
+    "replace",
+    "split",
+    "substring",
+    "trim",
+    "truncate",
+    "upper",
+    "btoa",
+    "atob",
+    "encodeURIComponent",
+    "merge",
+    "dayFormat",
+    "dayAbbrevFormat",
+    "format",
+    "monthFormat",
+    "monthAbbrevFormat",
+    "timeUnitSpecifier",
+    "timeFormat",
+    "timeParse",
+    "utcFormat",
+    "utcParse",
+    "regexp",
+    "test",
+    "rgb",
+    "hsl",
+    "lab",
+    "hcl",
+    "luminance",
+    "contrast",
+    "warn",
+    "info",
+    "debug",
 ];
 
 const CONSTANTS: [(&str, f64); 11] = [
@@ -765,15 +904,14 @@ impl Compiler<'_> {
                 let v = self.call("date_part", vec![lit("epoch"), self.instant(n(0)?)?])?;
                 Ok(cast(v, DataType::Float64) * lit(1000.0))
             }
-            // Anything else: a function registered by a package, called by
-            // its own name. This is how SQL function packages reach Vega.
-            // SQL function names are lower case (Sedona's st_point); Vega
-            // names are camelCase. Try both.
-            other => match self
-                .registry
-                .udf(other)
-                .or_else(|_| self.registry.udf(&other.to_lowercase()))
-            {
+            // Vega stays Vega: only functions from the Vega expression
+            // reference, looked up by their exact Vega name. A package may
+            // implement them (vega-format provides format and timeFormat).
+            // Package functions such as Sedona's ST_* are SQL, not Vega.
+            other if !VEGA_FUNCTIONS.contains(&other) => Err(unsupported(format!(
+                "`{other}` is not a Vega function; call it from SQL (`sql` or `calc --sql`)"
+            ))),
+            other => match self.registry.udf(other) {
                 Ok(udf) if self.vega && matches!(other, "format" | "timeFormat" | "utcFormat") => {
                     self.call("coalesce", vec![udf.call(xs), lit("null")])
                 }

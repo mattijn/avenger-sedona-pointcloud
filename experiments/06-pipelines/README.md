@@ -151,7 +151,7 @@ step that executed. Twelve shots:
 7. a command;
 8. `undo`;
 9. and 10. the same histogram under SQL and Vega semantics (`0.0 m` against `0 m`);
-11. packages: hillshade plus Sedona functions called from Vega;
+11. packages: a hillshade step, then Sedona's `ST_Point`/`ST_AsText` as normal SQL;
 12. save and replay in a fresh process, with a byte-identical PNG.
 
 Every shot is a real run of `target/release/pipeline`.
@@ -274,17 +274,28 @@ the differential test unchanged at 99.5 %.
 | `terrain` | – | 2 (`hillshade`, `png`) | 0 |
 | `chart` | – | 7 | 0 |
 
-Because the compiler resolves every function by name through the session, a
-package's SQL functions are callable from Vega expressions too:
-`st_astext(st_point(datum.cx, datum.cy))` works in a `calc --vega` step. One
-chain uses all of them on the tile's south-east quarter:
+Package functions are SQL. Sedona's `ST_Point` and `ST_AsText` are called in
+a `sql` step like any built-in, because they are registered in the same
+DataFusion session. The Vega front end deliberately does **not** reach them.
+It accepts only the functions of the Vega expression reference, so a
+Vega expression stays valid Vega, and the Vega layer can later be deprecated
+as a unit. A package may still implement a Vega function under its Vega name,
+as `vega-format` does for `format` and `timeFormat`. Anything else fails with a
+pointer to SQL:
+
+```
+calc wkt --vega "st_astext(st_point(datum.x, datum.y))"
+→ vega: `st_point` is not a Vega function; call it from SQL (`sql` or `calc --sql`)
+```
+
+One chain uses the packages on the tile's south-east quarter:
 
 ```
 read tile --statistics ! filter --vega "datum.x < 657400 && datum.y > 6867600"
   ! sql "SELECT floor(x) AS cx, floor(y) AS cy, max(z) AS h FROM input
          WHERE classification = 2 OR classification = 6 GROUP BY floor(x), floor(y)"
   ! hillshade --x cx --y cy --z h --cell 1
-  ! calc wkt --vega "st_astext(st_point(datum.cx, datum.cy))"
+  ! sql "SELECT cx, cy, h, hillshade, ST_AsText(ST_Point(cx, cy)) AS wkt FROM input"
   ! calc label --vega "'shade ' + format(datum.hillshade, '.0%')"
   ! png out/hillshade.png --x cx --y cy --value hillshade
 ```
@@ -380,8 +391,10 @@ data source.
    JavaScript encoding (`coalesce`) hides predicates from statistics pruning;
    an equivalent encoding keeps it.
 5. **There are two registries: functions and steps.** Functions go into the
-   DataFusion session and are reachable from SQL and Vega alike. Whole-dataset
-   tools are steps, and each one is a materialisation point.
+   DataFusion session and are called from SQL. Sedona's `ST_*` functions are
+   normal SQL. Vega expressions see only Vega's own function set, so they stay
+   portable and the Vega layer can be deprecated later. Whole-dataset tools
+   are steps, and each one is a materialisation point.
 6. **Registering independent Rust packages runs into linking before
    semantics.** Shared crates such as `geo` must agree across Avenger,
    geodatafusion and Sedona, and function names must be namespaced.

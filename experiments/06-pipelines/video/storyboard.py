@@ -70,7 +70,7 @@ SHADE = [
     'filter --vega "datum.x < 657400 && datum.y > 6867600"',
     'sql "SELECT floor(x) AS cx, floor(y) AS cy, max(z) AS h FROM input WHERE classification = 2 OR classification = 6 GROUP BY floor(x), floor(y)"',
     "hillshade --x cx --y cy --z h --cell 1",
-    "calc wkt --vega \"st_astext(st_point(datum.cx, datum.cy))\"",
+    'sql "SELECT cx, cy, round(hillshade, 2) AS shade, ST_AsText(ST_Point(cx, cy)) AS wkt FROM input"',
     "head 2",
 ]
 
@@ -109,8 +109,8 @@ def shots():
               "Same pipeline, JavaScript semantics: 99.5 % of edge-case rows agree with real Vega.",
               "vega", [*HEIGHTS, "render out/video/s10.png"], 0, "s10"))
     s.append(("Packages add functions and steps",
-              "`hillshade` is a whole-dataset step; st_point / st_astext come from SedonaDB, called from Vega.",
-              "vega", [*SHADE, "png out/video/s11.png --x cx --y cy --value hillshade"], 6, "s11"))
+              "`hillshade` is a whole-dataset step. SedonaDB's ST_Point / ST_AsText are normal SQL.",
+              "vega", [*SHADE, "png out/video/s11.png --x cx --y cy --value shade"], 6, "s11"))
     return s
 
 
