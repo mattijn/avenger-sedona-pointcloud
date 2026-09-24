@@ -1,6 +1,6 @@
 # Experiment 7 — charts driven by decisions
 
-Status: plan. No crate yet.
+Status: phases A–F run, 24–25 Sep 2026, with Jev 1.13 and Claude Haiku 4.5 through OpenRouter. Phase G (a training run) is not built yet.
 
 Can a chart be driven by a decider that picks from typed options, rather than
 by a person writing commands? Two starting points:
@@ -150,6 +150,192 @@ Phase G, a training run as the data source, is described under
 Deliverables, as in experiments 5 and 6: a README with measured results, a
 `decide` step in the pipeline, an autopilot switch in a live view, and a
 video of a chart following typed text and data changes.
+
+## Run
+
+```sh
+set -a; source <folder with your .env>/.env; set +a    # OPENROUTER_API_KEY
+cargo run --release -p lidar-decide --bin decide_eval   # phases C, D, F
+cargo run --release -p lidar-decide --bin typing        # phase E
+```
+
+Every response is cached in [cache/](cache/), keyed by a hash of the decider,
+the observation and the questions. Both binaries replay byte-identically
+from the cache **without** an API key; only a new or changed case calls the
+API. All 108 cached decisions together cost $0.069.
+
+| File | What it holds |
+|---|---|
+| [src/observe.rs](src/observe.rs) | Column statistics and roles, the data description, the diff, the observation |
+| [src/options.rs](src/options.rs) | The questions per policy, and answers → experiment 6 task commands |
+| [src/deciders.rs](src/deciders.rs) | `Rules`, `Jev` (OpenRouter Decisions endpoint), `Llm` (OpenRouter chat), the cache |
+| [cases.json](cases.json) | 19 instructions and 4 data changes, with expected answers written before any decider ran |
+| [results/](results/) | Every decision (`decisions.json`) and the cache files each run used |
+
+## Results
+
+### A. The vocabulary as options
+
+One decision is one call with all questions at once, as Jev bills and
+answers them.
+
+| Question | Options (free policy) | Options (narrow policy) |
+|---|---|---|
+| action | no_change, mark, color, zoom, rotate_labels, highlight, title | the same without mark |
+| mark | bars, points, map, keep | – |
+| colour | red, blue, orange, green, grey, keep | same |
+| region | north_east, north_west, south_east, south_west, all, keep | same |
+| angle | tilt, vertical, keep | same |
+| subset | top_10, outliers, keep | same |
+| **total** | **6 questions, 29 options** | **5 questions, 25 options** |
+
+The decider only chooses intent. Arguments are derived from the data:
+- the fields for a new mark come from column roles (a category and a measure
+  for bars, two coordinates for a map);
+- zoom ranges come from the data's extent;
+- highlight thresholds come from the 90th and 99.9th percentiles.
+
+**A title cannot be expressed:** every decider recognised `title` when asked,
+and the translation stops there ("needs free text"). The policy is part of the
+questions themselves: under the narrow policy `mark` does not exist, so no
+decider can change the kind of chart.
+
+### B. The observation
+
+The observation holds the policy, the chart's `describe`, one line per data
+column and, where relevant, the data change or the typed instruction. That is
+~1,100 input tokens for Jev and ~900 for Haiku, with no raw rows.
+
+For example, the column list for the map:
+
+```
+11747 rows. Columns:
+- cx (Float64, coordinate): 201 distinct, range 657000..658000
+- cy (Float64, coordinate): 201 distinct, range 6867000..6868000
+- h (Float64, measure): 1814 distinct, range 45.53..93.65
+```
+
+**An observation must be reproducible.** DataFusion's approximate percentile
+varies with batch order. With a `UNION ALL` it changed the "extreme value"
+line of d03 between runs, and with it the cache key. Exact `percentile_cont`
+fixed that. Without a reproducible observation, cached and replayed decisions
+drift.
+
+### C–D. Decisions
+
+19 typed instructions on two charts (the height histogram and the buildings
+map), including two in Dutch. There are also 4 data changes, each under both
+policies. The d03 outlier is one synthetic cell with h = 400 m, added by
+`UNION ALL`.
+
+| Decider | Instructions right | Data changes right | Latency p50 / p95 | Cost, 27 decisions |
+|---|---|---|---|---|
+| rules | 13 / 19 | 8 / 8 (circular, see below) | 0 ms | $0 |
+| Jev 1.13 | 18 / 19 | 4 / 8 | 290 / 680 ms | $0.0013 |
+| Jev 1.13, confidence < 0.5 → no change | **19 / 19** | **7 / 8** | same | same |
+| Claude Haiku 4.5 | 19 / 19 | 6 / 8 | 1,114 / 2,315 ms | $0.033 |
+
+- **Language.** The rules fail on Dutch ("maak de balken rood", "inzoomen op
+  het zuidwesten"), on paraphrase ("can we look closer at the lower right
+  part", "put the labels upright") and on "something calmer". Both models get
+  all of these.
+- **Jev's confidence is informative.** Its five wrong answers had confidence
+  0.12, 0.26, 0.23, 0.39 and 0.75. Treating anything below 0.5 as "no change"
+  fixes four of them without losing a right answer; at 0.6 two right answers
+  (0.51, 0.57) are lost.
+- **Both models share one failure.** When two new height categories appear
+  (d04, free policy), Jev (0.75) and Haiku both choose "highlight outliers".
+  New categories are not outliers; the case expects no change.
+- **"Doing nothing" is the hard answer for Jev.** For "more rows of the same
+  kind" it chose `title` (0.12) and `zoom` with no region (0.26). With the
+  threshold both become no change.
+- **The rules' 8/8 on data changes measures nothing.** The same code wrote
+  the diff text ("new column … (coordinate)", "an extreme value … appeared")
+  that the rules match. They are the floor for language, not for data.
+- **Cost and speed.** Jev is 26 times cheaper and 3.8 times faster (median)
+  than Haiku for the same questions.
+- **Validation.** No chosen command was rejected by experiment 6's task
+  validation. Some were incomplete (zoom with no region, "unfit"), and titles
+  "need free text".
+
+![Charts after Jev's decisions](images/decisions.png)
+
+The gallery ([images/cases/](images/cases/)) also shows what the observation
+lacks:
+- **"Something calmer" had no visible effect.** Jev chose blue, which the chart
+  already was: the observation does not say which colour is current.
+- **After d02 turned the scatter into a map, the old title stayed:**
+  "height against point count". A mark change should revisit dependent state.
+- **The highlighted outlier is one cell of normal size (d03).** Colour alone
+  is not enough emphasis.
+
+### E. While typing
+
+Six instructions, decided after every word. A "chart change" counts only
+decisions that become a valid command. `zoom` with no region yet changes
+nothing.
+
+| Decider | Chart changes over 6 sentences | With confidence ≥ 0.6 | Right at the end |
+|---|---|---|---|
+| rules | 4 | 4 | 3 of 6 |
+| Jev | 14 | 9 | 6 of 6 |
+| Haiku | 11 | 11 (no confidence given) | 6 of 6 |
+
+Typical trails (Jev, with confidence):
+- "make … the … bars … red": highlight/outliers (0.46) → … → color/red (0.99).
+  The threshold removes the early guess, and the chart changes once.
+- "can we look closer at the lower right part": after "lower", Jev settles on
+  zoom/south_west with 0.96 confidence, and on south_east (1.00) after "right".
+  A confident wrong intermediate that no threshold catches; only waiting for a
+  pause in typing (debouncing) would.
+- "highlight the tallest buildings": after "tallest", both models choose
+  outliers, then top_10 after "buildings". The subset flips once, at high
+  confidence.
+
+A confidence threshold removes about a third of Jev's changes, but not the
+confident wrong intermediates. Deciding while typing needs both a threshold
+and debouncing.
+
+### F. Policies
+
+- **The narrow policy held in every case.** "turn this into a scatter plot"
+  (i19) and "a geometry column appears" (d02) led every decider to no change,
+  because `mark` is not among the options.
+- **The free policy chose a map when coordinates and a geometry column
+  appeared (d02).** All three deciders did this, Jev with 0.83 confidence.
+  That is the "database gets a geometry column" scenario from the plan.
+- **Under both policies, an outlier led to highlighting it (d03).** Styling is
+  allowed under the narrow policy too.
+
+## What it takes
+
+1. **The option list is the interface.** A typed classifier drives a chart as
+   well as a general model does on instructions (19/19 each with a
+   threshold), for 4 % of the cost and a quarter of the latency. The work lies
+   in the vocabulary: intent as enums, arguments derived from the data.
+2. **Confidence is part of the contract.** Jev's probabilities turn "not
+   sure" into "no change". Haiku gives none; a model without a calibrated
+   confidence needs another way to abstain.
+3. **The observation decides as much as the decider.** Missing style state
+   (the current colour), dependent state (a title that no longer fits) and
+   non-reproducible statistics all showed up as wrong or invisible decisions.
+4. **Free text needs a second route.** Titles, predicates and precise ranges
+   do not fit in enums.
+5. **Typing needs damping at two levels:** a confidence threshold for
+   uncertain guesses, and debouncing for confident wrong intermediates.
+
+## Notes for the discussion
+
+- **Deciding intent and deriving arguments is a clean split.** It keeps
+  option lists small (29 options) while the chart still gets exact ranges and
+  thresholds. A chart library could publish exactly that surface: the
+  intents with their named options, and the rules that turn them into
+  commands.
+- **Jev's `score` question type was not used.** "How well does this chart
+  serve the policy?" is a natural next step for the "on track" idea.
+- **Not tested:** the video and live autopilot deliverables, phase G, other
+  LLMs, and larger or noisier instruction sets. With 19 + 8 cases, one case is
+  5 % (instructions) or 12.5 % (data changes); the counts are indicative.
 
 ## Advanced: a training run as the data source
 

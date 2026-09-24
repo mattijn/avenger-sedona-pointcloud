@@ -1,0 +1,60 @@
+{
+  "answers": {
+    "action": "mark",
+    "angle": "keep",
+    "colour": "keep",
+    "mark": "map",
+    "region": "keep",
+    "subset": "keep"
+  },
+  "confidence": null,
+  "cost": 0.00166,
+  "input_tokens": 995,
+  "ms": 2315.3782079999996,
+  "raw": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "content": "```json\n{\n  \"action\": \"mark\",\n  \"angle\": \"keep\",\n  \"colour\": \"keep\",\n  \"mark\": \"map\",\n  \"region\": \"keep\",\n  \"subset\": \"keep\"\n}\n```\n\nThe chart currently shows a scatter plot of height (h) vs point count (n), but the data has new coordinate columns (cx, cy) and geometry information that should be visualized. To best show this spatial data and its latest change, the chart should be changed to a map mark type, which will display the building cells at their actual geographic coordinates.",
+          "reasoning": null,
+          "refusal": null,
+          "role": "assistant"
+        },
+        "native_finish_reason": "end_turn"
+      }
+    ],
+    "created": 1790286803,
+    "id": "gen-1790286803-erj8p0cxLvs46pxiZcpP",
+    "model": "anthropic/claude-haiku-4.5",
+    "object": "chat.completion",
+    "provider": "Amazon Bedrock",
+    "service_tier": "default",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 133,
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "cost": 0.00166,
+      "cost_details": {
+        "upstream_inference_completions_cost": 0.000665,
+        "upstream_inference_cost": 0.00166,
+        "upstream_inference_prompt_cost": 0.000995
+      },
+      "is_byok": false,
+      "prompt_tokens": 995,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 1128
+    }
+  }
+}

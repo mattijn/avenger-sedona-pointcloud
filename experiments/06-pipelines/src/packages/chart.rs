@@ -491,6 +491,26 @@ pub async fn render_definition(definition: ChartDefinition) -> Result<Vec<u8>> {
     frame.to_png(2.0).await.map_err(|e| err(e.to_string()))
 }
 
+/// Executed batches can disagree with the plan, and with each other, on
+/// nullability (a UNION ALL of an aggregate and a literal row, for example).
+/// A snapshot needs one schema: all fields nullable, every batch rebuilt on it.
+fn uniform(
+    planned: arrow::datatypes::SchemaRef,
+    batches: Vec<arrow::array::RecordBatch>,
+) -> Result<(arrow::datatypes::SchemaRef, Vec<arrow::array::RecordBatch>)> {
+    let fields: Vec<arrow::datatypes::Field> = planned
+        .fields()
+        .iter()
+        .map(|f| f.as_ref().clone().with_nullable(true))
+        .collect();
+    let schema = Arc::new(arrow::datatypes::Schema::new(fields));
+    let batches = batches
+        .into_iter()
+        .map(|b| arrow::array::RecordBatch::try_new(schema.clone(), b.columns().to_vec()))
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok((schema, batches))
+}
+
 /// The sink's work: the data becomes one snapshot, the chart state becomes
 /// scales, a mark and axes.
 pub async fn build_definition(p: &Pipeline) -> Result<(ChartDefinition, usize)> {
@@ -505,8 +525,8 @@ pub async fn build_definition(p: &Pipeline) -> Result<(ChartDefinition, usize)> 
     // Materialise once; the domains come from this snapshot, not from
     // re-running the lazy plan.
     let df = p.dataframe()?;
-    let schema = Arc::new(df.schema().as_arrow().clone());
-    let batches = df.collect().await?;
+    let planned = Arc::new(df.schema().as_arrow().clone());
+    let (schema, batches) = uniform(planned, df.collect().await?)?;
     let rows = batches.iter().map(|b| b.num_rows()).sum();
     let extent = |channel: &str, field: &str| -> (f64, f64) {
         if let Some(d) = s[channel]["domain"].as_str() {
@@ -548,8 +568,8 @@ pub async fn build_definition(p: &Pipeline) -> Result<(ChartDefinition, usize)> 
     let highlight = match s["highlight"]["where"].as_str() {
         Some(pred) => {
             let hl = p.dataframe()?.filter(p.vega(pred)?)?;
-            let hl_schema = Arc::new(hl.schema().as_arrow().clone());
-            let hl_batches = hl.collect().await?;
+            let hl_planned = Arc::new(hl.schema().as_arrow().clone());
+            let (hl_schema, hl_batches) = uniform(hl_planned, hl.collect().await?)?;
             let node = flow
                 .table_snapshot(
                     "highlight",

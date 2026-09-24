@@ -1,0 +1,70 @@
+{
+  "note": "Phase D cases. Bases are pipelines on the tile; {TILE} is replaced. Expected values may be a list of acceptable answers. Expectations were written before any decider ran.",
+  "bases": {
+    "heights": {
+      "data": [
+        "read {TILE} --statistics",
+        "filter --vega \"datum.classification == 6\"",
+        "calc height --vega \"floor((datum.z - 42) / 4) * 4\"",
+        "sql \"SELECT height, count(*) AS points FROM input WHERE height BETWEEN 0 AND 32 GROUP BY height ORDER BY height\"",
+        "calc label --vega \"toString(datum.height) + ' m'\""
+      ],
+      "commands": ["bars points --by label", "title \"Building points per 4 m of height\""]
+    },
+    "map": {
+      "data": [
+        "read {TILE} --statistics",
+        "filter --vega \"datum.classification == 6\"",
+        "sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input GROUP BY floor(x/5)*5, floor(y/5)*5\""
+      ],
+      "commands": ["points --x cx --y cy --size 4", "title \"Buildings, 5 m cells\""]
+    },
+    "cells_plain": {
+      "data": [
+        "read {TILE} --statistics",
+        "filter --vega \"datum.classification == 6\"",
+        "sql \"SELECT h, n FROM (SELECT floor(x/5) AS a, floor(y/5) AS b, max(z) AS h, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY floor(x/5), floor(y/5))\""
+      ],
+      "commands": ["points --x h --y n --size 4", "title \"Building cells: height against point count\""]
+    }
+  },
+  "instructions": [
+    {"id": "i01", "base": "heights", "text": "make the bars red", "expect": {"action": "color", "colour": "red"}},
+    {"id": "i02", "base": "heights", "text": "maak de balken rood", "expect": {"action": "color", "colour": "red"}},
+    {"id": "i03", "base": "heights", "text": "orange would look better", "expect": {"action": "color", "colour": "orange"}},
+    {"id": "i04", "base": "heights", "text": "the labels overlap, tilt them", "expect": {"action": "rotate_labels", "angle": "tilt"}},
+    {"id": "i05", "base": "heights", "text": "put the labels upright", "expect": {"action": "rotate_labels", "angle": "vertical"}},
+    {"id": "i06", "base": "heights", "text": "turn this into a scatter plot", "expect": {"action": "mark", "mark": "points"}},
+    {"id": "i07", "base": "heights", "text": "rename the chart to Building heights", "expect": {"action": "title"}},
+    {"id": "i08", "base": "heights", "text": "looks good, don't change anything", "expect": {"action": "no_change"}},
+    {"id": "i09", "base": "heights", "text": "the colour is too loud, something calmer please", "expect": {"action": "color", "colour": ["grey", "blue", "green"]}},
+    {"id": "i10", "base": "map", "text": "zoom to the north-east", "expect": {"action": "zoom", "region": "north_east"}},
+    {"id": "i11", "base": "map", "text": "show me the top left corner", "expect": {"action": "zoom", "region": "north_west"}},
+    {"id": "i12", "base": "map", "text": "can we look closer at the lower right part", "expect": {"action": "zoom", "region": "south_east"}},
+    {"id": "i13", "base": "map", "text": "go back to the whole tile", "expect": {"action": "zoom", "region": "all"}},
+    {"id": "i14", "base": "map", "text": "highlight the tallest buildings", "expect": {"action": "highlight", "subset": "top_10"}},
+    {"id": "i15", "base": "map", "text": "where are the outliers?", "expect": {"action": "highlight", "subset": "outliers"}},
+    {"id": "i16", "base": "map", "text": "inzoomen op het zuidwesten", "expect": {"action": "zoom", "region": "south_west"}},
+    {"id": "i17", "base": "map", "text": "make the points green", "expect": {"action": "color", "colour": "green"}},
+    {"id": "i18", "base": "map", "text": "hmm", "expect": {"action": "no_change"}},
+    {"id": "i19", "base": "heights", "text": "turn this into a scatter plot", "policy": "narrow", "expect": {"action": "no_change"}}
+  ],
+  "data_changes": [
+    {"id": "d01", "name": "more rows of the same kind", "base": "map",
+     "before": ["read {TILE} --statistics", "filter --vega \"datum.classification == 6 && datum.x < 657500\"", "sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input GROUP BY floor(x/5)*5, floor(y/5)*5\""],
+     "after": "base",
+     "expect": {"free": {"action": "no_change"}, "narrow": {"action": "no_change"}}},
+    {"id": "d02", "name": "coordinates and a geometry column appear", "base": "cells_plain",
+     "before": "base",
+     "after": ["read {TILE} --statistics", "filter --vega \"datum.classification == 6\"", "sql \"SELECT cx, cy, h, n, ST_AsText(ST_Point(cx, cy)) AS geom FROM (SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY floor(x/5)*5, floor(y/5)*5)\""],
+     "expect": {"free": {"action": "mark", "mark": "map"}, "narrow": {"action": "no_change"}}},
+    {"id": "d03", "name": "an outlier appears", "base": "map",
+     "before": "base",
+     "after": ["read {TILE} --statistics", "filter --vega \"datum.classification == 6\"", "sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input GROUP BY floor(x/5)*5, floor(y/5)*5 UNION ALL SELECT 657502.5, 6867502.5, 400.0\""],
+     "expect": {"free": {"action": "highlight", "subset": "outliers"}, "narrow": {"action": "highlight", "subset": "outliers"}}},
+    {"id": "d04", "name": "a new category appears", "base": "heights",
+     "before": ["read {TILE} --statistics", "filter --vega \"datum.classification == 6\"", "calc height --vega \"floor((datum.z - 42) / 4) * 4\"", "sql \"SELECT height, count(*) AS points FROM input WHERE height BETWEEN 0 AND 24 GROUP BY height ORDER BY height\"", "calc label --vega \"toString(datum.height) + ' m'\""],
+     "after": "base",
+     "expect": {"free": {"action": "no_change"}, "narrow": {"action": "no_change"}}}
+  ]
+}

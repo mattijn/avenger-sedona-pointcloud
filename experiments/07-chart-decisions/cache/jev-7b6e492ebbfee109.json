@@ -1,0 +1,97 @@
+{
+  "answers": {
+    "action": "color",
+    "angle": "keep",
+    "colour": "green",
+    "mark": "keep",
+    "region": "keep",
+    "subset": "keep"
+  },
+  "confidence": 1.0,
+  "cost": 0.00004956,
+  "input_tokens": 1180,
+  "ms": 312.06070800000003,
+  "raw": {
+    "answers": {
+      "action": {
+        "choice": "color",
+        "confidence": 1,
+        "probabilities": {
+          "color": 1,
+          "highlight": 0,
+          "mark": 0,
+          "no_change": 0,
+          "rotate_labels": 0,
+          "title": 0,
+          "zoom": 0
+        },
+        "type": "choice"
+      },
+      "angle": {
+        "choice": "keep",
+        "confidence": 0.99,
+        "probabilities": {
+          "keep": 1,
+          "tilt": 0,
+          "vertical": 0
+        },
+        "type": "choice"
+      },
+      "colour": {
+        "choice": "green",
+        "confidence": 1,
+        "probabilities": {
+          "blue": 0,
+          "green": 1,
+          "grey": 0,
+          "keep": 0,
+          "orange": 0,
+          "red": 0
+        },
+        "type": "choice"
+      },
+      "mark": {
+        "choice": "keep",
+        "confidence": 0.54,
+        "probabilities": {
+          "bars": 0.01,
+          "keep": 0.66,
+          "map": 0.32,
+          "points": 0.01
+        },
+        "type": "choice"
+      },
+      "region": {
+        "choice": "keep",
+        "confidence": 0.89,
+        "probabilities": {
+          "all": 0.04,
+          "keep": 0.91,
+          "north_east": 0.02,
+          "north_west": 0.01,
+          "south_east": 0.01,
+          "south_west": 0.01
+        },
+        "type": "choice"
+      },
+      "subset": {
+        "choice": "keep",
+        "confidence": 0.84,
+        "probabilities": {
+          "keep": 0.89,
+          "outliers": 0.06,
+          "top_10": 0.05
+        },
+        "type": "choice"
+      }
+    },
+    "id": "gen-dec-1790286765-31LI4nbzohRU3OgWlrRO",
+    "model": "typesafe/jev-1.13-20260917",
+    "provider": "TypeSafe",
+    "usage": {
+      "cost": 0.00004956,
+      "input_tokens": 1180,
+      "output_tokens": 305
+    }
+  }
+}

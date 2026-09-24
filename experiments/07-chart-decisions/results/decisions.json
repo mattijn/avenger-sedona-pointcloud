@@ -1,0 +1,1571 @@
+[
+  {
+    "answers": {
+      "action": "color",
+      "colour": "red"
+    },
+    "applied": "accepted: color #c44e52",
+    "cached": false,
+    "case": "i01",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.0145,
+    "policy": "free",
+    "text": "make the bars red"
+  },
+  {
+    "answers": {
+      "action": "color",
+      "angle": "keep",
+      "colour": "red",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: color #c44e52",
+    "cached": true,
+    "case": "i01",
+    "confidence": 0.99,
+    "correct": true,
+    "cost": 0.000046536,
+    "decider": "jev",
+    "input_tokens": 1108,
+    "ms": 642.328875,
+    "policy": "free",
+    "text": "make the bars red"
+  },
+  {
+    "answers": {
+      "action": "color",
+      "angle": "keep",
+      "colour": "red",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: color #c44e52",
+    "cached": true,
+    "case": "i01",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001198,
+    "decider": "llm",
+    "input_tokens": 903,
+    "ms": 1170.170125,
+    "policy": "free",
+    "text": "make the bars red"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "i02",
+    "confidence": 1.0,
+    "correct": false,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.0045000000000000005,
+    "policy": "free",
+    "text": "maak de balken rood"
+  },
+  {
+    "answers": {
+      "action": "color",
+      "angle": "keep",
+      "colour": "red",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: color #c44e52",
+    "cached": true,
+    "case": "i02",
+    "confidence": 0.99,
+    "correct": true,
+    "cost": 0.00004662,
+    "decider": "jev",
+    "input_tokens": 1110,
+    "ms": 304.661875,
+    "policy": "free",
+    "text": "maak de balken rood"
+  },
+  {
+    "answers": {
+      "action": "color",
+      "angle": "keep",
+      "colour": "red",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: color #c44e52",
+    "cached": true,
+    "case": "i02",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001201,
+    "decider": "llm",
+    "input_tokens": 906,
+    "ms": 1070.05375,
+    "policy": "free",
+    "text": "maak de balken rood"
+  },
+  {
+    "answers": {
+      "action": "color",
+      "colour": "orange"
+    },
+    "applied": "accepted: color #f28e2b",
+    "cached": false,
+    "case": "i03",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.0037500000000000003,
+    "policy": "free",
+    "text": "orange would look better"
+  },
+  {
+    "answers": {
+      "action": "color",
+      "angle": "keep",
+      "colour": "orange",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "accepted: color #f28e2b",
+    "cached": true,
+    "case": "i03",
+    "confidence": 0.78,
+    "correct": true,
+    "cost": 0.000046536,
+    "decider": "jev",
+    "input_tokens": 1108,
+    "ms": 437.6645,
+    "policy": "free",
+    "text": "orange would look better"
+  },
+  {
+    "answers": {
+      "action": "color",
+      "angle": "keep",
+      "colour": "orange",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: color #f28e2b",
+    "cached": true,
+    "case": "i03",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001198,
+    "decider": "llm",
+    "input_tokens": 903,
+    "ms": 1110.288875,
+    "policy": "free",
+    "text": "orange would look better"
+  },
+  {
+    "answers": {
+      "action": "rotate_labels",
+      "angle": "tilt"
+    },
+    "applied": "accepted: rotate-labels x --angle -45",
+    "cached": false,
+    "case": "i04",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.0043749999999999995,
+    "policy": "free",
+    "text": "the labels overlap, tilt them"
+  },
+  {
+    "answers": {
+      "action": "rotate_labels",
+      "angle": "tilt",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "accepted: rotate-labels x --angle -45",
+    "cached": true,
+    "case": "i04",
+    "confidence": 0.99,
+    "correct": true,
+    "cost": 0.00004662,
+    "decider": "jev",
+    "input_tokens": 1110,
+    "ms": 298.9215,
+    "policy": "free",
+    "text": "the labels overlap, tilt them"
+  },
+  {
+    "answers": {
+      "action": "rotate_labels",
+      "angle": "tilt",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: rotate-labels x --angle -45",
+    "cached": true,
+    "case": "i04",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001216,
+    "decider": "llm",
+    "input_tokens": 906,
+    "ms": 1059.01675,
+    "policy": "free",
+    "text": "the labels overlap, tilt them"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "i05",
+    "confidence": 1.0,
+    "correct": false,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.0050420000000000005,
+    "policy": "free",
+    "text": "put the labels upright"
+  },
+  {
+    "answers": {
+      "action": "rotate_labels",
+      "angle": "vertical",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "accepted: rotate-labels x --angle -90",
+    "cached": true,
+    "case": "i05",
+    "confidence": 0.97,
+    "correct": true,
+    "cost": 0.000046536,
+    "decider": "jev",
+    "input_tokens": 1108,
+    "ms": 386.504209,
+    "policy": "free",
+    "text": "put the labels upright"
+  },
+  {
+    "answers": {
+      "action": "rotate_labels",
+      "angle": "vertical",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: rotate-labels x --angle -90",
+    "cached": true,
+    "case": "i05",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001209,
+    "decider": "llm",
+    "input_tokens": 904,
+    "ms": 1060.026792,
+    "policy": "free",
+    "text": "put the labels upright"
+  },
+  {
+    "answers": {
+      "action": "mark",
+      "mark": "points"
+    },
+    "applied": "accepted: points --x height --y points",
+    "cached": false,
+    "case": "i06",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.005125,
+    "policy": "free",
+    "text": "turn this into a scatter plot"
+  },
+  {
+    "answers": {
+      "action": "mark",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "points",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: points --x height --y points",
+    "cached": true,
+    "case": "i06",
+    "confidence": 0.99,
+    "correct": true,
+    "cost": 0.00004662,
+    "decider": "jev",
+    "input_tokens": 1110,
+    "ms": 239.519792,
+    "policy": "free",
+    "text": "turn this into a scatter plot"
+  },
+  {
+    "answers": {
+      "action": "mark",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "points",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: points --x height --y points",
+    "cached": true,
+    "case": "i06",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.0012,
+    "decider": "llm",
+    "input_tokens": 905,
+    "ms": 1105.824458,
+    "policy": "free",
+    "text": "turn this into a scatter plot"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "i07",
+    "confidence": 1.0,
+    "correct": false,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.005167,
+    "policy": "free",
+    "text": "rename the chart to Building heights"
+  },
+  {
+    "answers": {
+      "action": "title",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "needs free text",
+    "cached": true,
+    "case": "i07",
+    "confidence": 0.97,
+    "correct": true,
+    "cost": 0.00004662,
+    "decider": "jev",
+    "input_tokens": 1110,
+    "ms": 290.206959,
+    "policy": "free",
+    "text": "rename the chart to Building heights"
+  },
+  {
+    "answers": {
+      "action": "title",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "needs free text",
+    "cached": true,
+    "case": "i07",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.0012,
+    "decider": "llm",
+    "input_tokens": 905,
+    "ms": 1188.9752090000002,
+    "policy": "free",
+    "text": "rename the chart to Building heights"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "i08",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.003375,
+    "policy": "free",
+    "text": "looks good, don't change anything"
+  },
+  {
+    "answers": {
+      "action": "no_change",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "nothing to do",
+    "cached": true,
+    "case": "i08",
+    "confidence": 0.72,
+    "correct": true,
+    "cost": 0.000046662,
+    "decider": "jev",
+    "input_tokens": 1111,
+    "ms": 265.06304200000005,
+    "policy": "free",
+    "text": "looks good, don't change anything"
+  },
+  {
+    "answers": {
+      "action": "no_change",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "nothing to do",
+    "cached": true,
+    "case": "i08",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001211,
+    "decider": "llm",
+    "input_tokens": 906,
+    "ms": 1129.47275,
+    "policy": "free",
+    "text": "looks good, don't change anything"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "i09",
+    "confidence": 1.0,
+    "correct": false,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.005167,
+    "policy": "free",
+    "text": "the colour is too loud, something calmer please"
+  },
+  {
+    "answers": {
+      "action": "color",
+      "angle": "keep",
+      "colour": "blue",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "accepted: color #4c78a8",
+    "cached": true,
+    "case": "i09",
+    "confidence": 0.99,
+    "correct": true,
+    "cost": 0.000046788,
+    "decider": "jev",
+    "input_tokens": 1114,
+    "ms": 370.000166,
+    "policy": "free",
+    "text": "the colour is too loud, something calmer please"
+  },
+  {
+    "answers": {
+      "action": "color",
+      "angle": "keep",
+      "colour": "grey",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: color #9aa0a6",
+    "cached": true,
+    "case": "i09",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001204,
+    "decider": "llm",
+    "input_tokens": 909,
+    "ms": 1178.793084,
+    "policy": "free",
+    "text": "the colour is too loud, something calmer please"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "region": "north_east"
+    },
+    "applied": "accepted: zoom 657500..658000 6867500..6868000",
+    "cached": false,
+    "case": "i10",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.001833,
+    "policy": "free",
+    "text": "zoom to the north-east"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "map",
+      "region": "north_east",
+      "subset": "keep"
+    },
+    "applied": "accepted: zoom 657500..658000 6867500..6868000",
+    "cached": true,
+    "case": "i10",
+    "confidence": 0.99,
+    "correct": true,
+    "cost": 0.000049602,
+    "decider": "jev",
+    "input_tokens": 1181,
+    "ms": 303.92087499999997,
+    "policy": "free",
+    "text": "zoom to the north-east"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "north_east",
+      "subset": "keep"
+    },
+    "applied": "accepted: zoom 657500..658000 6867500..6868000",
+    "cached": true,
+    "case": "i10",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001245,
+    "decider": "llm",
+    "input_tokens": 940,
+    "ms": 1035.025708,
+    "policy": "free",
+    "text": "zoom to the north-east"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "region": "north_west"
+    },
+    "applied": "accepted: zoom 657000..657500 6867500..6868000",
+    "cached": false,
+    "case": "i11",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.002792,
+    "policy": "free",
+    "text": "show me the top left corner"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "map",
+      "region": "north_west",
+      "subset": "top_10"
+    },
+    "applied": "accepted: zoom 657000..657500 6867500..6868000",
+    "cached": true,
+    "case": "i11",
+    "confidence": 0.8,
+    "correct": true,
+    "cost": 0.000049644,
+    "decider": "jev",
+    "input_tokens": 1182,
+    "ms": 275.778167,
+    "policy": "free",
+    "text": "show me the top left corner"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "north_west",
+      "subset": "keep"
+    },
+    "applied": "accepted: zoom 657000..657500 6867500..6868000",
+    "cached": true,
+    "case": "i11",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001245,
+    "decider": "llm",
+    "input_tokens": 940,
+    "ms": 1111.465125,
+    "policy": "free",
+    "text": "show me the top left corner"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "i12",
+    "confidence": 1.0,
+    "correct": false,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.0055,
+    "policy": "free",
+    "text": "can we look closer at the lower right part"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "map",
+      "region": "south_east",
+      "subset": "keep"
+    },
+    "applied": "accepted: zoom 657500..658000 6867000..6867500",
+    "cached": true,
+    "case": "i12",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.00004977,
+    "decider": "jev",
+    "input_tokens": 1185,
+    "ms": 254.90325,
+    "policy": "free",
+    "text": "can we look closer at the lower right part"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "south_east",
+      "subset": "keep"
+    },
+    "applied": "accepted: zoom 657500..658000 6867000..6867500",
+    "cached": true,
+    "case": "i12",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001248,
+    "decider": "llm",
+    "input_tokens": 943,
+    "ms": 1159.6945839999998,
+    "policy": "free",
+    "text": "can we look closer at the lower right part"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "region": "all"
+    },
+    "applied": "accepted: reset-zoom",
+    "cached": false,
+    "case": "i13",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.003625,
+    "policy": "free",
+    "text": "go back to the whole tile"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "map",
+      "region": "all",
+      "subset": "keep"
+    },
+    "applied": "accepted: reset-zoom",
+    "cached": true,
+    "case": "i13",
+    "confidence": 0.93,
+    "correct": true,
+    "cost": 0.000049644,
+    "decider": "jev",
+    "input_tokens": 1182,
+    "ms": 275.137542,
+    "policy": "free",
+    "text": "go back to the whole tile"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "all",
+      "subset": "keep"
+    },
+    "applied": "accepted: reset-zoom",
+    "cached": true,
+    "case": "i13",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001235,
+    "decider": "llm",
+    "input_tokens": 940,
+    "ms": 1194.513042,
+    "policy": "free",
+    "text": "go back to the whole tile"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "subset": "top_10"
+    },
+    "applied": "accepted: highlight \"datum.h > 62.74399999\"",
+    "cached": false,
+    "case": "i14",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.004458,
+    "policy": "free",
+    "text": "highlight the tallest buildings"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "map",
+      "region": "keep",
+      "subset": "top_10"
+    },
+    "applied": "accepted: highlight \"datum.h > 62.74399999\"",
+    "cached": true,
+    "case": "i14",
+    "confidence": 0.94,
+    "correct": true,
+    "cost": 0.00004956,
+    "decider": "jev",
+    "input_tokens": 1180,
+    "ms": 283.552417,
+    "policy": "free",
+    "text": "highlight the tallest buildings"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "angle": "keep",
+      "colour": "red",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "top_10"
+    },
+    "applied": "accepted: highlight \"datum.h > 62.74399999\"",
+    "cached": true,
+    "case": "i14",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001244,
+    "decider": "llm",
+    "input_tokens": 939,
+    "ms": 1483.776542,
+    "policy": "free",
+    "text": "highlight the tallest buildings"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "subset": "outliers"
+    },
+    "applied": "accepted: highlight \"datum.h > 91.25334\"",
+    "cached": false,
+    "case": "i15",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.004208,
+    "policy": "free",
+    "text": "where are the outliers?"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "map",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "accepted: highlight \"datum.h > 91.25334\"",
+    "cached": true,
+    "case": "i15",
+    "confidence": 0.51,
+    "correct": true,
+    "cost": 0.000049644,
+    "decider": "jev",
+    "input_tokens": 1182,
+    "ms": 250.12875000000005,
+    "policy": "free",
+    "text": "where are the outliers?"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "accepted: highlight \"datum.h > 91.25334\"",
+    "cached": true,
+    "case": "i15",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.00124,
+    "decider": "llm",
+    "input_tokens": 940,
+    "ms": 1072.5237080000002,
+    "policy": "free",
+    "text": "where are the outliers?"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "i16",
+    "confidence": 1.0,
+    "correct": false,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.0049169999999999995,
+    "policy": "free",
+    "text": "inzoomen op het zuidwesten"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "map",
+      "region": "south_west",
+      "subset": "keep"
+    },
+    "applied": "accepted: zoom 657000..657500 6867000..6867500",
+    "cached": true,
+    "case": "i16",
+    "confidence": 0.99,
+    "correct": true,
+    "cost": 0.00004977,
+    "decider": "jev",
+    "input_tokens": 1185,
+    "ms": 341.91587499999997,
+    "policy": "free",
+    "text": "inzoomen op het zuidwesten"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "south_west",
+      "subset": "keep"
+    },
+    "applied": "accepted: zoom 657000..657500 6867000..6867500",
+    "cached": true,
+    "case": "i16",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001247,
+    "decider": "llm",
+    "input_tokens": 942,
+    "ms": 1081.24,
+    "policy": "free",
+    "text": "inzoomen op het zuidwesten"
+  },
+  {
+    "answers": {
+      "action": "color",
+      "colour": "green"
+    },
+    "applied": "accepted: color #59a14f",
+    "cached": false,
+    "case": "i17",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.003708,
+    "policy": "free",
+    "text": "make the points green"
+  },
+  {
+    "answers": {
+      "action": "color",
+      "angle": "keep",
+      "colour": "green",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: color #59a14f",
+    "cached": true,
+    "case": "i17",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.00004956,
+    "decider": "jev",
+    "input_tokens": 1180,
+    "ms": 312.06070800000003,
+    "policy": "free",
+    "text": "make the points green"
+  },
+  {
+    "answers": {
+      "action": "color",
+      "angle": "keep",
+      "colour": "green",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: color #59a14f",
+    "cached": true,
+    "case": "i17",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001233,
+    "decider": "llm",
+    "input_tokens": 938,
+    "ms": 1113.826666,
+    "policy": "free",
+    "text": "make the points green"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "i18",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.001083,
+    "policy": "free",
+    "text": "hmm"
+  },
+  {
+    "answers": {
+      "action": "mark",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "map",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: points --x cx --y cy --size 4",
+    "cached": true,
+    "case": "i18",
+    "confidence": 0.23,
+    "correct": false,
+    "cost": 0.000049476,
+    "decider": "jev",
+    "input_tokens": 1178,
+    "ms": 272.063791,
+    "policy": "free",
+    "text": "hmm"
+  },
+  {
+    "answers": {
+      "action": "no_change",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "nothing to do",
+    "cached": true,
+    "case": "i18",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001241,
+    "decider": "llm",
+    "input_tokens": 936,
+    "ms": 1096.39675,
+    "policy": "free",
+    "text": "hmm"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "i19",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.0047090000000000005,
+    "policy": "narrow",
+    "text": "turn this into a scatter plot"
+  },
+  {
+    "answers": {
+      "action": "no_change",
+      "angle": "keep",
+      "colour": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "nothing to do",
+    "cached": true,
+    "case": "i19",
+    "confidence": 0.82,
+    "correct": true,
+    "cost": 0.000041664,
+    "decider": "jev",
+    "input_tokens": 992,
+    "ms": 292.02316699999994,
+    "policy": "narrow",
+    "text": "turn this into a scatter plot"
+  },
+  {
+    "answers": {
+      "action": "no_change",
+      "angle": "keep",
+      "colour": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "nothing to do",
+    "cached": true,
+    "case": "i19",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001337,
+    "decider": "llm",
+    "input_tokens": 792,
+    "ms": 2904.275583,
+    "policy": "narrow",
+    "text": "turn this into a scatter plot"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "d01",
+    "change": "rows 3168 -> 11747 (+271 %)",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.000917,
+    "policy": "free"
+  },
+  {
+    "answers": {
+      "action": "title",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "needs free text",
+    "cached": true,
+    "case": "d01",
+    "change": "rows 3168 -> 11747 (+271 %)",
+    "confidence": 0.12,
+    "correct": false,
+    "cost": 0.00005019,
+    "decider": "jev",
+    "input_tokens": 1195,
+    "ms": 680.097291,
+    "policy": "free"
+  },
+  {
+    "answers": {
+      "action": "mark",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "map",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: points --x cx --y cy --size 4",
+    "cached": true,
+    "case": "d01",
+    "change": "rows 3168 -> 11747 (+271 %)",
+    "confidence": null,
+    "correct": false,
+    "cost": 0.001245,
+    "decider": "llm",
+    "input_tokens": 950,
+    "ms": 1113.9237500000002,
+    "policy": "free"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "d01",
+    "change": "rows 3168 -> 11747 (+271 %)",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.000792,
+    "policy": "narrow"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "angle": "keep",
+      "colour": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "unfit: zoom chosen but no region",
+    "cached": true,
+    "case": "d01",
+    "change": "rows 3168 -> 11747 (+271 %)",
+    "confidence": 0.26,
+    "correct": false,
+    "cost": 0.000045234,
+    "decider": "jev",
+    "input_tokens": 1077,
+    "ms": 285.10383299999995,
+    "policy": "narrow"
+  },
+  {
+    "answers": {
+      "action": "no_change",
+      "angle": "keep",
+      "colour": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "nothing to do",
+    "cached": true,
+    "case": "d01",
+    "change": "rows 3168 -> 11747 (+271 %)",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001102,
+    "decider": "llm",
+    "input_tokens": 837,
+    "ms": 1039.392666,
+    "policy": "narrow"
+  },
+  {
+    "answers": {
+      "action": "mark",
+      "mark": "map"
+    },
+    "applied": "accepted: points --x cx --y cy --size 4",
+    "cached": false,
+    "case": "d02",
+    "change": "new column cx (coordinate); new column cy (coordinate); new column geom (geometry (WKT))",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.001209,
+    "policy": "free"
+  },
+  {
+    "answers": {
+      "action": "mark",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "map",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: points --x cx --y cy --size 4",
+    "cached": true,
+    "case": "d02",
+    "change": "new column cx (coordinate); new column cy (coordinate); new column geom (geometry (WKT))",
+    "confidence": 0.83,
+    "correct": true,
+    "cost": 0.000051366,
+    "decider": "jev",
+    "input_tokens": 1223,
+    "ms": 252.985625,
+    "policy": "free"
+  },
+  {
+    "answers": {
+      "action": "mark",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "map",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "accepted: points --x cx --y cy --size 4",
+    "cached": true,
+    "case": "d02",
+    "change": "new column cx (coordinate); new column cy (coordinate); new column geom (geometry (WKT))",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.00166,
+    "decider": "llm",
+    "input_tokens": 995,
+    "ms": 2315.3782079999996,
+    "policy": "free"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "d02",
+    "change": "new column cx (coordinate); new column cy (coordinate); new column geom (geometry (WKT))",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.000709,
+    "policy": "narrow"
+  },
+  {
+    "answers": {
+      "action": "no_change",
+      "angle": "keep",
+      "colour": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "nothing to do",
+    "cached": true,
+    "case": "d02",
+    "change": "new column cx (coordinate); new column cy (coordinate); new column geom (geometry (WKT))",
+    "confidence": 0.27,
+    "correct": true,
+    "cost": 0.00004641,
+    "decider": "jev",
+    "input_tokens": 1105,
+    "ms": 278.18112499999995,
+    "policy": "narrow"
+  },
+  {
+    "answers": {
+      "action": "no_change",
+      "angle": "keep",
+      "colour": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "nothing to do",
+    "cached": true,
+    "case": "d02",
+    "change": "new column cx (coordinate); new column cy (coordinate); new column geom (geometry (WKT))",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001147,
+    "decider": "llm",
+    "input_tokens": 882,
+    "ms": 1329.378958,
+    "policy": "narrow"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "subset": "outliers"
+    },
+    "applied": "accepted: highlight \"datum.h > 91.55167999999999\"",
+    "cached": false,
+    "case": "d03",
+    "change": "rows 11747 -> 11748 (+0 %); h: an extreme value 400 appeared, far above the 99.9th percentile 91.55",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.001459,
+    "policy": "free"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "map",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "accepted: highlight \"datum.h > 91.55167999999999\"",
+    "cached": true,
+    "case": "d03",
+    "change": "rows 11747 -> 11748 (+0 %); h: an extreme value 400 appeared, far above the 99.9th percentile 91.55",
+    "confidence": 0.84,
+    "correct": true,
+    "cost": 0.00005124,
+    "decider": "jev",
+    "input_tokens": 1220,
+    "ms": 683.728375,
+    "policy": "free"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "angle": "keep",
+      "colour": "red",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "accepted: highlight \"datum.h > 91.55167999999999\"",
+    "cached": true,
+    "case": "d03",
+    "change": "rows 11747 -> 11748 (+0 %); h: an extreme value 400 appeared, far above the 99.9th percentile 91.55",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001273,
+    "decider": "llm",
+    "input_tokens": 973,
+    "ms": 1345.252792,
+    "policy": "free"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "subset": "outliers"
+    },
+    "applied": "accepted: highlight \"datum.h > 91.55167999999999\"",
+    "cached": false,
+    "case": "d03",
+    "change": "rows 11747 -> 11748 (+0 %); h: an extreme value 400 appeared, far above the 99.9th percentile 91.55",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.000792,
+    "policy": "narrow"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "angle": "keep",
+      "colour": "keep",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "accepted: highlight \"datum.h > 91.55167999999999\"",
+    "cached": true,
+    "case": "d03",
+    "change": "rows 11747 -> 11748 (+0 %); h: an extreme value 400 appeared, far above the 99.9th percentile 91.55",
+    "confidence": 0.57,
+    "correct": true,
+    "cost": 0.000046284,
+    "decider": "jev",
+    "input_tokens": 1102,
+    "ms": 249.030792,
+    "policy": "narrow"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "angle": "keep",
+      "colour": "red",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "accepted: highlight \"datum.h > 91.55167999999999\"",
+    "cached": true,
+    "case": "d03",
+    "change": "rows 11747 -> 11748 (+0 %); h: an extreme value 400 appeared, far above the 99.9th percentile 91.55",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.00112,
+    "decider": "llm",
+    "input_tokens": 860,
+    "ms": 1282.204084,
+    "policy": "narrow"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "d04",
+    "change": "rows 7 -> 9 (+29 %); label: 2 new categories",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.001166,
+    "policy": "free"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "accepted: highlight \"datum.points > 1327004\"",
+    "cached": true,
+    "case": "d04",
+    "change": "rows 7 -> 9 (+29 %); label: 2 new categories",
+    "confidence": 0.75,
+    "correct": false,
+    "cost": 0.000047124,
+    "decider": "jev",
+    "input_tokens": 1122,
+    "ms": 298.21508400000005,
+    "policy": "free"
+  },
+  {
+    "answers": {
+      "action": "highlight",
+      "angle": "keep",
+      "colour": "keep",
+      "mark": "keep",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "accepted: highlight \"datum.points > 1327004\"",
+    "cached": true,
+    "case": "d04",
+    "change": "rows 7 -> 9 (+29 %); label: 2 new categories",
+    "confidence": null,
+    "correct": false,
+    "cost": 0.001221,
+    "decider": "llm",
+    "input_tokens": 921,
+    "ms": 1181.69825,
+    "policy": "free"
+  },
+  {
+    "answers": {
+      "action": "no_change"
+    },
+    "applied": "nothing to do",
+    "cached": false,
+    "case": "d04",
+    "change": "rows 7 -> 9 (+29 %); label: 2 new categories",
+    "confidence": 1.0,
+    "correct": true,
+    "cost": 0.0,
+    "decider": "rules",
+    "input_tokens": 0,
+    "ms": 0.000791,
+    "policy": "narrow"
+  },
+  {
+    "answers": {
+      "action": "zoom",
+      "angle": "keep",
+      "colour": "keep",
+      "region": "keep",
+      "subset": "outliers"
+    },
+    "applied": "unfit: zoom needs numeric x and y",
+    "cached": true,
+    "case": "d04",
+    "change": "rows 7 -> 9 (+29 %); label: 2 new categories",
+    "confidence": 0.39,
+    "correct": false,
+    "cost": 0.000042168,
+    "decider": "jev",
+    "input_tokens": 1004,
+    "ms": 255.940667,
+    "policy": "narrow"
+  },
+  {
+    "answers": {
+      "action": "no_change",
+      "angle": "keep",
+      "colour": "keep",
+      "region": "keep",
+      "subset": "keep"
+    },
+    "applied": "nothing to do",
+    "cached": true,
+    "case": "d04",
+    "change": "rows 7 -> 9 (+29 %); label: 2 new categories",
+    "confidence": null,
+    "correct": true,
+    "cost": 0.001073,
+    "decider": "llm",
+    "input_tokens": 808,
+    "ms": 938.069042,
+    "policy": "narrow"
+  }
+]

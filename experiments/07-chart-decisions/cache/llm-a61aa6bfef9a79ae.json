@@ -1,0 +1,60 @@
+{
+  "answers": {
+    "action": "zoom",
+    "angle": "keep",
+    "colour": "keep",
+    "mark": "keep",
+    "region": "keep",
+    "subset": "keep"
+  },
+  "confidence": null,
+  "cost": 0.001231,
+  "input_tokens": 936,
+  "ms": 1034.263917,
+  "raw": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "content": "```json\n{\n  \"action\": \"zoom\",\n  \"angle\": \"keep\",\n  \"colour\": \"keep\",\n  \"mark\": \"keep\",\n  \"region\": \"keep\",\n  \"subset\": \"keep\"\n}\n```",
+          "reasoning": null,
+          "refusal": null,
+          "role": "assistant"
+        },
+        "native_finish_reason": "end_turn"
+      }
+    ],
+    "created": 1790287551,
+    "id": "gen-1790287551-SsHBBgkSPhmM2DoOqn9Z",
+    "model": "anthropic/claude-haiku-4.5",
+    "object": "chat.completion",
+    "provider": "Amazon Bedrock",
+    "service_tier": "default",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 59,
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "cost": 0.001231,
+      "cost_details": {
+        "upstream_inference_completions_cost": 0.000295,
+        "upstream_inference_cost": 0.001231,
+        "upstream_inference_prompt_cost": 0.000936
+      },
+      "is_byok": false,
+      "prompt_tokens": 936,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 995
+    }
+  }
+}

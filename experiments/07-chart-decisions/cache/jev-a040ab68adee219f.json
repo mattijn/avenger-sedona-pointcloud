@@ -1,0 +1,97 @@
+{
+  "answers": {
+    "action": "zoom",
+    "angle": "keep",
+    "colour": "keep",
+    "mark": "map",
+    "region": "south_west",
+    "subset": "keep"
+  },
+  "confidence": 0.99,
+  "cost": 0.00004977,
+  "input_tokens": 1185,
+  "ms": 341.91587499999997,
+  "raw": {
+    "answers": {
+      "action": {
+        "choice": "zoom",
+        "confidence": 0.99,
+        "probabilities": {
+          "color": 0,
+          "highlight": 0,
+          "mark": 0,
+          "no_change": 0,
+          "rotate_labels": 0,
+          "title": 0,
+          "zoom": 1
+        },
+        "type": "choice"
+      },
+      "angle": {
+        "choice": "keep",
+        "confidence": 0.87,
+        "probabilities": {
+          "keep": 0.91,
+          "tilt": 0.05,
+          "vertical": 0.04
+        },
+        "type": "choice"
+      },
+      "colour": {
+        "choice": "keep",
+        "confidence": 0.96,
+        "probabilities": {
+          "blue": 0,
+          "green": 0,
+          "grey": 0,
+          "keep": 0.98,
+          "orange": 0,
+          "red": 0.02
+        },
+        "type": "choice"
+      },
+      "mark": {
+        "choice": "map",
+        "confidence": 0.38,
+        "probabilities": {
+          "bars": 0.01,
+          "keep": 0.44,
+          "map": 0.53,
+          "points": 0.02
+        },
+        "type": "choice"
+      },
+      "region": {
+        "choice": "south_west",
+        "confidence": 0.98,
+        "probabilities": {
+          "all": 0,
+          "keep": 0.01,
+          "north_east": 0,
+          "north_west": 0,
+          "south_east": 0,
+          "south_west": 0.99
+        },
+        "type": "choice"
+      },
+      "subset": {
+        "choice": "keep",
+        "confidence": 0.65,
+        "probabilities": {
+          "keep": 0.77,
+          "outliers": 0.11,
+          "top_10": 0.12
+        },
+        "type": "choice"
+      }
+    },
+    "id": "gen-dec-1790286753-0ZLOkg7NR8D53gLfEUyZ",
+    "model": "typesafe/jev-1.13-20260917",
+    "provider": "TypeSafe",
+    "usage": {
+      "cost": 0.00004977,
+      "input_tokens": 1185,
+      "output_tokens": 307
+    }
+  }
+}

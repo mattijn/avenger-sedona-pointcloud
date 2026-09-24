@@ -1,0 +1,59 @@
+{
+  "answers": {
+    "action": "no_change",
+    "angle": "keep",
+    "colour": "keep",
+    "region": "keep",
+    "subset": "keep"
+  },
+  "confidence": null,
+  "cost": 0.001337,
+  "input_tokens": 792,
+  "ms": 2904.275583,
+  "raw": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "content": "```json\n{\n  \"action\": \"no_change\",\n  \"angle\": \"keep\",\n  \"colour\": \"keep\",\n  \"region\": \"keep\",\n  \"subset\": \"keep\"\n}\n```\n\nThe instruction requests turning the chart into a scatter plot, but the policy explicitly states \"Keep the current kind of chart whatever happens; only styling and the view may change.\" Since changing from a bar chart to a scatter plot violates this policy, no changes should be made.",
+          "reasoning": null,
+          "refusal": null,
+          "role": "assistant"
+        },
+        "native_finish_reason": "end_turn"
+      }
+    ],
+    "created": 1790286779,
+    "id": "gen-1790286779-TjCJ3jZOR9RwNvValJX7",
+    "model": "anthropic/claude-haiku-4.5",
+    "object": "chat.completion",
+    "provider": "Amazon Bedrock",
+    "service_tier": "default",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 109,
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "cost": 0.001337,
+      "cost_details": {
+        "upstream_inference_completions_cost": 0.000545,
+        "upstream_inference_cost": 0.001337,
+        "upstream_inference_prompt_cost": 0.000792
+      },
+      "is_byok": false,
+      "prompt_tokens": 792,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 901
+    }
+  }
+}
