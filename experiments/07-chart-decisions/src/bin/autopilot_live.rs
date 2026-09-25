@@ -66,8 +66,11 @@ const GATE_MARK_EARLY: f64 = 0.9;
 /// The buttons in the panel header.
 const NERDS_BUTTON: [f32; 4] = [PX + 300.0, 24.0, 110.0, 26.0];
 const COPY_BUTTON: [f32; 4] = [PX + 196.0, 24.0, 96.0, 26.0];
+const DATA_BUTTON: [f32; 4] = [PX + 152.0, 24.0, 40.0, 26.0];
 /// The session as text: what was typed, what became of it, the pipeline.
 const SESSION_FILE: &str = "out/autopilot_live/session.txt";
+/// The view as it was when the session was copied.
+const VIEW_FILE: &str = "out/autopilot_live/session-view.png";
 const AUTOPILOT_BUTTON: [f32; 4] = [PX, 24.0, 84.0, 26.0];
 const EDITOR_BUTTON: [f32; 4] = [PX + 84.0, 24.0, 64.0, 26.0];
 /// The editor's text area, and its monospace grid.
@@ -271,6 +274,8 @@ struct App {
     t0: Instant,
     copied_at: Option<Instant>,
     logged: usize,
+    /// Render the next frame to `VIEW_FILE` as well.
+    save_view: bool,
     started_at: String,
     commit: String,
     taken: Vec<(String, String)>,
@@ -678,7 +683,11 @@ impl App {
             let held = if r.complete || self.writer.is_none() {
                 None
             } else if render != "chart" && render_conf >= GATE {
-                Some(format!("Enter: the data as {}", if render == "table" { "a table" } else { "a Parquet file" }))
+                Some(match render.as_str() {
+                    "table" => "Enter: the data as a table".to_string(),
+                    "overview" => "Enter: an overview of the data there is".to_string(),
+                    _ => "Enter: the data as a Parquet file".to_string(),
+                })
             } else if conf < GATE {
                 None
             } else {
@@ -725,6 +734,14 @@ impl App {
             }
             if r.complete && self.writer.is_some() && render_conf >= GATE && render != "chart" {
                 shown.render = Some(render.clone());
+                if render == "overview" {
+                    shown.gate = "an overview of the data there is, the chart is unchanged".into();
+                    shown.colour = ui().th.ok;
+                    self.log(&shown);
+                    self.shown = Some(shown);
+                    self.show_overview();
+                    continue;
+                }
                 // Unless Jev is sure nothing else changes, Haiku writes the
                 // data stages; they are shown or written, not drawn. Jev's
                 // action was wrong for "show the ground points as a table"
@@ -815,7 +832,10 @@ impl App {
         v.push(format!("  window   {}", a.gate));
         v.extend(a.lines.iter().map(|l| format!("           + {l}")));
         v.extend(a.removed.iter().map(|l| format!("           - {l}")));
-        v.push(String::new());
+        // A table or an overview says what it showed when it arrives.
+        if a.render.is_none() && a.complete {
+            v.push(format!("  view     {}", self.view_line_after(a)));
+        }
         self.session.extend(v);
     }
 
@@ -842,8 +862,15 @@ impl App {
             v.push("# every decision, oldest first: the chart when Jev was asked, all its answers with confidence, the cache file".into());
             v.push("# that holds the raw response, what the writer wrote, and what the window did (+ added, - removed)".into());
             v.push("#".into());
-            v.extend(self.session.iter().map(|l| if l.is_empty() { "#".to_string() } else { format!("# {l}") }));
+            for l in &self.session {
+                if !l.starts_with(' ') {
+                    v.push("#".into());
+                }
+                v.push(format!("# {l}"));
+            }
+            v.push("#".into());
         }
+        v.push(format!("# the view when this was copied: {} · {VIEW_FILE}", self.view_line()));
         v.push("# the pipeline now, runnable as it stands:".into());
         v.extend(self.pipeline.iter().enumerate().map(|(i, l)| format!("#   {}{l}", if i == 0 { "" } else { "! " })));
         v.join("\n") + "\n"
@@ -871,6 +898,54 @@ impl App {
         self.rt.spawn(async move {
             *out.lock().unwrap() = Some(editor::query(&text).await);
         });
+    }
+
+    /// The overview of the data there is, over the chart.
+    fn show_overview(&mut self) {
+        let (out, in_chart) = (self.queried.clone(), self.state.dataset.id());
+        self.applying = true;
+        self.rt.spawn(async move {
+            let r = match lidar_decide::layer_pipeline().await {
+                Ok((p, _)) => lidar_decide::layer::catalog::overview(&p.ctx, Some(in_chart)).await,
+                Err(e) => Err(e.to_string()),
+            };
+            *out.lock().unwrap() = Some(r);
+        });
+    }
+
+    /// The view after a decision: the chart it leads to (the table, if one
+    /// is open, goes when the chart changes).
+    fn view_line_after(&self, a: &Shown) -> String {
+        if a.gate.starts_with("Enter:") || a.gate.starts_with("waiting") {
+            "unchanged".into()
+        } else {
+            self.view_line()
+        }
+    }
+
+    /// What the view shows now, in one line: the chart drawn, or the table.
+    fn view_line(&self) -> String {
+        if let Some(t) = &self.table {
+            let first: Vec<String> = t.rows.iter().take(2).map(|r| r.iter().take(6).cloned().collect::<Vec<_>>().join(" ")).collect();
+            return format!("table · {} · columns {} · {}", t.note, fit(&t.columns.join(", "), 80), fit(&first.join(" | "), 100));
+        }
+        let (s, d) = (&self.state, &self.data);
+        let big = |v: f64| if v >= 1e6 { format!("{:.1}M", v / 1e6) } else if v >= 1e3 { format!("{:.0}k", v / 1e3) } else { format!("{v:.0}") };
+        let what = match s.mark {
+            lidar_decide::layer::model::Mark::Bars | lidar_decide::layer::model::Mark::Pie => {
+                format!("{} {}: {}", d.classes.len(), if s.mark == lidar_decide::layer::model::Mark::Pie { "slices" } else { "bars" }, d.classes.iter().map(|c| format!("{} {}", c.0, big(c.2))).collect::<Vec<_>>().join(", "))
+            }
+            lidar_decide::layer::model::Mark::Line => {
+                let lines: std::collections::BTreeSet<i64> = d.flight.iter().map(|r| r.0).collect();
+                format!("{} lines, {} points, t 0–{:.0} s", lines.len(), d.flight.len(), d.flight.iter().map(|r| r.1).fold(0.0, f64::max))
+            }
+            lidar_decide::layer::model::Mark::Heatmap => format!("{} cells, classes × 4 m height bands", d.class_height.len()),
+            lidar_decide::layer::model::Mark::Map => {
+                let (lo, hi) = d.cells.iter().fold((f64::MAX, f64::MIN), |a, c| (a.0.min(c.2), a.1.max(c.2)));
+                format!("{} cells, h {lo:.1}–{hi:.1} m", d.cells.len())
+            }
+        };
+        format!("chart · {} · {what} · \"{}\" · {} items drawn", s.mark.id(), s.title, self.to.items.len())
     }
 
     /// Have Haiku write the pipeline, in the background.
@@ -919,6 +994,16 @@ impl App {
             self.cost += o.attempts.iter().filter(|a| !a.written.cached).map(|a| a.written.cost).sum::<f64>();
             let n = info.tries.len();
             let tries = if n == 1 { "1 try".to_string() } else { format!("{n} tries") };
+            if o.overview {
+                shown.gate = "Haiku: a question about the data, so the overview".into();
+                shown.colour = ui().th.ok;
+                shown.render = Some("overview".into());
+                shown.written = Some(info);
+                self.log(&shown);
+                self.shown = Some(shown);
+                self.show_overview();
+                continue;
+            }
             if let (Some(_), Some(a)) = (&shown.render, &o.applied) {
                 let stages = a.data_stages.clone();
                 shown.written = Some(info);
@@ -1059,6 +1144,8 @@ impl App {
                         self.session.push(format!("{:>6.1} s editor query · {what}", (clock() - self.t0).as_secs_f64()));
                     }
                     self.table = Some(Arc::new(t));
+                    let v = self.view_line();
+                    self.session.push(format!("  view     {v}"));
                 }
                 Err(e) => self.edit_status = (e, ui().th.error),
             }
@@ -1304,6 +1391,7 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
         ("editor", EDITOR_BUTTON, s.editing),
         ("stats for nerds", NERDS_BUTTON, s.nerds),
         (copy_label, COPY_BUTTON, copy_on),
+        ("data", DATA_BUTTON, s.table.as_ref().is_some_and(|t| t.note.contains(" tables, "))),
     ] {
         let [bx, by, bw, bh] = r;
         if th.filled_buttons {
@@ -1511,14 +1599,16 @@ fn table_view(tb: &editor::Table, marks: &mut Vec<SceneMark>) {
     marks.push(t("query result", x, y, 13.0, accent(), true));
     marks.push(t(&tb.note, x + 110.0, y + 1.0, 12.0, muted(), false));
     y += 26.0;
-    const SIZE: f32 = 12.0;
-    const ROW: f32 = 17.0;
-    let room = ((y0 + h - 30.0 - y) / ROW) as usize;
+    // Rows get denser when there is more to show than fits.
+    let lines = tb.rows.len() + tb.text.len() + 3;
+    let row: f32 = ((y0 + h - 30.0 - y) / lines as f32).clamp(13.0, 17.0);
+    let size: f32 = if row < 15.0 { 11.0 } else { 12.0 };
+    let room = ((y0 + h - 30.0 - y) / row) as usize;
     if !tb.columns.is_empty() {
         // Column widths from what they hold, capped; columns that do not fit
         // are named below the table.
         let cap = 24;
-        let width = |s: &str| ui().width(&fit(s, cap).chars().collect::<Vec<_>>(), SIZE, true);
+        let width = |s: &str| ui().width(&fit(s, cap).chars().collect::<Vec<_>>(), size, true);
         let mut cols: Vec<(usize, f32)> = vec![];
         let mut used = 0.0;
         for (i, c) in tb.columns.iter().enumerate() {
@@ -1530,27 +1620,30 @@ fn table_view(tb: &editor::Table, marks: &mut Vec<SceneMark>) {
             used += cw;
         }
         for (i, cx) in &cols {
-            marks.push(t(&fit(&tb.columns[*i], cap), x + cx, y, SIZE, ink(), true));
+            marks.push(t(&fit(&tb.columns[*i], cap), x + cx, y, size, ink(), true));
         }
-        marks.push(draw::rule(x, y + ROW, x + used, y + ROW, th.line));
-        y += ROW + 5.0;
+        marks.push(draw::rule(x, y + row, x + used, y + row, th.line));
+        y += row + 5.0;
         for r in tb.rows.iter().take(room.saturating_sub(1)) {
             for (i, cx) in &cols {
-                marks.push(mono_sized(&fit(&r[*i], cap), x + cx, y, SIZE, ink()));
+                marks.push(mono_sized(&fit(&r[*i], cap), x + cx, y, size, ink()));
             }
-            y += ROW;
+            y += row;
         }
         let hidden: Vec<&str> = tb.columns.iter().skip(cols.len()).map(String::as_str).collect();
         if !hidden.is_empty() {
             y += 6.0;
             marks.push(t(&fit(&format!("{} more columns: {}", hidden.len(), hidden.join(", ")), 150), x, y, 12.0, muted(), false));
-            y += ROW;
+            y += row;
         }
         y += 8.0;
     }
-    for l in tb.text.iter().take(room.saturating_sub(((y - y0) / ROW) as usize)) {
-        marks.push(mono_sized(&fit(l, 150), x, y, SIZE, ink()));
-        y += 15.0;
+    for l in tb.text.iter() {
+        if y > y0 + h - 40.0 {
+            break;
+        }
+        marks.push(mono_sized(&fit(l, 150), x, y, size, muted()));
+        y += row;
     }
     marks.push(t("the chart is unchanged · ⌘↵ with a chart command draws it · Esc or ⌘E closes this", x, y0 + h - 24.0, 11.0, muted(), false));
 }
@@ -1739,8 +1832,26 @@ fn build(s: &mut App) -> SceneBuild {
         deadline,
         generation: s.wake_generation,
     });
+    let scene_graph = SceneGraph { marks, width: W, height: H, origin: [0.0; 2] };
+    if std::mem::take(&mut s.save_view) {
+        // The same scene, headless, at the window's scale: what was on screen.
+        let sg = scene_graph.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            rt.block_on(async move {
+                use avenger_wgpu::canvas::{Canvas, PngCanvas};
+                if let Ok(mut c) = PngCanvas::new(avenger_common::canvas::CanvasDimensions { size: [W, H], scale: 2.0 }, Default::default()).await {
+                    if c.set_scene(&sg).is_ok() {
+                        if let Ok(img) = c.render().await {
+                            let _ = img.save(VIEW_FILE);
+                        }
+                    }
+                }
+            });
+        });
+    }
     SceneBuild {
-        scene_graph: SceneGraph { marks, width: W, height: H, origin: [0.0; 2] },
+        scene_graph,
         commands,
         rebuild_geometry: false,
     }
@@ -1836,11 +1947,20 @@ impl EventStreamHandler<App> for Input {
                 let p = e.position;
                 if inside(p, NERDS_BUTTON) {
                     s.nerds = !s.nerds;
+                } else if inside(p, DATA_BUTTON) {
+                    if s.table.as_ref().is_some_and(|t| t.note.contains(" tables, ")) {
+                        s.table = None;
+                    } else {
+                        s.show_overview();
+                        s.session.push(format!("{:.1} s, data button: the overview", (clock() - s.t0).as_secs_f64()));
+                        s.logged += 1;
+                    }
                 } else if inside(p, COPY_BUTTON) {
                     let text = s.session_text();
                     let _ = std::fs::create_dir_all("out/autopilot_live");
                     let _ = std::fs::write(SESSION_FILE, &text);
                     s.copied_at = Some(clock());
+                    s.save_view = true;
                     s.notice = format!("copied: {} decisions, {} sent with Enter · also in {SESSION_FILE}", s.logged, s.sent.len());
                     let mut status = rerender;
                     status.commands.push(RuntimeHostCommand::WriteClipboard { text });
@@ -2082,6 +2202,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         t0: clock(),
         copied_at: None,
         logged: 0,
+        save_view: false,
         started_at: shell("date '+%Y-%m-%d %H:%M'"),
         commit: shell("git rev-parse --short HEAD"),
         taken,

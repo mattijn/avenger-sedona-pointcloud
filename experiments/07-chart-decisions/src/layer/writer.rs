@@ -35,9 +35,10 @@ pub fn questions() -> Value {
         "type": "choice",
         "instructions": "How should the result be shown?",
         "criteria": {
-            "chart": "as a chart, as usual",
+            "chart": "as a chart: the instruction asks for a chart, or a change to it",
             "table": "as a table of the rows, instead of a chart",
             "export": "written to a file (Parquet), to use elsewhere",
+            "overview": "an overview of the data there is (tables, columns, types, ranges): the instruction asks what data there is, what it contains, or which columns or fields it has",
         },
     });
     q["specifics"] = json!({
@@ -177,6 +178,8 @@ the instruction decides the details it cannot hold (texts, numbers, ranges).\nIt
         out += &format!("\nAn earlier answer was refused.\nIt was:\n{text}\nThe reason: {why}\n");
     }
     out += "\nReply with the whole new pipeline inside a ```pipeline block, and nothing else. \
+If the instruction asks what data there is, or which columns or fields it has, do not make a chart of it: \
+reply with the single word `overview` instead, and the window shows an overview of the data. \
 If the instruction asks for something this pipeline cannot express, reply with the pipeline now, unchanged.";
     out
 }
@@ -196,6 +199,8 @@ pub struct Attempt {
 pub struct Outcome {
     pub attempts: Vec<Attempt>,
     pub applied: Option<Applied>,
+    /// The writer answered `overview`: a question about the data, not a chart.
+    pub overview: bool,
 }
 
 impl Outcome {
@@ -214,10 +219,14 @@ pub async fn write(w: &Writer, s: &State, d: &Data, current: &str, instruction: 
     for _ in 0..tries {
         let written = w.write(&prompt(s, d, current, instruction, direction, &refused)).await?;
         let text = extract(&written.text);
+        if text.trim_matches('`').trim().eq_ignore_ascii_case("overview") {
+            attempts.push(Attempt { text, refused: None, written });
+            return Ok(Outcome { attempts, applied: None, overview: true });
+        }
         match editor::apply(&text, d).await {
             Ok(a) => {
                 attempts.push(Attempt { text, refused: None, written });
-                return Ok(Outcome { attempts, applied: Some(a) });
+                return Ok(Outcome { attempts, applied: Some(a), overview: false });
             }
             Err(e) => {
                 refused.push((text.clone(), e.clone()));
@@ -225,5 +234,5 @@ pub async fn write(w: &Writer, s: &State, d: &Data, current: &str, instruction: 
             }
         }
     }
-    Ok(Outcome { attempts, applied: None })
+    Ok(Outcome { attempts, applied: None, overview: false })
 }

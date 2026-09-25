@@ -1,0 +1,52 @@
+{
+  "cost": 0.002316,
+  "input_tokens": 1726,
+  "ms": 1338.6355839999999,
+  "raw": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "content": "```pipeline\nread data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT 'x' AS column UNION ALL SELECT 'y' UNION ALL SELECT 'z' UNION ALL SELECT 'classification' UNION ALL SELECT 'gps_time' UNION ALL SELECT 'point_source_id' UNION ALL SELECT 'intensity'\"\n! bars column --by column\n```",
+          "reasoning": null,
+          "refusal": null,
+          "role": "assistant"
+        },
+        "native_finish_reason": "end_turn"
+      }
+    ],
+    "created": 1790338541,
+    "id": "gen-1790338541-44AQMSWhbgqZHV5I1bKz",
+    "model": "anthropic/claude-haiku-4.5",
+    "object": "chat.completion",
+    "provider": "Amazon Bedrock",
+    "service_tier": "default",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 118,
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "cost": 0.002316,
+      "cost_details": {
+        "upstream_inference_completions_cost": 0.00059,
+        "upstream_inference_cost": 0.002316,
+        "upstream_inference_prompt_cost": 0.001726
+      },
+      "is_byok": false,
+      "prompt_tokens": 1726,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 1844
+    }
+  },
+  "text": "```pipeline\nread data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT 'x' AS column UNION ALL SELECT 'y' UNION ALL SELECT 'z' UNION ALL SELECT 'classification' UNION ALL SELECT 'gps_time' UNION ALL SELECT 'point_source_id' UNION ALL SELECT 'intensity'\"\n! bars column --by column\n```"
+}

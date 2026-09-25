@@ -881,6 +881,49 @@ and at the end the pipeline behind the chart, runnable as it stands. A
 session can then be read back from the cache files it names, and its Enter
 lines replayed.
 
+### What data is there: the overview
+
+"I don't want a chart when I don't know what data is behind it." So the
+session names the tile and the four derived tables (`classes`, `flight`,
+`class_height`, `cells`) as tables, with DataFusion's `information_schema`
+on (`catalog.rs`). The **overview** puts that in one table: per table its
+row count, and per column its type and range, or its number of distinct
+values for text. The table the chart draws is marked `← chart`. Over all
+17.3M points of the tile it takes about 1 s.
+
+![The overview](images/overview.png)
+
+It comes three ways:
+- the **data** button;
+- Jev, through a fourth `render` option, `overview`: "what data is there?",
+  "welke kolommen heeft de tile?";
+- the editor: `overview`, or plain SQL over the named tables, such as
+  `SHOW TABLES`, `SELECT * FROM cells LIMIT 5` or
+  `SELECT * FROM information_schema.columns WHERE table_name = 'tile'`.
+
+The first try of the `overview` option missed "what data is there?" (Jev said
+`render: chart`), and "welke kolommen heeft de tile?" on the bars went to
+Haiku, which made a bar chart of column names (`SELECT 'x' AS column UNION
+…`). Two changes: sharper criteria for `chart` ("the instruction asks for a
+chart, or a change to it") and `overview` ("asks what data there is, what it
+contains, or which columns it has"); and the writer may now answer with the
+single word `overview` instead of a pipeline, which the window turns into
+the overview. With both, in the window, all three overview questions give the
+overview. Jev's `render` answer was right in 21 of the 21 Jev-only cases;
+his action missed three of them, which the window does not need there
+([results/writer.md](results/writer.md); the round before is
+[results/writer_v5.md](results/writer_v5.md)). The 22 writer cases stay at
+16/16 for haiku and routed.
+
+The session now also says **what the view showed** after each decision: the
+chart (mark, its values, title, items) or the table (its note, columns and
+first rows), and when the session is copied, a PNG of the view goes to
+`out/autopilot_live/session-view.png`.
+
+Registering the five tables costs every new pipeline a little:
+`layer_roundtrip`, which builds thousands, went from 3.9 s to 10.1 s for its
+1936 transitions.
+
 Not checked: other writer models; Dutch beyond two cases; instructions that
 change the data stages beyond the cell size (other filters, other
 aggregates).

@@ -68,11 +68,37 @@ pub struct Table {
 /// Rows shown when the text ends in data without `head`.
 const ROWS: usize = 20;
 
+/// Batches as column names and text cells.
+fn grid(batches: &[arrow::record_batch::RecordBatch]) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
+    let columns = batches.first().map_or(vec![], |b| b.schema().fields().iter().map(|f| f.name().to_string()).collect());
+    let opts = FormatOptions::default().with_null("null");
+    let mut rows = vec![];
+    for b in batches {
+        let fmts: Vec<ArrayFormatter> = b.columns().iter().map(|c| ArrayFormatter::try_new(c.as_ref(), &opts)).collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+        for i in 0..b.num_rows() {
+            rows.push(fmts.iter().map(|f| f.value(i).to_string()).collect());
+        }
+    }
+    Ok((columns, rows))
+}
+
 /// Run a text without a chart command, and keep what it shows. A trailing
 /// `head N` becomes a table rather than text, and so does a text that ends
 /// in data. The chart and its pipeline are not touched.
 pub async fn query(text: &str) -> Result<Table, String> {
     let t = std::time::Instant::now();
+    let first = text.split_whitespace().next().unwrap_or("").to_ascii_uppercase();
+    // `overview`, or plain SQL over the named tables and information_schema.
+    if first == "OVERVIEW" {
+        let (p, _) = layer_pipeline().await.map_err(|e| e.to_string())?;
+        return super::catalog::overview(&p.ctx, None).await;
+    }
+    if matches!(first.as_str(), "SELECT" | "WITH" | "SHOW" | "DESCRIBE" | "EXPLAIN") {
+        let (p, _) = layer_pipeline().await.map_err(|e| e.to_string())?;
+        let batches = p.ctx.sql(text).await.map_err(|e| e.to_string())?.limit(0, Some(200)).map_err(|e| e.to_string())?.collect().await.map_err(|e| e.to_string())?;
+        let (columns, rows) = grid(&batches)?;
+        return Ok(Table { note: format!("SQL: {} rows", rows.len()), columns, rows, text: vec![], ms: t.elapsed().as_secs_f64() * 1e3 });
+    }
     let mut calls = parse_pipeline(text).map_err(|e| e.to_string())?;
     let (mut p, _) = layer_pipeline().await.map_err(|e| e.to_string())?;
     let head = match calls.last() {
@@ -91,20 +117,11 @@ pub async fn query(text: &str) -> Result<Table, String> {
     }
     let kind = |c: &Call| p.steps.get(&c.name).map(|(_, s)| s.kind());
     let ends_in_data = head.is_some() || calls.last().is_some_and(|c| matches!(kind(c), Some(Kind::Source | Kind::Transform)));
-    let (mut columns, mut rows, mut note) = (vec![], vec![], String::new());
+    let (mut columns, mut rows, mut note): (Vec<String>, Vec<Vec<String>>, String) = (vec![], vec![], String::new());
     if ends_in_data {
         let n = head.unwrap_or(ROWS);
         let batches = p.dataframe().map_err(|e| e.to_string())?.limit(0, Some(n)).map_err(|e| e.to_string())?.collect().await.map_err(|e| e.to_string())?;
-        if let Some(b) = batches.first() {
-            columns = b.schema().fields().iter().map(|f| f.name().to_string()).collect();
-        }
-        let opts = FormatOptions::default().with_null("null");
-        for b in &batches {
-            let fmts: Vec<ArrayFormatter> = b.columns().iter().map(|c| ArrayFormatter::try_new(c.as_ref(), &opts)).collect::<Result<_, _>>().map_err(|e| e.to_string())?;
-            for i in 0..b.num_rows() {
-                rows.push(fmts.iter().map(|f| f.value(i).to_string()).collect());
-            }
-        }
+        (columns, rows) = grid(&batches)?;
         note = match head {
             Some(n) => format!("head {n}: {} rows", rows.len()),
             None if rows.len() < ROWS => format!("all {} rows", rows.len()),

@@ -4,6 +4,7 @@
 //! scale and a map, with keyed transitions between them.
 
 pub mod anim;
+pub mod catalog;
 pub mod data;
 pub mod draw;
 pub mod editor;

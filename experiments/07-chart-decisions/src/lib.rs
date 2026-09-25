@@ -15,6 +15,8 @@ pub const TILE: &str = "data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz";
 pub async fn pipeline() -> datafusion::error::Result<Pipeline> {
     let ctx = las_context();
     ctx.sql("SET las.geometry_encoding = 'plain'").await?;
+    // The tile and the derived tables by name, and information_schema on.
+    layer::catalog::register(&ctx).await?;
     let mut p = Pipeline::new(ctx);
     p.vega_semantics = true;
     for pkg in [

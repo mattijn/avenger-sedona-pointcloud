@@ -1,0 +1,52 @@
+{
+  "cost": 0.00226,
+  "input_tokens": 1770,
+  "ms": 1110.937875,
+  "raw": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "content": "```pipeline\nread data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT x, y, z FROM input WHERE x < 658000 AND y < 6868000\"\n! map --x x --y y --value z\n```",
+          "reasoning": null,
+          "refusal": null,
+          "role": "assistant"
+        },
+        "native_finish_reason": "end_turn"
+      }
+    ],
+    "created": 1790338770,
+    "id": "gen-1790338770-xT4KyAJ7jA5n4j1KPixv",
+    "model": "anthropic/claude-haiku-4.5",
+    "object": "chat.completion",
+    "provider": "Amazon Bedrock",
+    "service_tier": "default",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 98,
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "cost": 0.00226,
+      "cost_details": {
+        "upstream_inference_completions_cost": 0.00049,
+        "upstream_inference_cost": 0.00226,
+        "upstream_inference_prompt_cost": 0.00177
+      },
+      "is_byok": false,
+      "prompt_tokens": 1770,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 1868
+    }
+  },
+  "text": "```pipeline\nread data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT x, y, z FROM input WHERE x < 658000 AND y < 6868000\"\n! map --x x --y y --value z\n```"
+}

@@ -584,6 +584,36 @@
       "text": "make the bars red",
       "expect": "color",
       "expect_render": "chart"
+    },
+    {
+      "id": "o01",
+      "added": "for the overview",
+      "start": {
+        "mark": "bars"
+      },
+      "text": "what data is there?",
+      "expect": "no_change",
+      "expect_render": "overview"
+    },
+    {
+      "id": "o02",
+      "added": "for the overview",
+      "start": {
+        "mark": "map"
+      },
+      "text": "welke kolommen heeft de tile?",
+      "expect": "no_change",
+      "expect_render": "overview"
+    },
+    {
+      "id": "o03",
+      "added": "for the overview",
+      "start": {
+        "mark": "pie"
+      },
+      "text": "I don't know what I can do with this data, show me what's in it",
+      "expect": "no_change",
+      "expect_render": "overview"
     }
   ]
 }
