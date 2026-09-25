@@ -1092,7 +1092,10 @@ impl App {
     /// Move a lens's focus, live: the chart state and both frames, without a
     /// transition and without a pipeline line (a click commits it).
     fn move_focus(&mut self, u: [f64; 2]) {
-        let v = self.state.view.with_focus(u);
+        // An offset callout is placed again, keeping its side when it can.
+        let pts = lidar_decide::layer::model::unit_points(&self.to);
+        let margin = self.to.legend.is_empty() && self.to.colorbar.is_none();
+        let v = lidar_decide::layer::model::place_callout(self.state.view.with_focus(u), &pts, margin);
         self.state.view = v;
         self.to.view = v;
         self.to.state.view = v;

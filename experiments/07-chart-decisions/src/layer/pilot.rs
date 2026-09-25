@@ -195,7 +195,7 @@ pub fn apply(s: &State, answers: &Map<String, Value>) -> Result<State, NotApplie
                 "flat" => View::Flat,
                 "fisheye" => View::Fisheye { focus, radius: 0.35, distortion: 3.0 },
                 "magnifier" if s.mark == Mark::Pie => return unfit("the magnifier works on flat charts, not on a pie"),
-                "magnifier" => View::Magnifier { focus, radius: 0.2, zoom: 3.0 },
+                "magnifier" => View::Magnifier { focus, radius: 0.06, zoom: 4.0, offset: true, side: 0, anchor: [f64::NAN; 2] },
                 "tilt" if s.mark == Mark::Map => View::Tilt { yaw: 30.0, elevation: 40.0 },
                 "tilt" => return unfit("the layer tilts the map only"),
                 _ => return unfit("view chosen but no kind"),

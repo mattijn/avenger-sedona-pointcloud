@@ -174,10 +174,14 @@ system did in experiment 5:
 - **fisheye**, the Sarkar–Brown lens (experiment 5's `Fisheye`): the plot
   stays in its square, grid lines bend with it, and symbol areas follow the
   lens's local magnification, so cells that touch on the flat map still touch;
-- **magnifier**, a round inset over the focus: the same items again,
-  undistorted and scaled about it, clipped with `Clip::Path`. It is the
-  nested alternative to the fisheye: readable, but it covers its
-  surroundings;
+- **magnifier**, the same items again, undistorted and scaled, clipped with
+  `Clip::Path`: the nested alternative to the fisheye. By default it is
+  offset, as DragMag: a small source circle at the focus and a callout beside
+  it at 4×, joined by the two outer tangents, placed like a label (inside the
+  plot or the empty margin beside a map, on the side with the least data, up
+  and to the right when it can) and kept still until the source has moved a
+  callout radius. `--offset none` puts it in place, at 2×. The defaults come
+  from the lens studies in [docs/interactions.md](../../docs/interactions.md);
 - **tilt**, the map in 3D (experiment 5's `Cartesian3d`), with each cell's
   highest point as z, painter's order by depth, and the grid on the floor;
   what a zoom leaves outside the square is left out, since a tilted plot has
@@ -193,6 +197,8 @@ over the plot, and a click puts it in the pipeline as a `view` line. Not
 checked with a real mouse: only headless.
 
 ![Magnifier, fisheye and tilt](images/views.png)
+
+![Offset magnifiers placed like labels, and one in place](images/magnifier.png)
 
 [docs/interactions.md](../../docs/interactions.md) catalogues interaction
 techniques as of September 2026: what doing the ordinary ones well takes

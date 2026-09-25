@@ -191,7 +191,7 @@ Aggregate in a `sql` stage before the mark, not in a channel. The layer draws th
   set y.scale.type log                     bars only
   set x.scale.domain <a>,<b>               line and map; one axis, the other keeps its extent
   view fisheye --focus <x>,<y> [--radius r] [--distortion d]   a lens; focus in the plot's unit square, 0,0 bottom left
-  view magnifier --focus <x>,<y> [--radius r] [--zoom k]       a round inset, magnified
+  view magnifier --focus <x>,<y> [--radius r] [--zoom k] [--offset auto|none]   a magnifier: a small source circle and a callout beside it (auto), or in place (none)
   view tilt [--yaw a] [--elevation e]                          3D, the map only, height as z
   view flat
   A pipeline has at most one `view` line, after the mark: a new view replaces the old line.

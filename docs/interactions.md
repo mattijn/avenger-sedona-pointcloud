@@ -117,6 +117,39 @@ Two ways to implement it, and experiment 7 now has both
 In the window the focus of either follows the cursor, and a click fixes it
 in the pipeline.
 
+**In place or offset.** An offset magnifier puts a small source circle at
+the pointer and the magnified callout beside it, joined by lines: DragMag
+(Ware & Lewis, CHI 1995, [10.1145/223355.223749](https://doi.org/10.1145/223355.223749))
+and, for touch, Shift (Vogel & Baudisch, CHI 2007, [10.1145/1240624.1240727](https://doi.org/10.1145/1240624.1240727)).
+What the studies say, from a third research pass (DOIs resolved; full texts
+read for Appert et al. 2010, Pietriga & Appert 2008, Pietriga et al. 2010,
+Shift, TapTap/MagStick, the Cockburn review and the lens survey; the rest from
+abstracts):
+- no single winner (Cockburn, Karlson, Bederson, ACM CSUR 2008,
+  [10.1145/1456650.1456652](https://doi.org/10.1145/1456650.1456652)); in
+  multiscale search DragMag beat an in-place fisheye (Pietriga, Appert,
+  Beaudouin-Lafon, CHI 2007, [10.1145/1240624.1240808](https://doi.org/10.1145/1240624.1240808));
+- an opaque in-place magnifier is best at about 2× and worst at 6×, because
+  it hides the surroundings (Pietriga & Appert, CHI 2008,
+  [10.1145/1357054.1357264](https://doi.org/10.1145/1357054.1357264));
+  beyond about 4× pointing inside an in-place lens is quantized, and needs a
+  precision mode (Appert, Chapuis, Pietriga, CHI 2010,
+  [10.1145/1753326.1753366](https://doi.org/10.1145/1753326.1753366));
+- Shift keeps its callout still until the finger has moved beyond a
+  threshold, places it in a predictable direction, flips it only at edges,
+  and joins it with a thin line; a round callout shows the surroundings with
+  the least surface.
+
+So the offset magnifier here defaults to 4× and the in-place one to 2×. The
+source circle shows the same area as the callout (its radius is the
+callout's over the magnification), the gap is half a callout diameter, up
+and to the right is preferred, staying inside the plot is a constraint, the
+side with less data wins, and the callout stays put until the source has
+moved a callout radius. Not done: speed-coupled blending and a precision
+mode for the in-place lens at high magnification, and a slower source
+under a slow pointer. Nothing found measures magnifiers on dense point
+clouds; the parameters come from pointing, map and touch studies.
+
 ## For Avenger, most promising
 
 1. **Series predicates:** line brush, crossing, angular brush, timebox. All

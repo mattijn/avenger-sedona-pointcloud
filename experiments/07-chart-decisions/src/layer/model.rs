@@ -118,18 +118,95 @@ pub struct State {
 
 /// A view over the plot's unit square, after the coordinate system (the
 /// family of experiment 5): the same items, projected differently.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub enum View {
     Flat,
     /// Sarkar–Brown fisheye around `focus` (unit space): the context stays,
     /// distances inside the lens do not.
     Fisheye { focus: [f64; 2], radius: f64, distortion: f64 },
-    /// A round inset over `focus`, magnified `zoom` times and undistorted;
-    /// it covers what lies around it.
-    Magnifier { focus: [f64; 2], radius: f64, zoom: f64 },
+    /// A round magnifier, `zoom` times and undistorted. In place, it sits
+    /// over `focus` and covers what lies around it. Offset (DragMag), a
+    /// source circle of `radius` sits over `focus` and a callout of `radius
+    /// * zoom` beside it, on `side` (one of `CALLOUT_SIDES`), chosen where it
+    /// covers the least data. `side` is derived, not part of the view's
+    /// identity.
+    Magnifier { focus: [f64; 2], radius: f64, zoom: f64, offset: bool, side: usize, anchor: [f64; 2] },
     /// The map in 3D: height as z, seen from `yaw` degrees around and
     /// `elevation` degrees above the horizon.
     Tilt { yaw: f64, elevation: f64 },
+}
+
+impl PartialEq for View {
+    fn eq(&self, other: &View) -> bool {
+        match (self, other) {
+            (View::Flat, View::Flat) => true,
+            (View::Fisheye { focus: a, radius: b, distortion: c }, View::Fisheye { focus: d, radius: e, distortion: f }) => a == d && b == e && c == f,
+            (View::Magnifier { focus: a, radius: b, zoom: c, offset: o, .. }, View::Magnifier { focus: d, radius: e, zoom: f, offset: p, .. }) => a == d && b == e && c == f && o == p,
+            (View::Tilt { yaw: a, elevation: b }, View::Tilt { yaw: c, elevation: d }) => a == c && b == d,
+            _ => false,
+        }
+    }
+}
+
+/// Where an offset magnifier's callout may go, as directions from its
+/// source circle (unit vectors in the plot's unit square, y up): the four
+/// diagonals first, then the sides.
+pub const CALLOUT_SIDES: [[f64; 2]; 8] = [
+    [0.7071, 0.7071],
+    [-0.7071, 0.7071],
+    [0.7071, -0.7071],
+    [-0.7071, -0.7071],
+    [1.0, 0.0],
+    [-1.0, 0.0],
+    [0.0, 1.0],
+    [0.0, -1.0],
+];
+
+/// The callout of an offset magnifier, placed from `anchor` (the focus when
+/// it was last placed): centre and radius in unit space. The source circle
+/// shows the same area as the callout, so its radius is the callout's over
+/// the magnification; the gap between them is half a callout diameter, as in
+/// Shift (Vogel & Baudisch 2007).
+pub fn callout(anchor: [f64; 2], radius: f64, zoom: f64, side: usize) -> ([f64; 2], f64) {
+    let rc = (radius * zoom).min(0.32);
+    let d = CALLOUT_SIDES[side % CALLOUT_SIDES.len()];
+    let dist = radius + rc + rc;
+    ([anchor[0] + d[0] * dist, anchor[1] + d[1] * dist], rc)
+}
+
+/// Place an offset magnifier's callout like a label: on the side where it
+/// covers the fewest items and stays in the plot (or in the empty margin
+/// right of a map), keeping the current side unless another is clearly
+/// better, so it does not jump while the pointer moves.
+pub fn place_callout(view: View, items: &[[f64; 2]], margin: bool) -> View {
+    let View::Magnifier { focus, radius, zoom, offset: true, side, anchor } = view else { return view };
+    // The callout stays where it is until the source has moved about one
+    // callout radius (Shift's and the Ring lens's tracking-menu hysteresis).
+    let rc = (radius * zoom).min(0.32);
+    if anchor[0].is_finite() && (focus[0] - anchor[0]).hypot(focus[1] - anchor[1]) < rc {
+        return view;
+    }
+    // How far a callout on side k reaches out of the plot (or, beside a map
+    // with no legend, out of the margin to its right).
+    let out = |k: usize| {
+        let (c, r) = callout(focus, radius, zoom, k);
+        let x_max = if margin { 1.45 } else { 1.0 };
+        (0.0f64 - (c[0] - r)).max(0.0) + ((c[0] + r) - x_max).max(0.0) + (0.0f64 - (c[1] - r)).max(0.0) + ((c[1] + r) - 1.0).max(0.0)
+    };
+    // Staying inside is a constraint, not a cost: only when no side fits
+    // does the one that reaches out least win.
+    let fits: Vec<usize> = (0..CALLOUT_SIDES.len()).filter(|k| out(*k) < 1e-9).collect();
+    let score = |k: usize| {
+        let (c, r) = callout(focus, radius, zoom, k);
+        let covered = items.iter().filter(|p| (p[0] - c[0]).hypot(p[1] - c[1]) < r).count() as f64;
+        // Up and to the right first, for predictability; the order of
+        // `CALLOUT_SIDES` breaks ties.
+        covered + k as f64 * 0.5 + if fits.is_empty() { out(k) * 1e6 } else { 0.0 }
+    };
+    let allowed: Vec<usize> = if fits.is_empty() { (0..CALLOUT_SIDES.len()).collect() } else { fits.clone() };
+    let best = allowed.iter().copied().min_by(|a, b| score(*a).total_cmp(&score(*b))).unwrap_or(0);
+    let keep = anchor[0].is_finite() && allowed.contains(&side) && score(side) <= score(best) * 1.25 + 3.0;
+    View::Magnifier { focus, radius, zoom, offset: true, side: if keep { side } else { best }, anchor: focus }
 }
 
 impl View {
@@ -150,7 +227,7 @@ impl View {
     pub fn with_focus(self, f: [f64; 2]) -> View {
         match self {
             View::Fisheye { radius, distortion, .. } => View::Fisheye { focus: f, radius, distortion },
-            View::Magnifier { radius, zoom, .. } => View::Magnifier { focus: f, radius, zoom },
+            View::Magnifier { radius, zoom, offset, side, anchor, .. } => View::Magnifier { focus: f, radius, zoom, offset, side, anchor },
             v => v,
         }
     }
@@ -324,6 +401,26 @@ fn fmt_m(v: f64) -> String {
     if (v - v.round()).abs() < 1e-9 { format!("{v:.0}") } else { format!("{v}") }
 }
 
+/// Every item's position in the plot's unit square: rect centres, points,
+/// and line vertices, under the frame's domains.
+pub fn unit_points(f: &Frame) -> Vec<[f64; 2]> {
+    let dom = |a: &Axis| match a {
+        Axis::Linear { lo, hi, .. } => Some((*lo, *hi)),
+        _ => None,
+    };
+    let (dx, dy) = (dom(&f.x), dom(&f.y));
+    let u = |v: f64, d: Option<(f64, f64)>| d.map_or(v, |(lo, hi)| (v - lo) / (hi - lo));
+    let mut out = vec![];
+    for it in &f.items {
+        match &it.geo {
+            Geo::Rect { x0, x1, y0, y1 } => out.push([(x0 + x1) / 2.0, (y0 + y1) / 2.0]),
+            Geo::Point { x, y } => out.push([u(*x, dx), u(*y, dy)]),
+            Geo::Line { pts } => out.extend(pts.iter().map(|p| [u(p[0], dx), u(p[1], dy)])),
+        }
+    }
+    out
+}
+
 /// Resolve a state into a frame of keyed items.
 pub fn resolve(s: &State, d: &Data) -> Frame {
     let mut f = Frame {
@@ -448,6 +545,12 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             f.square = true;
         }
     }
+    // An offset magnifier's callout goes where it covers the least data.
+    if matches!(s.view, View::Magnifier { offset: true, .. }) {
+        let pts = unit_points(&f);
+        f.view = place_callout(s.view, &pts, f.legend.is_empty() && f.colorbar.is_none());
+        f.state.view = f.view;
+    }
     if let Some(t) = &s.x_title {
         f.x.retitle(t);
     }
@@ -455,4 +558,60 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
         f.y.retitle(t);
     }
     f
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn magnifier(focus: [f64; 2], side: usize) -> View {
+        View::Magnifier { focus, radius: 0.06, zoom: 4.0, offset: true, side, anchor: [f64::NAN; 2] }
+    }
+    fn side(v: View) -> usize {
+        match v {
+            View::Magnifier { side, .. } => side,
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn the_callout_goes_where_there_is_no_data() {
+        // Data fills the upper half; the callout of a focus in the middle
+        // goes down.
+        let items: Vec<[f64; 2]> = (0..400).map(|i| [(i % 20) as f64 / 20.0, 0.55 + (i / 20) as f64 / 45.0]).collect();
+        let v = place_callout(magnifier([0.5, 0.5], 0), &items, false);
+        let d = CALLOUT_SIDES[side(v)];
+        assert!(d[1] < 0.0, "callout went {d:?}, not down");
+    }
+
+    #[test]
+    fn a_small_move_keeps_the_side() {
+        let items: Vec<[f64; 2]> = (0..400).map(|i| [(i % 20) as f64 / 20.0, 0.55 + (i / 20) as f64 / 45.0]).collect();
+        let first = place_callout(magnifier([0.5, 0.5], 0), &items, false);
+        let moved = place_callout(first.with_focus([0.52, 0.49]), &items, false);
+        assert_eq!(side(first), side(moved));
+    }
+
+    #[test]
+    fn the_callout_stays_put_until_the_source_moves_a_radius() {
+        let first = place_callout(magnifier([0.3, 0.3], 0), &[], false);
+        let a = |v: View| match v {
+            View::Magnifier { anchor, .. } => anchor,
+            _ => unreachable!(),
+        };
+        // 0.1 is less than the callout radius (0.24): the callout stays.
+        let near = place_callout(first.with_focus([0.4, 0.3]), &[], false);
+        assert_eq!(a(first), a(near));
+        // 0.3 is more: it is placed again, from the new focus.
+        let far = place_callout(near.with_focus([0.6, 0.3]), &[], false);
+        assert_eq!(a(far), [0.6, 0.3]);
+    }
+
+    #[test]
+    fn the_callout_stays_in_the_plot() {
+        let v = place_callout(magnifier([0.9, 0.9], 0), &[], false);
+        let View::Magnifier { radius, zoom, side, anchor, .. } = v else { unreachable!() };
+        let (c, r) = callout(anchor, radius, zoom, side);
+        assert!(c[0] - r >= -1e-9 && c[0] + r <= 1.0 + 1e-9 && c[1] - r >= -1e-9 && c[1] + r <= 1.0 + 1e-9, "{c:?} {r}");
+    }
 }

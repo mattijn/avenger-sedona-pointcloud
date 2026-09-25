@@ -442,21 +442,49 @@ pub fn chart_marks(d: &Drawn, origin: [f32; 2]) -> Vec<SceneMark> {
     // A magnifier: the same items again, flat and scaled about the focus,
     // inside a circle over the plot. It grows in and out with the view.
     for (v, w) in [(d.view_a, 1.0 - d.vt), (d.view_b, d.vt)] {
-        let View::Magnifier { focus, radius, zoom } = v else { continue };
+        let View::Magnifier { focus, radius, zoom, offset, side, anchor } = v else { continue };
         let w = if d.view_a == d.view_b { 1.0 } else { w };
         if w < 0.02 || d.bend > 1e-6 {
             continue;
         }
         let cen = project(focus, 0.0);
-        let r = radius * P * w;
+        let ink = fade(style().ink, 0.7);
+        let ring = |c0: [f64; 2], r: f64, width: f32| -> SceneMark {
+            ScenePathMark { interactive: false, len: 1, path: vec![circle(c0, r)].into(), fill: c([0.0; 4]).into(), stroke: c(ink).into(), stroke_width: Some(width), ..Default::default() }.into()
+        };
+        // In place, the magnified view sits over the focus; offset
+        // (DragMag), a source circle marks the focus and the callout sits
+        // beside it, joined by the two outer tangents.
+        let (c2, r2) = if offset {
+            let anchor = if anchor[0].is_finite() { anchor } else { focus };
+            let (cu, rc) = crate::layer::model::callout(anchor, radius, zoom, side);
+            (project(cu, 0.0), rc * P * w)
+        } else {
+            (cen, radius * P * w)
+        };
+        if offset {
+            let r1 = radius * P;
+            let (dx, dy) = (c2[0] - cen[0], c2[1] - cen[1]);
+            let dist = dx.hypot(dy);
+            if dist > r1 + r2 {
+                let theta = dy.atan2(dx);
+                let alpha = ((r1 - r2) / dist).acos();
+                for s in [1.0, -1.0] {
+                    let a = theta + s * alpha;
+                    let (p1, p2) = ([cen[0] + r1 * a.cos(), cen[1] + r1 * a.sin()], [c2[0] + r2 * a.cos(), c2[1] + r2 * a.sin()]);
+                    marks.push(polyline(&[p1, p2], fade(style().ink, 0.35 * w as f32), 1.0));
+                }
+            }
+            marks.push(ring(cen, r1, 1.25));
+        }
         let lens = move |u: [f64; 2], _h: f64| {
             let q = project(u, 0.0);
-            ([cen[0] + zoom * (q[0] - cen[0]), cen[1] + zoom * (q[1] - cen[1])], 0.0)
+            ([c2[0] + zoom * (q[0] - cen[0]), c2[1] + zoom * (q[1] - cen[1])], 0.0)
         };
-        let mut inner = vec![ScenePathMark { interactive: false, len: 1, path: vec![circle(cen, r)].into(), fill: c([1.0; 4]).into(), ..Default::default() }.into()];
+        let mut inner = vec![ScenePathMark { interactive: false, len: 1, path: vec![circle(c2, r2)].into(), fill: c([1.0; 4]).into(), ..Default::default() }.into()];
         inner.extend(item_marks(d, &lens, true, zoom * zoom));
-        marks.push(SceneMark::Group(SceneGroup { marks: inner, clip: Clip::Path { path: circle(cen, r), fill_rule: Default::default() }, ..Default::default() }));
-        marks.push(ScenePathMark { interactive: false, len: 1, path: vec![circle(cen, r)].into(), fill: c([0.0; 4]).into(), stroke: c(fade(style().ink, 0.7)).into(), stroke_width: Some(1.5), ..Default::default() }.into());
+        marks.push(SceneMark::Group(SceneGroup { marks: inner, clip: Clip::Path { path: circle(c2, r2), fill_rule: Default::default() }, ..Default::default() }));
+        marks.push(ring(c2, r2, 1.5));
     }
     // Title, legend, colour bar.
     for (t, a) in &d.titles {

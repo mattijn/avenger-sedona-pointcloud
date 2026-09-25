@@ -216,7 +216,7 @@ impl Step for ViewStep {
         Kind::Command
     }
     fn help(&self) -> &'static str {
-        "view flat · view fisheye --focus x,y [--radius r --distortion d] · view magnifier --focus x,y [--radius r --zoom k] · view tilt [--yaw a --elevation e]"
+        "view flat · view fisheye --focus x,y [--radius r --distortion d] · view magnifier --focus x,y [--radius r --zoom k --offset auto|none] · view tilt [--yaw a --elevation e]"
     }
     async fn run(&self, p: &mut Pipeline, c: &Call) -> Result<Option<String>> {
         let kind = c.arg(0)?;
@@ -237,7 +237,15 @@ impl Step for ViewStep {
         let v = match kind {
             "flat" => json!({"kind": "flat"}),
             "fisheye" => json!({"kind": "fisheye", "focus": focus, "radius": num("radius", 0.35)?, "distortion": num("distortion", 3.0)?}),
-            "magnifier" => json!({"kind": "magnifier", "focus": focus, "radius": num("radius", 0.2)?, "zoom": num("zoom", 3.0)?}),
+            "magnifier" => {
+                let offset = match c.flag("offset").unwrap_or("auto") {
+                    "auto" => true,
+                    "none" => false,
+                    o => return Err(err(format!("view magnifier: --offset is auto or none, not {o}"))),
+                };
+                // Defaults from the lens studies: offset at 4×, in place at 2×.
+                json!({"kind": "magnifier", "focus": focus, "radius": num("radius", if offset { 0.06 } else { 0.2 })?, "zoom": num("zoom", if offset { 4.0 } else { 2.0 })?, "offset": offset})
+            }
             "tilt" => json!({"kind": "tilt", "yaw": num("yaw", 30.0)?, "elevation": num("elevation", 40.0)?}),
             other => return Err(err(format!("view: the layer has flat, fisheye, magnifier and tilt, not `{other}`"))),
         };
@@ -323,7 +331,7 @@ pub fn view_line(v: &View) -> String {
     match v {
         View::Flat => "view flat".into(),
         View::Fisheye { focus, radius, distortion } => format!("view fisheye --focus {} --radius {} --distortion {}", f(*focus), short_num(*radius), short_num(*distortion)),
-        View::Magnifier { focus, radius, zoom } => format!("view magnifier --focus {} --radius {} --zoom {}", f(*focus), short_num(*radius), short_num(*zoom)),
+        View::Magnifier { focus, radius, zoom, offset, .. } => format!("view magnifier --focus {} --radius {} --zoom {}{}", f(*focus), short_num(*radius), short_num(*zoom), if *offset { "" } else { " --offset none" }),
         View::Tilt { yaw, elevation } => format!("view tilt --yaw {} --elevation {}", short_num(*yaw), short_num(*elevation)),
     }
 }
@@ -493,7 +501,7 @@ pub fn state(chart: &Value, d: &Data) -> std::result::Result<State, String> {
             let focus = [chart["view"]["focus"][0].as_f64().unwrap_or(0.5), chart["view"]["focus"][1].as_f64().unwrap_or(0.5)];
             match k {
                 "fisheye" => View::Fisheye { focus, radius: n("radius"), distortion: n("distortion") },
-                "magnifier" => View::Magnifier { focus, radius: n("radius"), zoom: n("zoom") },
+                "magnifier" => View::Magnifier { focus, radius: n("radius"), zoom: n("zoom"), offset: chart["view"]["offset"].as_bool().unwrap_or(true), side: 0, anchor: [f64::NAN; 2] },
                 _ if mark != Mark::Map => return Err("the layer tilts the map only, with height as z".into()),
                 _ => View::Tilt { yaw: n("yaw"), elevation: n("elevation") },
             }
