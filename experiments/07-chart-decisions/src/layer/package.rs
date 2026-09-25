@@ -141,10 +141,17 @@ fn zoom_of(n: &State, d: &Data) -> Option<String> {
     }
 }
 
+fn title_line(t: &str) -> String {
+    format!("title \"{}\"", t.replace('"', "\\\""))
+}
+
 /// A fresh mark (after an optional `read`), then what it carries.
 fn fresh(read: bool, n: &State, d: &Data) -> Vec<String> {
     let read = if read { format!("read {} ! ", super::data::source(n.dataset)) } else { String::new() };
     let mut out = vec![format!("{read}{}", mark_line(n.mark))];
+    if n.title != n.default_title() {
+        out.push(title_line(&n.title));
+    }
     out.extend(n.color.and_then(hex_of).map(|h| format!("color {h}")));
     if n.highlight {
         out.push(highlight_line(n, d));
@@ -161,6 +168,9 @@ pub fn lines(s: &State, n: &State, d: &Data) -> Vec<String> {
         return fresh(n.dataset != s.dataset, n, d);
     }
     let mut out = vec![];
+    if n.title != s.title {
+        out.push(title_line(&n.title));
+    }
     if n.color != s.color {
         out.extend(n.color.and_then(hex_of).map(|h| format!("color {h}")));
     }

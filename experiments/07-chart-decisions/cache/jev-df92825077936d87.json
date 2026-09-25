@@ -1,0 +1,97 @@
+{
+  "answers": {
+    "action": "highlight",
+    "colour": "keep",
+    "mark": "heatmap",
+    "region": "keep",
+    "specifics": "text",
+    "subset": "top_10"
+  },
+  "confidence": 0.9,
+  "cost": 0.0000504,
+  "input_tokens": 1200,
+  "ms": 270.42120800000004,
+  "raw": {
+    "answers": {
+      "action": {
+        "choice": "highlight",
+        "confidence": 0.9,
+        "probabilities": {
+          "color": 0.01,
+          "highlight": 0.92,
+          "mark": 0.07,
+          "no_change": 0,
+          "title": 0,
+          "zoom": 0
+        },
+        "type": "choice"
+      },
+      "colour": {
+        "choice": "keep",
+        "confidence": 0.75,
+        "probabilities": {
+          "blue": 0,
+          "green": 0,
+          "grey": 0,
+          "keep": 0.8,
+          "orange": 0.02,
+          "red": 0.17
+        },
+        "type": "choice"
+      },
+      "mark": {
+        "choice": "heatmap",
+        "confidence": 0.42,
+        "probabilities": {
+          "bars": 0.06,
+          "heatmap": 0.53,
+          "keep": 0.32,
+          "line": 0,
+          "map": 0.09,
+          "pie": 0
+        },
+        "type": "choice"
+      },
+      "region": {
+        "choice": "keep",
+        "confidence": 0.75,
+        "probabilities": {
+          "all": 0.19,
+          "keep": 0.8,
+          "north_east": 0,
+          "north_west": 0,
+          "south_east": 0.01,
+          "south_west": 0
+        },
+        "type": "choice"
+      },
+      "specifics": {
+        "choice": "text",
+        "confidence": 0.14,
+        "probabilities": {
+          "none": 0.43,
+          "text": 0.57
+        },
+        "type": "choice"
+      },
+      "subset": {
+        "choice": "top_10",
+        "confidence": 0.94,
+        "probabilities": {
+          "keep": 0.02,
+          "none": 0.02,
+          "top_10": 0.96
+        },
+        "type": "choice"
+      }
+    },
+    "id": "gen-dec-1790334263-NFmFRhLR4mSVeculWXKK",
+    "model": "typesafe/jev-1.13-20260917",
+    "provider": "TypeSafe",
+    "usage": {
+      "cost": 0.0000504,
+      "input_tokens": 1200,
+      "output_tokens": 309
+    }
+  }
+}

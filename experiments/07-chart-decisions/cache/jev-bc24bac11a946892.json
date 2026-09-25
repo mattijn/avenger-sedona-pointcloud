@@ -1,0 +1,97 @@
+{
+  "answers": {
+    "action": "color",
+    "colour": "green",
+    "mark": "keep",
+    "region": "keep",
+    "specifics": "text",
+    "subset": "top_10"
+  },
+  "confidence": 0.7,
+  "cost": 0.00005082,
+  "input_tokens": 1210,
+  "ms": 320.247167,
+  "raw": {
+    "answers": {
+      "action": {
+        "choice": "color",
+        "confidence": 0.7,
+        "probabilities": {
+          "color": 0.75,
+          "highlight": 0.24,
+          "mark": 0.01,
+          "no_change": 0,
+          "title": 0,
+          "zoom": 0
+        },
+        "type": "choice"
+      },
+      "colour": {
+        "choice": "green",
+        "confidence": 1,
+        "probabilities": {
+          "blue": 0,
+          "green": 1,
+          "grey": 0,
+          "keep": 0,
+          "orange": 0,
+          "red": 0
+        },
+        "type": "choice"
+      },
+      "mark": {
+        "choice": "keep",
+        "confidence": 0.49,
+        "probabilities": {
+          "bars": 0,
+          "heatmap": 0.35,
+          "keep": 0.58,
+          "line": 0,
+          "map": 0.07,
+          "pie": 0
+        },
+        "type": "choice"
+      },
+      "region": {
+        "choice": "keep",
+        "confidence": 0.83,
+        "probabilities": {
+          "all": 0.13,
+          "keep": 0.87,
+          "north_east": 0,
+          "north_west": 0,
+          "south_east": 0,
+          "south_west": 0
+        },
+        "type": "choice"
+      },
+      "specifics": {
+        "choice": "text",
+        "confidence": 0.89,
+        "probabilities": {
+          "none": 0.06,
+          "text": 0.94
+        },
+        "type": "choice"
+      },
+      "subset": {
+        "choice": "top_10",
+        "confidence": 0.61,
+        "probabilities": {
+          "keep": 0.06,
+          "none": 0.2,
+          "top_10": 0.74
+        },
+        "type": "choice"
+      }
+    },
+    "id": "gen-dec-1790334331-07IVkdL1MjQskYDabVl2",
+    "model": "typesafe/jev-1.13-20260917",
+    "provider": "TypeSafe",
+    "usage": {
+      "cost": 0.00005082,
+      "input_tokens": 1210,
+      "output_tokens": 308
+    }
+  }
+}

@@ -229,6 +229,72 @@ impl Decider for Llm {
 
 // ---------------------------------------------------------------------------
 
+/// A general model asked to write text (a whole pipeline), not to choose.
+/// Cached like the deciders, keyed by the prompt.
+pub struct Writer {
+    pub model: &'static str,
+    pub client: reqwest::Client,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Written {
+    pub text: String,
+    pub ms: f64,
+    pub cost: f64,
+    pub input_tokens: u64,
+    pub cached: bool,
+}
+
+impl Writer {
+    pub async fn write(&self, prompt: &str) -> Result<Written, String> {
+        let path = cache_path("writer", &json!(self.model), &json!(prompt));
+        mark_used(&path);
+        if let Some(v) = std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()) {
+            return Ok(Written {
+                text: v["text"].as_str().unwrap_or("").to_string(),
+                ms: v["ms"].as_f64().unwrap_or(0.0),
+                cost: v["cost"].as_f64().unwrap_or(0.0),
+                input_tokens: v["input_tokens"].as_u64().unwrap_or(0),
+                cached: true,
+            });
+        }
+        let body = json!({
+            "model": self.model,
+            "temperature": 0,
+            "messages": [{"role": "user", "content": prompt}],
+            "usage": {"include": true},
+        });
+        let t = Instant::now();
+        let resp = self
+            .client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .bearer_auth(api_key()?)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let raw: Value = resp.json().await.map_err(|e| e.to_string())?;
+        let ms = t.elapsed().as_secs_f64() * 1e3;
+        let text = raw["choices"][0]["message"]["content"]
+            .as_str()
+            .ok_or_else(|| format!("writer: {raw}"))?
+            .to_string();
+        let w = Written {
+            text,
+            ms,
+            cost: raw["usage"]["cost"].as_f64().unwrap_or(0.0),
+            input_tokens: raw["usage"]["prompt_tokens"].as_u64().unwrap_or(0),
+            cached: false,
+        };
+        let _ = std::fs::create_dir_all(cache_dir());
+        let v = json!({"text": w.text, "ms": w.ms, "cost": w.cost, "input_tokens": w.input_tokens, "raw": raw});
+        let _ = std::fs::write(&path, serde_json::to_string_pretty(&v).unwrap());
+        Ok(w)
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 /// Keywords for instructions, statistics for data changes.
 pub struct Rules;
 

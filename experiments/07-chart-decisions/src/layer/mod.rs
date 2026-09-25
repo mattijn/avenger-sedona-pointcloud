@@ -11,3 +11,4 @@ pub mod model;
 pub mod package;
 pub mod pilot;
 pub mod theme;
+pub mod writer;

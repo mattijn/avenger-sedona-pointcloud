@@ -1,6 +1,6 @@
 # Experiment 7 — charts driven by decisions
 
-Status: phases A–F run, 24–25 Sep 2026, with Jev 1.13 and Claude Haiku 4.5 through OpenRouter. Phase G (a training run) is not built yet.
+Status: phases A–F run, 24–25 Sep 2026, with Jev 1.13 and Claude Haiku 4.5 through OpenRouter. Phase H (Jev steers, Haiku writes the pipeline) measured 25 Sep 2026, not yet wired into the live window. Phase G (a training run) is not built yet.
 
 Can a chart be driven by a decider that picks from typed options, rather than
 by a person writing commands? Two starting points:
@@ -160,6 +160,7 @@ cargo run --release -p lidar-decide --bin typing        # phase E
 cargo run --release -p lidar-decide --bin layer_eval    # the chart layer's vocabulary
 cargo run --release -p lidar-decide --bin autopilot_live     # the live window
 cargo run --release -p lidar-decide --bin layer_roundtrip    # decisions ↔ pipeline check
+cargo run --release -p lidar-decide --bin writer_eval        # phase H; --check runs the references only
 cargo run --release -p lidar-decide --bin autopilot_live -- --record out/autopilot_live/frames
 ffmpeg -framerate 30 -i out/autopilot_live/frames/f%05d.png -c:v libx264 -preset slow \
     -pix_fmt yuv420p -crf 24 experiments/07-chart-decisions/video/autopilot.mp4
@@ -181,6 +182,8 @@ evaluation and the autopilot added about 110 more, for about $0.03.
 | [results/](results/) | Every decision (`decisions.json`) and the cache files each run used |
 | [src/layer/](src/layer/) | The chart layer: model, keyed transitions, drawing, data, and the decider's vocabulary for it (`pilot.rs`) |
 | [cases_layer.json](cases_layer.json) | 24 instructions on the chart layer, expected answers written before any decider ran |
+| [cases_writer.json](cases_writer.json) | Phase H: 19 instructions with the state they must fold to, and a reference pipeline for each |
+| [src/layer/writer.rs](src/layer/writer.rs) | Phase H: Jev's extra question, the writer's prompt, write → apply → retry |
 
 ## Results
 
@@ -661,7 +664,96 @@ Commands after a data stage are refused: data goes first, then the chart.
   package's `apply`, which does not know the layer's marks. It needs a
   fold that includes `layer`'s commands before the window can offer it.
 - **Free text** (titles, custom zooms, other predicates): the pipeline accepts
-  them, but a classifier cannot produce them.
+  them, but a classifier cannot produce them. Phase H (below) measures a
+  writer for them; the live window does not use it yet.
+
+## Phase H: Jev steers, Haiku writes the pipeline
+
+The autopilot so far turns Jev's options into pipeline lines with fixed rules
+(`package.rs`). That covers what the options can say, and nothing else. A
+title, "taller than 70 m", "10 m cells" or an exact range are refused as
+`NeedsText`, or rounded to the nearest option. In phase H, Jev reads the
+instruction first, and a general model (Claude Haiku 4.5) writes the whole
+new pipeline, with Jev's reading as direction.
+
+- **Jev** answers the pilot's questions, plus one more, `specifics`: does
+  the instruction carry text, a number, a range or a cell size that none of
+  the options can hold? The pilot's own questions are unchanged, so the cache
+  keys of every earlier decision are too.
+- **The writer** gets the grammar of the steps, the four tables with their
+  fields and the pipelines that build them, the chart now (its extents,
+  quarters and what the mark does not have), the pipeline now, the
+  instruction and Jev's reading. It replies with a whole pipeline.
+- **Nothing it writes is trusted.** The pipeline runs through
+  `editor::apply`, the path a hand edit takes: every stage is validated, and
+  the result must fold into a state the layer can draw. A refusal goes back
+  to the writer with its reason, up to three tries. The chart that is drawn
+  is still the fold of the pipeline.
+
+Four ways are compared on [cases_writer.json](cases_writer.json): 6 cases in
+the pilot's vocabulary (`v`) and 13 that need text of their own (`w`). Each
+case names the state it must fold to, and has a reference pipeline;
+`writer_eval --check` shows that all 19 references reach their expectation
+with the existing steps, before any model runs.
+
+| Way | What decides |
+|---|---|
+| jev | Jev's options, applied as the autopilot does |
+| haiku | Haiku writes the pipeline from the instruction alone |
+| haiku+jev | Haiku writes it with Jev's reading as direction |
+| routed | Jev's options when they say it all (confidence ≥ 0.5 and `specifics: none`), otherwise Haiku with Jev's direction |
+
+Results, second prompt ([results/writer.md](results/writer.md)):
+
+| Way | Right, vocabulary | Right, own text | Writer calls | Accepted first try | Latency p50 / max | Cost, 19 cases |
+|---|---|---|---|---|---|---|
+| jev | 6/6 | 2/13 | 0 | – | 271 / 1003 ms | $0.0010 |
+| haiku | 6/6 | 13/13 | 19 | 18/19 | 1751 / 3343 ms | $0.055 |
+| haiku+jev | 6/6 | 13/13 | 19 | 18/19 | 1929 / 4597 ms | $0.057 |
+| routed | **6/6** | **13/13** | 15 | 14/15 | 1604 / 4597 ms | $0.045 |
+
+What the numbers say:
+
+- **Jev alone cannot do the `w` cases, as expected.** The two it gets right
+  are the ones where the answer is "unchanged" (a 3D model, emphasis on a
+  heatmap). For "taller than 70 m" it picks the top 10 %, confidently (0.95).
+- **A written pipeline does all 19.** Every title, threshold, cell size and
+  range folds to the expected state. Two things came out of the writer
+  that no option could: 10 m cells (3489) and 2 m cells (63 231).
+- **Jev's direction changed one thing:** with it, Haiku also changed the
+  title when the cell size changed ("Buildings, 10 m cells"). Without it, the
+  map shows 10 m cells under the title "Buildings, 5 m cells". The cases do
+  not check that title, so both count as right. In every other case the two
+  wrote the same result.
+- **Routing is cautious, never wrong in the costly direction.** Jev said
+  `specifics: text` for 12 of the 13 `w` cases. The thirteenth (emphasis on a
+  heatmap) goes to the writer anyway, because its option does not fit. But it
+  also said `text` for two plain cases ("mark the tallest buildings", "kleur
+  de gebouwen groen"), which then cost a writer call. No case that needed
+  text took the fast path.
+- **Latency is the price.** The writer is 6–7 times slower than Jev (1.6–1.9 s
+  p50). That is too slow for deciding while typing; it suits Enter.
+
+**The first prompt was worse, and the retries showed why**
+([results/writer_v1.md](results/writer_v1.md)): 14 of 19 accepted on the
+first try, 25 tries in all, and v03 wrong for both writers.
+- The palette was written as `green #59a14f`, and Haiku wrote `color green`.
+  That caused 4 of the 6 retries (the other 2 are the heatmap below). Each
+  was fixed on the second try, from the refusal's own text.
+- "The top left" of the time series became `zoom 0..5 0..50000` instead of the
+  north-west quarter. Once the prompt listed the four quarters, the zoom
+  those options stand for, it was right.
+- Asked to emphasise a heatmap, Haiku tried three predicates and did not give
+  up; the result was "unchanged" only because the tries ran out. With "emphasis:
+  not available on a heatmap" in the prompt, it takes two tries.
+
+The second prompt was changed after seeing these results, on the same 19
+cases, so its scores are optimistic. New cases are the honest test.
+
+Not checked: other writer models; Dutch beyond two cases; instructions that
+change the data stages beyond the cell size (other filters, other
+aggregates); and the writer in the live window, where its 2 s would have to be
+shown while the chart waits.
 
 ## Advanced: a training run as the data source
 
