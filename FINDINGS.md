@@ -252,7 +252,8 @@ compiler's `CompileError::path()` does this. **Not checked:** what
 
 Also from experiment 7, as things that worked well: `RequestWakeup` with
 `RuntimeWake` for background work, `WriteClipboard`, `MouseUp` and
-`CursorMoved` for text fields, and headless `PngCanvas` rendering of the same
+`CursorMoved` for text fields (and for a lens that follows the cursor),
+`Clip::Path` for a round magnifier, and headless `PngCanvas` rendering of the same
 `SceneGraph`, which made a video that rebuilds frame for frame from a cache.
 
 ## What worked well

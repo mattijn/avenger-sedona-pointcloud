@@ -118,6 +118,10 @@ read out/layer/classes.parquet
 | `set y.scale.type log` | bar |
 | `set x.scale.domain a,b` (or y) | line and point; one axis keeps the other's extent |
 | `title "…"`, `color #hex`, `highlight "datum.f >= n"`, `clear-highlight`, `zoom x0..x1 y0..y1`, `reset-zoom` | as the mark allows |
+| `view fisheye --focus x,y [--radius r] [--distortion d]` | all marks; focus in the plot's unit square, 0,0 bottom left |
+| `view magnifier --focus x,y [--radius r] [--zoom k]` | all but arc |
+| `view tilt [--yaw a] [--elevation e]` | point (the map), with height as z |
+| `view flat` | |
 
 Data stages are `read <file>`, `filter --vega "…"`, `sql "… FROM input …"`;
 `head N` ends a text that is a query. Experiment 6's short forms (`bars n --by
@@ -160,6 +164,42 @@ on every item**, so two frames can be joined item by item:
 | `writer.rs` | The extra questions, the writer's prompt, write → apply → retry |
 | `editor.rs` | A pipeline text or query run on its own, drawn from its result |
 | `catalog.rs` | The named tables and the overview |
+
+## Views: experiment 5's coordinate systems, and magnifying
+
+The chart layer first took only `Bend` from experiment 5 (Cartesian ↔
+polar). A view now follows the bend, from the same family of point
+transforms, and a change of view blends the two, as a change of coordinate
+system did in experiment 5:
+- **fisheye**, the Sarkar–Brown lens (experiment 5's `Fisheye`): the plot
+  stays in its square, grid lines bend with it, and symbol areas follow the
+  lens's local magnification, so cells that touch on the flat map still touch;
+- **magnifier**, a round inset over the focus: the same items again,
+  undistorted and scaled about it, clipped with `Clip::Path`. It is the
+  nested alternative to the fisheye: readable, but it covers its
+  surroundings;
+- **tilt**, the map in 3D (experiment 5's `Cartesian3d`), with each cell's
+  highest point as z, painter's order by depth, and the grid on the floor;
+  what a zoom leaves outside the square is left out, since a tilted plot has
+  no clip rectangle.
+
+Jev has an action `view` with a question which view; the quarter it names is
+the focus. "magnify the north-east corner" came back as `zoom` (0.78) beside
+`view magnifier` (0.73), and "zoom in on the north-east" as `zoom` (1.00)
+beside `magnifier` (0.59), so a view answer becomes the action when it is
+within 0.15 of the action's confidence and differs from the current view
+(`writer::normalise`). In the window, the focus of a lens follows the cursor
+over the plot, and a click puts it in the pipeline as a `view` line. Not
+checked with a real mouse: only headless.
+
+![Magnifier, fisheye and tilt](images/views.png)
+
+[docs/interactions.md](../../docs/interactions.md) catalogues interaction
+techniques as of September 2026: what doing the ordinary ones well takes
+(from vega/altair#3394), research-grade ones not in any mainstream library
+(line and crossing brushes, timeboxes, smooth brushing, lenses, CloudLasso,
+DimpVis), and the trade-off between magnifying by projection and by a nested
+view.
 
 ## Results
 
@@ -230,7 +270,12 @@ thresholds, ranges, cell sizes, filters).
 - Earlier rounds of the prompt are kept in `results/writer_v*.md`.
 
 Undo and reset, on 13 cases including four lookalikes ("reset the zoom",
-"remove the emphasis", "go back to the bar chart"): 13/13.
+"remove the emphasis", "go back to the bar chart"): 13/13. With table,
+export, overview and the views, the Jev-only cases are 22/25: the three
+misses are an action beside a right `render` answer, which the window follows.
+
+"draw the buildings as a 3D model" (w12) expected "unchanged" until the layer
+had a 3D view; it now expects the tilt, and every way but Jev alone gives it.
 
 ### Cost
 

@@ -112,11 +112,53 @@ pub struct State {
     pub y_title: Option<String>,
     /// `set y.scale.type log`, on bars.
     pub y_log: bool,
+    /// How the plot is seen: flat, through a lens, or tilted in 3D.
+    pub view: View,
+}
+
+/// A view over the plot's unit square, after the coordinate system (the
+/// family of experiment 5): the same items, projected differently.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum View {
+    Flat,
+    /// Sarkar–Brown fisheye around `focus` (unit space): the context stays,
+    /// distances inside the lens do not.
+    Fisheye { focus: [f64; 2], radius: f64, distortion: f64 },
+    /// A round inset over `focus`, magnified `zoom` times and undistorted;
+    /// it covers what lies around it.
+    Magnifier { focus: [f64; 2], radius: f64, zoom: f64 },
+    /// The map in 3D: height as z, seen from `yaw` degrees around and
+    /// `elevation` degrees above the horizon.
+    Tilt { yaw: f64, elevation: f64 },
+}
+
+impl View {
+    pub fn id(&self) -> &'static str {
+        match self {
+            View::Flat => "flat",
+            View::Fisheye { .. } => "fisheye",
+            View::Magnifier { .. } => "magnifier",
+            View::Tilt { .. } => "tilt",
+        }
+    }
+    pub fn focus(&self) -> Option<[f64; 2]> {
+        match self {
+            View::Fisheye { focus, .. } | View::Magnifier { focus, .. } => Some(*focus),
+            _ => None,
+        }
+    }
+    pub fn with_focus(self, f: [f64; 2]) -> View {
+        match self {
+            View::Fisheye { radius, distortion, .. } => View::Fisheye { focus: f, radius, distortion },
+            View::Magnifier { radius, zoom, .. } => View::Magnifier { focus: f, radius, zoom },
+            v => v,
+        }
+    }
 }
 
 impl State {
     pub fn new(dataset: Dataset) -> Self {
-        let mut s = State { dataset, mark: Mark::default_for(dataset), color: None, zoom: None, range: None, highlight: false, threshold: None, title: String::new(), x_title: None, y_title: None, y_log: false };
+        let mut s = State { dataset, mark: Mark::default_for(dataset), color: None, zoom: None, range: None, highlight: false, threshold: None, title: String::new(), x_title: None, y_title: None, y_log: false, view: View::Flat };
         s.title = s.default_title();
         s
     }
@@ -153,6 +195,8 @@ pub struct Item {
     pub fill: [f32; 4],
     /// Symbol area for points, stroke width for lines.
     pub size: f64,
+    /// Height in unit space, for a tilted view (a map cell's highest point).
+    pub h: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -192,6 +236,7 @@ pub struct Frame {
     pub colorbar: Option<(f64, f64)>,
     /// Equal aspect for maps.
     pub square: bool,
+    pub view: View,
 }
 
 pub fn class_color(label: &str) -> [f32; 4] {
@@ -290,6 +335,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
         legend: vec![],
         colorbar: None,
         square: false,
+        view: s.view,
     };
     match s.mark {
         Mark::Bars | Mark::Pie => {
@@ -317,7 +363,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
                 if s.highlight && *v >= p90 {
                     fill = HIGHLIGHT;
                 }
-                f.items.push(Item { key: format!("class:{label}"), parent: None, geo, fill, size: 0.0 });
+                f.items.push(Item { key: format!("class:{label}"), parent: None, geo, fill, size: 0.0, h: 0.0 });
             }
             if s.mark == Mark::Bars {
                 f.x = Axis::Band { field: "class".into(), labels: d.classes.iter().map(|c| c.0.clone()).collect() };
@@ -336,7 +382,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             for (k, l) in lines.iter().enumerate() {
                 let pts: Vec<[f64; 2]> = d.flight.iter().filter(|r| r.0 == *l).map(|r| [r.1, r.2]).collect();
                 let fill = s.color.filter(|_| lines.len() == 1).unwrap_or(LINE_COLOURS[k % 4]);
-                f.items.push(Item { key: format!("line:{l}"), parent: None, geo: Geo::Line { pts }, fill, size: 2.0 });
+                f.items.push(Item { key: format!("line:{l}"), parent: None, geo: Geo::Line { pts }, fill, size: 2.0, h: 0.0 });
                 f.legend.push((format!("flight line {l}"), fill));
             }
             f.x = Axis::Linear { field: "seconds since the line entered the tile".into(), lo: x0, hi: x1 };
@@ -360,6 +406,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
                     geo: Geo::Rect { x0: i as f64 / nx, x1: (i as f64 + 1.0) / nx, y0: row / ny, y1: (row + 1.0) / ny },
                     fill: viridis(t),
                     size: 0.0,
+                    h: 0.0,
                 });
             }
             f.x = Axis::Band { field: "height above 42 m".into(), labels: bands.iter().map(|b| format!("{b:.0} m")).collect() };
@@ -384,6 +431,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             if s.title == s.default_title() {
                 f.state.title = format!("Buildings, {} m cells", fmt_m(cell));
             }
+            let (hlo, hhi) = d.cells.iter().fold((f64::MAX, f64::MIN), |a, c| (a.0.min(c.2), a.1.max(c.2)));
             for (cx, cy, h) in &d.cells {
                 let hot = s.highlight && *h >= p90;
                 f.items.push(Item {
@@ -392,6 +440,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
                     geo: Geo::Point { x: *cx, y: *cy },
                     fill: if hot { HIGHLIGHT } else { base },
                     size: k * if hot { 14.0 } else { 5.0 },
+                    h: ((h - hlo) / (hhi - hlo).max(1e-9)).clamp(0.0, 1.0),
                 });
             }
             f.x = Axis::Linear { field: "easting (Lambert-93, m)".into(), lo: x0, hi: x1 };

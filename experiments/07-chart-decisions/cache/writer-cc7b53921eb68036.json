@@ -1,0 +1,52 @@
+{
+  "cost": 0.003034,
+  "input_tokens": 2029,
+  "ms": 1778.1204160000002,
+  "raw": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "content": "```pipeline\nread data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! sql \"SELECT cx, cy, h, row_number() OVER (ORDER BY cx, cy) AS id FROM input\"\n! chart point --x cx:Q --y cy:Q --color h:Q\n! set x.projection winkel3\n! zoom 657000..658000 6867000..6868000\n```",
+          "reasoning": null,
+          "refusal": null,
+          "role": "assistant"
+        },
+        "native_finish_reason": "end_turn"
+      }
+    ],
+    "created": 1790358505,
+    "id": "gen-1790358505-wSgGw1BP0ZWTBGRCqvh4",
+    "model": "anthropic/claude-haiku-4.5",
+    "object": "chat.completion",
+    "provider": "Amazon Bedrock",
+    "service_tier": "default",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 201,
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "cost": 0.003034,
+      "cost_details": {
+        "upstream_inference_completions_cost": 0.001005,
+        "upstream_inference_cost": 0.003034,
+        "upstream_inference_prompt_cost": 0.002029
+      },
+      "is_byok": false,
+      "prompt_tokens": 2029,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 2230
+    }
+  },
+  "text": "```pipeline\nread data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! sql \"SELECT cx, cy, h, row_number() OVER (ORDER BY cx, cy) AS id FROM input\"\n! chart point --x cx:Q --y cy:Q --color h:Q\n! set x.projection winkel3\n! zoom 657000..658000 6867000..6868000\n```"
+}

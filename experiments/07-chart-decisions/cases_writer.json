@@ -334,14 +334,17 @@
       },
       "text": "draw the buildings as a 3D model",
       "expect": {
-        "unchanged": true
+        "mark": "map",
+        "view": "tilt"
       },
       "reference": {
         "data": "cells",
         "commands": [
-          "map --x cx --y cy --value h"
+          "map --x cx --y cy --value h",
+          "view tilt"
         ]
-      }
+      },
+      "changed": "expected unchanged until the layer had a 3D view (25 Sep 2026)"
     },
     {
       "id": "w13",
@@ -614,6 +617,45 @@
       "text": "I don't know what I can do with this data, show me what's in it",
       "expect": "no_change",
       "expect_render": "overview"
+    },
+    {
+      "id": "x01",
+      "added": "for the views",
+      "start": {
+        "mark": "map"
+      },
+      "text": "magnify the north-east corner",
+      "expect": "view",
+      "expect_view": "magnifier"
+    },
+    {
+      "id": "x02",
+      "added": "for the views",
+      "start": {
+        "mark": "map"
+      },
+      "text": "show the map in 3D",
+      "expect": "view",
+      "expect_view": "tilt"
+    },
+    {
+      "id": "x03",
+      "added": "for the views",
+      "start": {
+        "mark": "bars"
+      },
+      "text": "put a fisheye lens on the left",
+      "expect": "view",
+      "expect_view": "fisheye"
+    },
+    {
+      "id": "x04",
+      "added": "for the views",
+      "start": {
+        "mark": "map"
+      },
+      "text": "zoom in on the north-east",
+      "expect": "zoom"
     }
   ]
 }

@@ -663,7 +663,12 @@ impl App {
         for r in returned {
             self.in_flight -= 1;
             let d = match r.result {
-                Ok(d) => d,
+                Ok(mut d) => {
+                    if self.writer.is_some() {
+                        writer::normalise(&mut d, &self.state.view);
+                    }
+                    d
+                }
                 Err(e) => {
                     self.message = format!("decider: {e}");
                     continue;
@@ -1084,6 +1089,33 @@ impl App {
         }
     }
 
+    /// Move a lens's focus, live: the chart state and both frames, without a
+    /// transition and without a pipeline line (a click commits it).
+    fn move_focus(&mut self, u: [f64; 2]) {
+        let v = self.state.view.with_focus(u);
+        self.state.view = v;
+        self.to.view = v;
+        self.to.state.view = v;
+        self.from.view = v;
+        self.from.state.view = v;
+    }
+
+    /// Put the view as it is now into the pipeline, as a `view` line.
+    async fn commit_view(&mut self, _now: Instant) {
+        let line = package::view_line(&self.state.view);
+        self.remember();
+        let pipe = self.pipe.clone();
+        let mut p = pipe.lock().await;
+        if let Err(e) = p.run(&line).await {
+            self.message = format!("view: {e}");
+            return;
+        }
+        self.snapshot(&p);
+        self.changes.push(("click on the plot".into(), "view focus".into()));
+        self.session.push(format!("{:.1} s, click on the plot: {line}", (clock() - self.t0).as_secs_f64()));
+        self.logged += 1;
+    }
+
     /// Keep the pipeline behind the chart now, before it changes.
     fn remember(&mut self) {
         self.history.push(self.pipeline.join("\n! "));
@@ -1222,7 +1254,12 @@ impl App {
                 let mut p = pipe.lock().await;
                 *p = a.pipeline;
                 self.transition_to(a.state, now);
+                // The applied text is what runs now: the editor takes its
+                // canonical form.
+                let status = self.edit_status.clone();
+                self.code_synced = self.code.string();
                 self.snapshot(&p);
+                self.edit_status = status;
             }
             Err(e) => self.edit_status = (e, ui().th.error),
         }
@@ -1663,6 +1700,12 @@ fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
     }
 }
 
+/// A window position over the plot, in its unit square (0,0 bottom left).
+fn plot_unit(p: [f32; 2]) -> Option<[f64; 2]> {
+    let (x, y) = ((p[0] - draw::ORIGIN[0]) as f64 / draw::P, (p[1] - draw::ORIGIN[1]) as f64 / draw::P);
+    ((0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y)).then_some([x, 1.0 - y])
+}
+
 /// The overview, unmarked.
 async fn compute_overview() -> Result<editor::Table, String> {
     let (p, _) = lidar_decide::layer_pipeline().await.map_err(|e| e.to_string())?;
@@ -1709,7 +1752,8 @@ fn state_line(s: &State) -> String {
         (true, None) => "emphasis top 10 %".into(),
         (true, Some(t)) => format!("emphasis >= {t}"),
     };
-    format!("{} of {} · colour {} · {zoom} · {emphasis} · title \"{}\"", s.mark.id(), s.dataset.id(), pilot::colour_name(s.color), s.title)
+    let view = if s.view == lidar_decide::layer::model::View::Flat { String::new() } else { format!(" · {}", package::view_line(&s.view)) };
+    format!("{} of {} · colour {} · {zoom} · {emphasis}{view} · title \"{}\"", s.mark.id(), s.dataset.id(), pilot::colour_name(s.color), s.title)
 }
 
 /// One line from a shell command, for the session header.
@@ -2084,6 +2128,12 @@ impl EventStreamHandler<App> for Input {
             }
             Event::MouseDown(e) if e.button == MouseButton::Left => {
                 let p = e.position;
+                // A click on the plot under a lens puts its focus in the pipeline.
+                if let (Some(_), Some(u), None) = (s.state.view.focus(), plot_unit(p), &s.table) {
+                    s.move_focus(u);
+                    s.commit_view(now).await;
+                    return rerender;
+                }
                 if inside(p, NERDS_BUTTON) {
                     s.nerds = !s.nerds;
                 } else if inside(p, DATA_BUTTON) {
@@ -2150,7 +2200,14 @@ impl EventStreamHandler<App> for Input {
                     s.last_key = clock();
                     rerender
                 }
-                None => UpdateStatus::default(),
+                // A lens follows the cursor over the plot.
+                None => match (s.state.view.focus(), plot_unit(e.position)) {
+                    (Some(_), Some(u)) if s.table.is_none() => {
+                        s.move_focus(u);
+                        rerender
+                    }
+                    _ => UpdateStatus::default(),
+                },
             },
             Event::MouseUp(_) => {
                 s.dragging = None;

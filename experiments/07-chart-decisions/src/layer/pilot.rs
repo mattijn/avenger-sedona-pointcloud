@@ -156,6 +156,7 @@ pub fn apply(s: &State, answers: &Map<String, Value>) -> Result<State, NotApplie
             n.x_title = None;
             n.y_title = None;
             n.y_log = false;
+            n.view = super::model::View::Flat;
             n.title = n.default_title();
         }
         "color" => {
@@ -180,6 +181,25 @@ pub fn apply(s: &State, answers: &Map<String, Value>) -> Result<State, NotApplie
                 _ => return unfit("zoom chosen but no region"),
             };
             n.range = None;
+        }
+        "view" => {
+            use super::model::View;
+            let focus = match get("region") {
+                "north_east" => [0.75, 0.75],
+                "north_west" => [0.25, 0.75],
+                "south_east" => [0.75, 0.25],
+                "south_west" => [0.25, 0.25],
+                _ => s.view.focus().unwrap_or([0.5, 0.5]),
+            };
+            n.view = match get("view") {
+                "flat" => View::Flat,
+                "fisheye" => View::Fisheye { focus, radius: 0.35, distortion: 3.0 },
+                "magnifier" if s.mark == Mark::Pie => return unfit("the magnifier works on flat charts, not on a pie"),
+                "magnifier" => View::Magnifier { focus, radius: 0.2, zoom: 3.0 },
+                "tilt" if s.mark == Mark::Map => View::Tilt { yaw: 30.0, elevation: 40.0 },
+                "tilt" => return unfit("the layer tilts the map only"),
+                _ => return unfit("view chosen but no kind"),
+            };
         }
         "highlight" => {
             if !highlightable(s.mark) {
@@ -209,6 +229,7 @@ pub fn short(answers: &Map<String, Value>) -> String {
         "color" => get("colour"),
         "zoom" => get("region"),
         "highlight" => get("subset"),
+        "view" => get("view"),
         _ => None,
     };
     arg.map_or(action.to_string(), |a| format!("{action}/{a}"))

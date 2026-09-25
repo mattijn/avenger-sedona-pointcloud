@@ -31,6 +31,21 @@ pub fn questions() -> Value {
     // Going back is a change of its own, not "no change".
     q["action"]["criteria"]["undo"] = json!("undo the last change: go back one step to the chart as it was before it");
     q["action"]["criteria"]["reset"] = json!("start over: the whole chart back to how it was at the start (not only the zoom or the emphasis)");
+    // How the plot is seen, from experiment 5's coordinate systems.
+    q["action"]["criteria"]["view"] = json!("change how the chart is seen: a fisheye or a magnifier over one area, a 3D tilt, or back to flat");
+    // "Magnify" asks for a lens, not for the whole chart to zoom.
+    q["action"]["criteria"]["zoom"] = json!("zoom the whole chart to a part of it, or back out to all of it: the axes change (not a lens or a magnifying glass)");
+    q["view"] = json!({
+        "type": "choice",
+        "instructions": "If the view should change, to which?",
+        "criteria": {
+            "flat": "a plain flat view, without a lens or tilt",
+            "fisheye": "a fisheye lens: one area enlarged, the rest kept around it",
+            "magnifier": "magnify: a magnifying glass, an enlarged round inset over one area while the rest stays as it is",
+            "tilt": "a tilted 3D view, with height as depth",
+            "keep": "no view asked for",
+        },
+    });
     q["render"] = json!({
         "type": "choice",
         "instructions": "How should the result be shown?",
@@ -50,6 +65,22 @@ pub fn questions() -> Value {
         },
     });
     q
+}
+
+/// Jev's side answers are steadier than its action: "magnify the
+/// north-east corner" came back as `zoom` (0.78) with `view magnifier`
+/// (0.73). A view answered with confidence, beside an action that is only a
+/// zoom or no change, becomes the action.
+pub fn normalise(d: &mut Decision, current: &super::model::View) {
+    let get = |k: &str| d.answers.get(k).and_then(Value::as_str).unwrap_or("keep").to_string();
+    let (action, view) = (get("action"), get("view"));
+    // Close to the action's confidence: "magnify" was zoom 0.78 against
+    // magnifier 0.73; "zoom in" was zoom 1.00 against magnifier 0.59.
+    let (cv, ca) = (d.confidence_of("view").unwrap_or(0.0), d.confidence.unwrap_or(1.0));
+    if matches!(action.as_str(), "zoom" | "no_change") && view != "keep" && view != current.id() && cv >= 0.5 && cv >= ca - 0.15 {
+        d.answers.insert("action".into(), json!("view"));
+        d.confidence = d.confidence_of("view");
+    }
 }
 
 /// Jev's reading, as one line for the writer and the tables: the change it
@@ -114,6 +145,9 @@ fn chart_now(s: &State, d: &Data) -> String {
     } else {
         v.push(format!("emphasis: not available on a {}", s.mark.id()));
     }
+    if s.view != super::model::View::Flat {
+        v.push(format!("view: {}", package::view_line(&s.view)));
+    }
     if !matches!(s.mark, Mark::Bars | Mark::Map) {
         v.push(format!("colour: fixed on a {}, its colours encode the data", s.mark.id()));
     }
@@ -156,6 +190,11 @@ Aggregate in a `sql` stage before the mark, not in a channel. The layer draws th
   set x.axis.title \"<text>\" · set y.axis.title \"<text>\"   axis titles (not on arc)
   set y.scale.type log                     bars only
   set x.scale.domain <a>,<b>               line and map; one axis, the other keeps its extent
+  view fisheye --focus <x>,<y> [--radius r] [--distortion d]   a lens; focus in the plot's unit square, 0,0 bottom left
+  view magnifier --focus <x>,<y> [--radius r] [--zoom k]       a round inset, magnified
+  view tilt [--yaw a] [--elevation e]                          3D, the map only, height as z
+  view flat
+  A pipeline has at most one `view` line, after the mark: a new view replaces the old line.
   color <hex>                            bars and map only; write the hex, not the name: {palette}
   highlight \"datum.<field> >= <number>\"  bars, pie and map; this is the only predicate form
   clear-highlight

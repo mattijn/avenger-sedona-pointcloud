@@ -21,7 +21,7 @@ use datafusion::error::Result;
 use lidar_pipeline::pipeline::{err, Call, Kind, Package, Pipeline, Step};
 use serde_json::{json, Value};
 
-use super::model::{base_domains, emphasis, quarter_domains, Data, Dataset, Mark, Quarter, State};
+use super::model::{base_domains, emphasis, quarter_domains, Data, Dataset, Mark, Quarter, State, View};
 use crate::options::COLOURS;
 
 /// `(step, chart mark, positional measure, flags)`.
@@ -205,6 +205,47 @@ impl Step for ChartStep {
     }
 }
 
+/// `view flat | fisheye | magnifier | tilt [--focus x,y] [--radius r]
+/// [--distortion d] [--zoom k] [--yaw a] [--elevation e]`: how the plot is
+/// seen. The focus is in the plot's unit square (0,0 bottom left).
+struct ViewStep;
+
+#[async_trait]
+impl Step for ViewStep {
+    fn kind(&self) -> Kind {
+        Kind::Command
+    }
+    fn help(&self) -> &'static str {
+        "view flat · view fisheye --focus x,y [--radius r --distortion d] · view magnifier --focus x,y [--radius r --zoom k] · view tilt [--yaw a --elevation e]"
+    }
+    async fn run(&self, p: &mut Pipeline, c: &Call) -> Result<Option<String>> {
+        let kind = c.arg(0)?;
+        let num = |k: &str, d: f64| -> Result<f64> {
+            c.flag(k).map_or(Ok(d), |v| v.parse().map_err(|_| err(format!("view: --{k} {v} is not a number"))))
+        };
+        let focus = match c.flag("focus") {
+            None => [0.5, 0.5],
+            Some(v) => {
+                let (a, b) = v.split_once(',').ok_or_else(|| err(format!("view: --focus {v} is not x,y")))?;
+                let (a, b): (f64, f64) = (a.trim().parse().map_err(|_| err("view: --focus x is not a number"))?, b.trim().parse().map_err(|_| err("view: --focus y is not a number"))?);
+                if !(0.0..=1.0).contains(&a) || !(0.0..=1.0).contains(&b) {
+                    return Err(err(format!("view: --focus {v} is outside the plot (0..1, 0..1)")));
+                }
+                [a, b]
+            }
+        };
+        let v = match kind {
+            "flat" => json!({"kind": "flat"}),
+            "fisheye" => json!({"kind": "fisheye", "focus": focus, "radius": num("radius", 0.35)?, "distortion": num("distortion", 3.0)?}),
+            "magnifier" => json!({"kind": "magnifier", "focus": focus, "radius": num("radius", 0.2)?, "zoom": num("zoom", 3.0)?}),
+            "tilt" => json!({"kind": "tilt", "yaw": num("yaw", 30.0)?, "elevation": num("elevation", 40.0)?}),
+            other => return Err(err(format!("view: the layer has flat, fisheye, magnifier and tilt, not `{other}`"))),
+        };
+        p.chart["view"] = v;
+        Ok(None)
+    }
+}
+
 struct ClearHighlight;
 
 #[async_trait]
@@ -227,6 +268,7 @@ pub fn package() -> Package {
     let mut steps: Vec<(&'static str, Arc<dyn Step>)> =
         MARKS.iter().map(|m| (m.0, Arc::new(MarkStep) as Arc<dyn Step>)).collect();
     steps.push(("chart", Arc::new(ChartStep)));
+    steps.push(("view", Arc::new(ViewStep)));
     steps.push(("clear-highlight", Arc::new(ClearHighlight)));
     Package { name: "layer", functions: vec![], steps }
 }
@@ -265,7 +307,25 @@ fn props(n: &State) -> Vec<String> {
     if n.y_log {
         v.push("set y.scale.type log".into());
     }
+    if n.view != View::Flat {
+        v.push(view_line(&n.view));
+    }
     v
+}
+
+fn short_num(x: f64) -> String {
+    format!("{}", (x * 1000.0).round() / 1000.0)
+}
+
+/// The `view` command for a view.
+pub fn view_line(v: &View) -> String {
+    let f = |p: [f64; 2]| format!("{},{}", short_num(p[0]), short_num(p[1]));
+    match v {
+        View::Flat => "view flat".into(),
+        View::Fisheye { focus, radius, distortion } => format!("view fisheye --focus {} --radius {} --distortion {}", f(*focus), short_num(*radius), short_num(*distortion)),
+        View::Magnifier { focus, radius, zoom } => format!("view magnifier --focus {} --radius {} --zoom {}", f(*focus), short_num(*radius), short_num(*zoom)),
+        View::Tilt { yaw, elevation } => format!("view tilt --yaw {} --elevation {}", short_num(*yaw), short_num(*elevation)),
+    }
 }
 
 fn zoom_line(m: Mark, q: Quarter, d: &Data) -> String {
@@ -326,6 +386,9 @@ pub fn lines(s: &State, n: &State, d: &Data) -> Vec<String> {
     }
     if n.y_log != s.y_log {
         out.push(format!("set y.scale.type {}", if n.y_log { "log" } else { "linear" }));
+    }
+    if n.view != s.view {
+        out.push(view_line(&n.view));
     }
     if n.color != s.color {
         out.extend(n.color.and_then(hex_of).map(|h| format!("color {h}")));
@@ -422,6 +485,22 @@ pub fn state(chart: &Value, d: &Data) -> std::result::Result<State, String> {
     s.y_title = title_of("y");
     if mark == Mark::Pie && (s.x_title.is_some() || s.y_title.is_some()) {
         return Err("a pie has no axes to title".into());
+    }
+    s.view = match chart["view"]["kind"].as_str() {
+        None | Some("flat") => View::Flat,
+        Some(k) => {
+            let n = |f: &str| chart["view"][f].as_f64().unwrap_or(0.0);
+            let focus = [chart["view"]["focus"][0].as_f64().unwrap_or(0.5), chart["view"]["focus"][1].as_f64().unwrap_or(0.5)];
+            match k {
+                "fisheye" => View::Fisheye { focus, radius: n("radius"), distortion: n("distortion") },
+                "magnifier" => View::Magnifier { focus, radius: n("radius"), zoom: n("zoom") },
+                _ if mark != Mark::Map => return Err("the layer tilts the map only, with height as z".into()),
+                _ => View::Tilt { yaw: n("yaw"), elevation: n("elevation") },
+            }
+        }
+    };
+    if mark == Mark::Pie && matches!(s.view, View::Magnifier { .. }) {
+        return Err("the magnifier works on flat charts, not on a pie (a fisheye does)".into());
     }
     match chart["y"]["scale"]["type"].as_str() {
         None | Some("linear") => {}

@@ -89,6 +89,7 @@ fn check(expect: &Value, start: &State, s: &State, n_rows: usize) -> Option<Stri
             }),
             "rows" => v.as_u64() == Some(n_rows as u64),
             "rows_gt" => v.as_u64().is_some_and(|m| n_rows as u64 > m),
+            "view" => v.as_str() == Some(s.view.id()),
             other => panic!("unknown expectation {other}"),
         };
         if !ok {
@@ -234,7 +235,8 @@ async fn main() -> Result<(), Error> {
         let id = c["id"].as_str().unwrap();
         let text = c["text"].as_str().unwrap();
         let s = start(&c["start"]);
-        let j = jev.decide(&pilot::observation(&s, &d, text), &writer::questions()).await?;
+        let mut j = jev.decide(&pilot::observation(&s, &d, text), &writer::questions()).await?;
+        writer::normalise(&mut j, &s.view);
         let dir = writer::direction(&j);
         let jev_state = from_jev(&s, &j);
         let jev_run = Run { rows: rows(&jev_state, &d), state: jev_state, ms: j.ms, cost: j.cost, tries: 0, first: false, texts: vec![], route: "options" };
@@ -299,10 +301,12 @@ async fn main() -> Result<(), Error> {
     for c in &back {
         let s = start(&c["start"]);
         let text = c["text"].as_str().unwrap();
-        let j = jev.decide(&pilot::observation(&s, &d, text), &writer::questions()).await?;
+        let mut j = jev.decide(&pilot::observation(&s, &d, text), &writer::questions()).await?;
+        writer::normalise(&mut j, &s.view);
         let got = j.answers.get("action").and_then(Value::as_str).unwrap_or("?");
         let render = j.answers.get("render").and_then(Value::as_str).unwrap_or("?");
-        let ok = Some(got) == c["expect"].as_str() && c["expect_render"].as_str().is_none_or(|r| r == render);
+        let view = j.answers.get("view").and_then(Value::as_str).unwrap_or("?");
+        let ok = Some(got) == c["expect"].as_str() && c["expect_render"].as_str().is_none_or(|r| r == render) && c["expect_view"].as_str().is_none_or(|v| v == view);
         right += usize::from(ok);
         md += &format!(
             "| {} {text} | {} | {}{} | {}{} | {render} | {:.2} |\n",
