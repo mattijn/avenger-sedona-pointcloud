@@ -203,6 +203,23 @@ fn axis_marks(ax: &DAxis, horizontal: bool, marks: &mut Vec<SceneMark>) {
                 marks.push(text(field, -62.0, p / 2.0, 12.0, ink, TextAlign::Center, TextBaseline::Bottom, false, -90.0));
             }
         }
+        Axis::Log { field, lo, hi } => {
+            let (l0, l1) = (lo.log10(), hi.log10());
+            let mut e = l0.round();
+            while e <= l1 + 1e-9 {
+                let v = 10f64.powf(e);
+                let u = ((e - l0) / (l1 - l0)) as f32;
+                let y = (1.0 - u) * p;
+                marks.push(rule(0.0, y, p, y, grid));
+                marks.push(text(&fmt(v, v), -8.0, y, 11.0, muted, TextAlign::Right, TextBaseline::Middle, false, 0.0));
+                e += 1.0;
+            }
+            if horizontal {
+                marks.push(text(field, p / 2.0, p + 30.0, 12.0, ink, TextAlign::Center, TextBaseline::Top, false, 0.0));
+            } else {
+                marks.push(text(field, -62.0, p / 2.0, 12.0, ink, TextAlign::Center, TextBaseline::Bottom, false, -90.0));
+            }
+        }
         Axis::Band { field, labels } => {
             let n = labels.len() as f32;
             for (i, l) in labels.iter().enumerate() {

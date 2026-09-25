@@ -996,6 +996,12 @@ impl App {
     /// Apply what the writer wrote, as the editor applies a hand edit.
     async fn collect_written(&mut self, now: Instant) {
         let all: Vec<WrittenBack> = std::mem::take(&mut *self.written_back.lock().unwrap());
+        // A recording shows the writer taking as long as it did.
+        let (all, later): (Vec<WrittenBack>, Vec<WrittenBack>) = all.into_iter().partition(|b| {
+            let ms: f64 = b.result.as_ref().map_or(0.0, |o| o.attempts.iter().map(|a| a.written.ms).sum());
+            !recording() || self.writing_since + Duration::from_secs_f64(ms.clamp(300.0, 6000.0) / 1e3) <= now
+        });
+        self.written_back.lock().unwrap().extend(later);
         for b in all {
             self.in_flight -= 1;
             self.writing -= 1;
@@ -1154,11 +1160,19 @@ impl App {
             let due = match &*self.edited.lock().unwrap() {
                 Some(Ok(a)) => self.apply_started + Duration::from_secs_f64(a.ms / 1e3),
                 Some(Err(_)) => self.apply_started,
-                None => return,
+                // Nothing from the editor: a table's query may be waiting.
+                None => self.apply_started,
             };
             if now < due {
                 return;
             }
+        }
+        let due = match &*self.queried.lock().unwrap() {
+            Some(Ok(t)) if recording() => self.apply_started + Duration::from_secs_f64(t.ms.clamp(150.0, 3000.0) / 1e3),
+            _ => self.apply_started,
+        };
+        if now < due {
+            return;
         }
         if let Some(q) = self.queried.lock().unwrap().take() {
             self.applying = false;
@@ -1580,10 +1594,10 @@ fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
         y += 16.0;
     }
     let help = [
-        "bars n --by label · pie n --by label · line n --x t --series line",
-        "heatmap n --x band --y label · map --x cx --y cy --value h",
-        "color #rrggbb · highlight \"datum.<f> >= <n>\" · clear-highlight",
-        "zoom x0..x1 y0..y1 · reset-zoom · data: read, filter, calc, sql · head N",
+        "chart bar --x f:N --y f:Q · arc --theta f:Q --color f:N",
+        "line --x f:Q --y f:Q --color f:N · rect --x f:O --y f:N --color f:Q",
+        "point --x f:Q --y f:Q --color f:Q · set x.axis.title \"…\" · set y.scale.type log",
+        "color #hex · highlight \"datum.f >= n\" · zoom · data: read, sql · head N · SQL",
     ];
     for (k, h) in help.iter().enumerate() {
         marks.push(t(h, PX, H - 84.0 + k as f32 * 16.0, 11.0, muted(), false));
@@ -2102,6 +2116,10 @@ enum Act {
     Wait(f64),
     /// Wait until nothing is pending or moving, then this long.
     Settle(f64),
+    /// The subtitle under the window, in the tour.
+    Caption(&'static str),
+    /// Select all text in the editor.
+    SelectAll,
 }
 
 /// The recording: the live window, driven by a script on a virtual clock.
@@ -2134,16 +2152,60 @@ fn script() -> Vec<Act> {
     ]
 }
 
-async fn record(mut app: App, dir: &str) -> Result<(), Box<dyn std::error::Error>> {
+/// The tour: what the autopilot can do now, with the writer on, in about
+/// 90 seconds, with a subtitle per step.
+fn tour() -> Vec<Act> {
+    use Act::*;
+    let enter = || Key(NamedKey::Enter);
+    vec![
+        Caption("One chart, driven by what you type. First: what data is there?"), Wait(1.5),
+        Type("what data is there?"), Wait(0.3), enter(), Settle(2.0),
+        Caption("Five tables: the LiDAR tile, 17.3 million points, and four tables made from it."), Wait(4.0),
+        Key(NamedKey::Escape), Caption("Some rows first, before any chart."), Wait(1.0),
+        Type("show head 5 as table"), Wait(0.3), enter(), Settle(3.0),
+        Key(NamedKey::Escape), Caption("Jev reads while you type: a pause is enough."), Wait(0.8),
+        Type("which share"), Wait(1.4), Type(" does each class have?"), Wait(0.3), enter(), Settle(1.5),
+        Caption("Something Jev's options cannot say: Claude Haiku writes the pipeline."), Wait(0.5),
+        Type("back to bars"), enter(), Settle(1.0),
+        Type("exclude building"), Wait(0.3), enter(), Settle(2.0),
+        Caption("Changed your mind? Undo."), Wait(0.5),
+        Type("undo"), enter(), Settle(1.8),
+        Caption("Scales and axes, the Vega-Lite way: set y.scale.type log."), Wait(0.5),
+        Type("put the points on a log scale"), Wait(0.3), enter(), Settle(2.2),
+        Caption("From bars to a map: the same chart object morphs, it is not redrawn."), Wait(0.5),
+        Type("where are the buildings?"), enter(), Settle(1.8),
+        Caption("Numbers of your own: a threshold, then a cell size, from the tile itself."), Wait(0.5),
+        Type("only emphasise buildings taller than 70 m"), enter(), Settle(1.5),
+        Type("use 10 m cells instead of 5 m"), enter(), Settle(2.0),
+        Caption("Stats for nerds: the whole pipeline behind the chart, see-through."), Tab, Wait(5.5), Tab,
+        Caption("The same session by hand: the editor runs SQL over the named tables."), CmdE, Wait(2.0),
+        SelectAll, Type("SELECT classification, count(*) AS points, round(avg(z), 1) AS mean_z FROM tile GROUP BY classification ORDER BY points DESC"), Wait(0.5),
+        CmdEnter, Settle(3.5), CmdE, Wait(0.5),
+        Caption("And back to where it began."), Wait(0.3),
+        Type("start over"), enter(), Settle(2.0),
+        Caption("Jev 1.13 · Claude Haiku 4.5 · DataFusion · SedonaDB · Avenger"), Wait(3.0),
+    ]
+}
+
+/// The height of the subtitle band under the window, in the tour.
+const BAND: f32 = 56.0;
+
+async fn record(app: App, dir: &str) -> Result<(), Box<dyn std::error::Error>> {
+    record_script(app, dir, script(), false).await
+}
+
+async fn record_script(mut app: App, dir: &str, script: Vec<Act>, captions: bool) -> Result<(), Box<dyn std::error::Error>> {
     use avenger_wgpu::canvas::{Canvas, PngCanvas};
     const FPS: f64 = 30.0;
     std::fs::create_dir_all(dir)?;
-    let mut canvas = PngCanvas::new(avenger_common::canvas::CanvasDimensions { size: [W, H], scale: 1.0 }, Default::default()).await?;
+    let band = if captions { BAND } else { 0.0 };
+    let mut canvas = PngCanvas::new(avenger_common::canvas::CanvasDimensions { size: [W, H + band], scale: 1.0 }, Default::default()).await?;
+    let mut caption = String::new();
     let base = clock();
     let no = Mods { cmd: false, shift: false, alt: false };
     // Typing splits into one key per character.
     let mut acts: std::collections::VecDeque<Act> = Default::default();
-    for a in script() {
+    for a in script {
         match a {
             Act::Type(t) => acts.extend(t.split_inclusive(|_: char| true).map(Act::Type)),
             a => acts.push_back(a),
@@ -2191,6 +2253,12 @@ async fn record(mut app: App, dir: &str) -> Result<(), Box<dyn std::error::Error
                     app.last_key = now;
                 }
                 Act::Wait(d) => wait = *d,
+                Act::Caption(c) => caption = c.to_string(),
+                Act::SelectAll => {
+                    app.code.anchor = Some(0);
+                    app.code.caret = app.code.text.len();
+                    app.last_key = now;
+                }
                 Act::Settle(d) => {
                     if busy {
                         break;
@@ -2207,18 +2275,32 @@ async fn record(mut app: App, dir: &str) -> Result<(), Box<dyn std::error::Error
             app.typed_at = None;
             app.ask(false);
         }
-        while app.returned.lock().unwrap().len() < app.in_flight {
+        // A writer in flight counts in `in_flight` but returns elsewhere.
+        while app.returned.lock().unwrap().len() < app.in_flight - app.writing {
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
-        while app.applying && app.edited.lock().unwrap().is_none() {
+        while app.applying && app.edited.lock().unwrap().is_none() && app.queried.lock().unwrap().is_none() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        while app.written_back.lock().unwrap().len() < app.writing {
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
         app.collect(now).await;
         app.collect_written(now).await;
         app.collect_edit(now).await;
-        canvas.set_scene(&build(&mut app).scene_graph)?;
+        let mut sg = build(&mut app).scene_graph;
+        if captions {
+            sg.height = H + band;
+            sg.marks.push(draw::rect(0.0, H, W, band, [0.0, 0x25 as f32 / 255.0, 0x32 as f32 / 255.0, 1.0], None, 0.0));
+            sg.marks.push(draw::text(&caption, W / 2.0, H + band / 2.0, 19.0, [1.0; 4], TextAlign::Center, TextBaseline::Middle, false, 0.0));
+        }
+        canvas.set_scene(&sg)?;
         canvas.render().await?.save(format!("{dir}/f{frame:05}.png"))?;
         frame += 1;
+        // A step that never settles would fill the disk.
+        if frame as f64 > 240.0 * FPS {
+            return Err(format!("recording: still busy after {frame} frames, at `{caption}`").into());
+        }
         if acts.is_empty() {
             let end = *tail.get_or_insert(frame + FPS as usize / 2);
             if frame >= end {
@@ -2238,7 +2320,7 @@ async fn record(mut app: App, dir: &str) -> Result<(), Box<dyn std::error::Error
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map(String::as_str) == Some("--record") {
+    if matches!(args.get(1).map(String::as_str), Some("--record") | Some("--tour")) {
         let _ = VIRTUAL.set(Mutex::new(Instant::now()));
     }
     // The calm theme, or with `--neutral` the look of the recordings.
@@ -2358,6 +2440,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // `--snapshot <dir> "instruction" ...`: the same path as the window
     // (Enter, gates, pipeline, fold), rendered to PNG with and without stats
     // for nerds, for checking without a display.
+    if args.get(1).map(String::as_str) == Some("--tour") {
+        let dir = args.get(2).cloned().unwrap_or("out/autopilot_live/tour".into());
+        return runtime.block_on(async move {
+            // The overview is ready before the first frame, as in the window.
+            while app.overview.lock().unwrap().is_none() {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            record_script(app, &dir, tour(), true).await
+        });
+    }
     if args.get(1).map(String::as_str) == Some("--record") {
         let dir = args.get(2).cloned().unwrap_or("out/autopilot_live/frames".into());
         return runtime.block_on(record(app, &dir));

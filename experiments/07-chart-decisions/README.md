@@ -350,6 +350,83 @@ and debouncing.
   LLMs, and larger or noisier instruction sets. With 19 + 8 cases, one case is
   5 % (instructions) or 12.5 % (data changes); the counts are indicative.
 
+## The tour: what the autopilot does now
+
+[video/autopilot_tour.mp4](video/autopilot_tour.mp4), 90 s, records the live
+window with the writer on (`autopilot_live --tour <dir>`), on a virtual clock
+at 30 fps, with a subtitle band under it. Every decision and every written
+pipeline arrives after the time it took when it was first made, and all of
+them come from the cache, so the video rebuilds without a key (checked: a
+rebuild without `OPENROUTER_API_KEY` took all 12 decisions from the cache).
+The queries really run, so a rebuild can differ by a few frames (2693
+against 2691).
+
+```sh
+cargo run --release -p lidar-decide --bin autopilot_live -- --tour out/autopilot_live/tour
+ffmpeg -framerate 30 -i out/autopilot_live/tour/f%05d.png -c:v libx264 -preset slow \
+    -pix_fmt yuv420p -crf 24 -movflags +faststart experiments/07-chart-decisions/video/autopilot_tour.mp4
+```
+
+![The tour, one frame per step](images/tour_sheet.png)
+
+| Subtitle | Typed | What happens |
+|---|---|---|
+| One chart, driven by what you type. First: what data is there? | what data is there? | Jev: `render overview`; the overview of the five tables |
+| Five tables: the LiDAR tile, 17.3 million points, and four tables made from it. | | |
+| Some rows first, before any chart. | show head 5 as table | Haiku writes the data stages; a table of 5 rows |
+| Jev reads while you type: a pause is enough. | which share … does each class have? | the pie, decided at "which share" |
+| Something Jev's options cannot say: Claude Haiku writes the pipeline. | back to bars · exclude building | bars; then Haiku's filter, and Building leaves |
+| Changed your mind? Undo. | undo | Building comes back |
+| Scales and axes, the Vega-Lite way: set y.scale.type log. | put the points on a log scale | Haiku writes `set y.scale.type log` |
+| From bars to a map: the same chart object morphs, it is not redrawn. | where are the buildings? | the map |
+| Numbers of your own: a threshold, then a cell size, from the tile itself. | only emphasise buildings taller than 70 m · use 10 m cells instead of 5 m | Haiku writes `highlight "datum.h >= 70"`, then the `sql` stage at 10 m |
+| Stats for nerds: the whole pipeline behind the chart, see-through. | Tab | the pipeline, over the chart |
+| The same session by hand: the editor runs SQL over the named tables. | ⌘E, a `SELECT … FROM tile GROUP BY classification` | a table of 9 classes over all points |
+| And back to where it began. | start over | reset to the first bars |
+
+Making it found a bug: a log scale set on bars travelled with the chart to
+the map, which the fold then refused ("the layer draws a log scale on bars
+only"). A change of mark now drops the scale and axis properties, as it
+already dropped the colour where it did not apply.
+
+## Encoding channels and `set`
+
+The marks are written with Vega-Lite's names now: a mark, then its encoding
+channels as `--channel field:type` (N, O, Q, T). Aggregation stays in a
+`sql` stage before the mark. Scale and axis properties come back from
+experiment 6's option 1, as `set <channel>.<axis|scale>.<property>`:
+
+```
+read out/layer/classes.parquet
+! chart bar --x label:N --y n:Q --color label:N
+! set x.axis.title "LiDAR class"
+! set y.scale.type log
+```
+
+| Mark | Channels | Was |
+|---|---|---|
+| `chart bar` | `--x f:N` (or O) `--y f:Q`, `--color` the same field as x, or `#hex` | `bars n --by label` |
+| `chart arc` | `--theta f:Q --color f:N` | `pie n --by label` |
+| `chart line` | `--x f:Q` (or T) `--y f:Q --color f:N` (or `--detail`) | `line n --x t --series line` |
+| `chart rect` | `--x f:O` (or Q) `--y f:N --color f:Q` | `heatmap n --x band --y label` |
+| `chart point` | `--x f:Q --y f:Q --color f:Q` | `map --x cx --y cy --value h` |
+
+A type left out comes from the field's Arrow type. `set` takes
+`x.axis.title` and `y.axis.title` (not on an arc), `y.scale.type log` (bars),
+and `x.scale.domain a,b` or `y.scale.domain` (line, map; one axis alone keeps
+the other's extent); experiment 6's `set x.title` still works. The old
+commands still work and write the same state, so earlier pipelines and cache
+entries hold; the pipeline the window shows is written in the new form.
+What the layer cannot draw is refused with its reason, as `layer_roundtrip`
+shows: a `--size` channel on a point, `label:Q` on a bar's x, `chart area`,
+`set x.axis.labelAngle`, a log scale on a map.
+
+With this grammar in the writer's prompt, the 22 writer cases give routed
+16/16 and 6/6 as before, and Haiku alone 20/22: without Jev's direction it
+drew "which share does each class have?" as bars titled "Share of points …
+(%)", and "draw the buildings as a 3D model" as a map of the raw tile. With
+Jev's reading, neither happened ([results/writer.md](results/writer.md)).
+
 ## The autopilot on one chart that transitions
 
 [video/autopilot.mp4](video/autopilot.mp4), 79 s, is a recording of the live

@@ -151,6 +151,11 @@ pub fn apply(s: &State, answers: &Map<String, Value>) -> Result<State, NotApplie
             if !recolourable(n.mark) {
                 n.color = None;
             }
+            // Scales and axis titles belong to the mark they were set on: a
+            // log scale on bars does not travel to a map.
+            n.x_title = None;
+            n.y_title = None;
+            n.y_log = false;
             n.title = n.default_title();
         }
         "color" => {

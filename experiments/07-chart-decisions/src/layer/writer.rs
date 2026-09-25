@@ -144,9 +144,18 @@ Data stages:
   filter --vega \"<Vega expression>\"   keep rows, for example \"datum.classification == 6\"
   sql \"<SELECT ... FROM input ...>\"   the previous stage is the table `input`
 
-Chart commands: exactly one mark first, then any of the others.
-  bars <n> --by <label> · pie <n> --by <label> · line <n> --x <t> --series <line> · heatmap <n> --x <band> --y <label> · map --x <cx> --y <cy> --value <h>
+Chart commands: exactly one mark first, then any of the others. A mark names its encoding channels as \
+`--channel field:type`, the types as in Vega-Lite (N nominal, O ordinal, Q quantitative, T temporal). \
+Aggregate in a `sql` stage before the mark, not in a channel. The layer draws these five:
+  chart bar --x <f>:N --y <f>:Q [--color <same f as x>]
+  chart arc --theta <f>:Q --color <f>:N
+  chart line --x <f>:Q --y <f>:Q --color <f>:N
+  chart rect --x <f>:O --y <f>:N --color <f>:Q
+  chart point --x <f>:Q --y <f>:Q --color <f>:Q
   title \"<text>\"
+  set x.axis.title \"<text>\" · set y.axis.title \"<text>\"   axis titles (not on arc)
+  set y.scale.type log                     bars only
+  set x.scale.domain <a>,<b>               line and map; one axis, the other keeps its extent
   color <hex>                            bars and map only; write the hex, not the name: {palette}
   highlight \"datum.<field> >= <number>\"  bars, pie and map; this is the only predicate form
   clear-highlight

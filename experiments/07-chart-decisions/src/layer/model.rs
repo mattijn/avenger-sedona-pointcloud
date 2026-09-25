@@ -107,11 +107,16 @@ pub struct State {
     /// An emphasis threshold other than the top 10 % (from the editor).
     pub threshold: Option<f64>,
     pub title: String,
+    /// Axis titles set with `set x.axis.title`; `None` is the mark's own.
+    pub x_title: Option<String>,
+    pub y_title: Option<String>,
+    /// `set y.scale.type log`, on bars.
+    pub y_log: bool,
 }
 
 impl State {
     pub fn new(dataset: Dataset) -> Self {
-        let mut s = State { dataset, mark: Mark::default_for(dataset), color: None, zoom: None, range: None, highlight: false, threshold: None, title: String::new() };
+        let mut s = State { dataset, mark: Mark::default_for(dataset), color: None, zoom: None, range: None, highlight: false, threshold: None, title: String::new(), x_title: None, y_title: None, y_log: false };
         s.title = s.default_title();
         s
     }
@@ -155,6 +160,17 @@ pub enum Axis {
     None,
     Band { field: String, labels: Vec<String> },
     Linear { field: String, lo: f64, hi: f64 },
+    /// Ticks at powers of ten; `lo` and `hi` are the values at the ends.
+    Log { field: String, lo: f64, hi: f64 },
+}
+
+impl Axis {
+    fn retitle(&mut self, t: &str) {
+        match self {
+            Axis::Band { field, .. } | Axis::Linear { field, .. } | Axis::Log { field, .. } => *field = t.to_string(),
+            Axis::None => {}
+        }
+    }
 }
 
 /// Polar frames are drawn through `Bend(1)`, Cartesian ones through `Bend(0)`.
@@ -282,9 +298,14 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             let total: f64 = d.classes.iter().map(|c| c.2).sum();
             let p90 = s.threshold.unwrap_or(emphasis(s.mark, d).unwrap().1);
             let mut acc = 0.0;
+            // A log scale runs from the power of ten below the smallest bar
+            // to the one above the largest.
+            let lmin = d.classes.iter().map(|c| c.2).filter(|v| *v > 0.0).fold(f64::INFINITY, f64::min);
+            let (llo, lhi) = (10f64.powf(lmin.max(1.0).log10().floor()), 10f64.powf(max.max(1.0).log10().ceil()));
+            let unit = |v: f64| if s.y_log { ((v.max(llo).log10() - llo.log10()) / (lhi.log10() - llo.log10())).clamp(0.0, 1.0) } else { v / max };
             for (i, (label, colour, v)) in d.classes.iter().enumerate() {
                 let geo = if s.mark == Mark::Bars {
-                    Geo::Rect { x0: (i as f64 + 0.12) / n, x1: (i as f64 + 0.88) / n, y0: 0.0, y1: v / max }
+                    Geo::Rect { x0: (i as f64 + 0.12) / n, x1: (i as f64 + 0.88) / n, y0: 0.0, y1: unit(*v) }
                 } else {
                     // A stacked bar in the upper part of y: under `Bend(1)`
                     // it is a donut ring.
@@ -300,7 +321,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             }
             if s.mark == Mark::Bars {
                 f.x = Axis::Band { field: "class".into(), labels: d.classes.iter().map(|c| c.0.clone()).collect() };
-                f.y = Axis::Linear { field: "points".into(), lo: 0.0, hi: max };
+                f.y = if s.y_log { Axis::Log { field: "points (log scale)".into(), lo: llo, hi: lhi } } else { Axis::Linear { field: "points".into(), lo: 0.0, hi: max } };
             } else {
                 f.coords = Coords::Polar;
                 f.legend = d.classes.iter().map(|c| (format!("{} {:.0} %", c.0, 100.0 * c.2 / total), s.color.unwrap_or(c.1))).collect();
@@ -377,6 +398,12 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             f.y = Axis::Linear { field: "northing (m)".into(), lo: y0, hi: y1 };
             f.square = true;
         }
+    }
+    if let Some(t) = &s.x_title {
+        f.x.retitle(t);
+    }
+    if let Some(t) = &s.y_title {
+        f.y.retitle(t);
     }
     f
 }

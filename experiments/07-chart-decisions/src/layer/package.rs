@@ -80,6 +80,131 @@ impl Step for MarkStep {
     }
 }
 
+/// `chart <mark> --x f[:T] --y f[:T] --color f[:T] …`: a mark with named
+/// encoding channels and types, as in Vega-Lite. The layer draws five
+/// combinations; each is run as the short command it stands for (`bar` with
+/// a nominal x and a quantitative y is `bars <y> --by <x>`), so fields are
+/// checked the same way, and the channels are kept in the chart state.
+/// Aggregation stays in a `sql` stage before the mark.
+struct ChartStep;
+
+const CHANNELS: [&str; 10] = ["x", "y", "color", "theta", "detail", "size", "tooltip", "shape", "opacity", "text"];
+
+/// A channel as written, `field` or `field:T`, with its type: given, or
+/// from the field's Arrow type.
+fn channel(p: &Pipeline, c: &Call, name: &str) -> Result<Option<(String, char)>> {
+    let Some(v) = c.flag(name) else { return Ok(None) };
+    let (f, t) = match v.rsplit_once(':') {
+        Some((f, t)) if matches!(t, "N" | "O" | "Q" | "T" | "nominal" | "ordinal" | "quantitative" | "temporal") => (f, Some(t)),
+        _ => (v, None),
+    };
+    let schema = p.plan()?.schema().clone();
+    let dt = schema
+        .fields()
+        .iter()
+        .find(|x| x.name() == f)
+        .map(|x| x.data_type().clone())
+        .ok_or_else(|| err(format!("chart: no field `{f}` for --{name} in the data (fields: {})", schema.fields().iter().map(|x| x.name().as_str()).collect::<Vec<_>>().join(", "))))?;
+    let ty = match t {
+        Some(t) => t.chars().next().unwrap().to_ascii_uppercase(),
+        None if dt.is_numeric() => 'Q',
+        None if matches!(dt, datafusion::arrow::datatypes::DataType::Timestamp(..) | datafusion::arrow::datatypes::DataType::Date32 | datafusion::arrow::datatypes::DataType::Date64) => 'T',
+        None => 'N',
+    };
+    Ok(Some((f.to_string(), ty)))
+}
+
+fn type_name(t: char) -> &'static str {
+    match t {
+        'N' => "nominal",
+        'O' => "ordinal",
+        'Q' => "quantitative",
+        _ => "temporal",
+    }
+}
+
+#[async_trait]
+impl Step for ChartStep {
+    fn kind(&self) -> Kind {
+        Kind::Command
+    }
+    fn help(&self) -> &'static str {
+        "chart bar --x f:N --y f:Q · chart arc --theta f:Q --color f:N · chart line --x f:Q --y f:Q --color f:N · chart rect --x f:O --y f:N --color f:Q · chart point --x f:Q --y f:Q --color f:Q"
+    }
+    async fn run(&self, p: &mut Pipeline, c: &Call) -> Result<Option<String>> {
+        let mark = c.arg(0)?.to_string();
+        let allowed: &[&str] = match mark.as_str() {
+            "bar" => &["x", "y", "color"],
+            "arc" => &["theta", "color"],
+            "line" => &["x", "y", "color", "detail"],
+            "rect" => &["x", "y", "color"],
+            "point" | "square" | "circle" => &["x", "y", "color"],
+            other => return Err(err(format!("chart: the layer draws bar, arc, line, rect and point, not `{other}`"))),
+        };
+        for k in c.flags.keys() {
+            if !CHANNELS.contains(&k.as_str()) {
+                return Err(err(format!("chart: `--{k}` is not an encoding channel")));
+            }
+            if !allowed.contains(&k.as_str()) {
+                return Err(err(format!("chart {mark}: the layer has no `{k}` channel for this mark; it takes {}", allowed.join(", "))));
+            }
+        }
+        // A constant colour, `--color #c44e52`, is a value, not a field.
+        let constant = c.flag("color").filter(|v| v.starts_with('#')).map(String::from);
+        let mut enc = serde_json::Map::new();
+        let mut need = |name: &str, types: &str| -> Result<String> {
+            let (f, t) = channel(p, c, name)?.ok_or_else(|| err(format!("chart {mark} needs --{name}")))?;
+            if !types.contains(t) {
+                let want: Vec<&str> = types.chars().map(type_name).collect();
+                return Err(err(format!("chart {mark}: --{name} {f} is {}, the layer draws it as {}", type_name(t), want.join(" or "))));
+            }
+            enc.insert(name.into(), json!({"field": f, "type": type_name(t)}));
+            Ok(f)
+        };
+        let (step, value, flags): (&str, Option<String>, Vec<(&str, String)>) = match mark.as_str() {
+            "bar" => {
+                let (x, y) = (need("x", "NO")?, need("y", "Q")?);
+                if constant.is_none() && c.flag("color").is_some() {
+                    let col = need("color", "NO")?;
+                    if col != x {
+                        return Err(err(format!("chart bar: bars are coloured by their own category (--color {x}) or one colour (--color #rrggbb), not by `{col}`")));
+                    }
+                }
+                ("bars", Some(y), vec![("by", x)])
+            }
+            "arc" => {
+                let (v, by) = (need("theta", "Q")?, need("color", "NO")?);
+                ("pie", Some(v), vec![("by", by)])
+            }
+            "line" => {
+                let (x, y) = (need("x", "QT")?, need("y", "Q")?);
+                let series = if c.flag("detail").is_some() { need("detail", "NO")? } else { need("color", "NO")? };
+                ("line", Some(y), vec![("x", x), ("series", series)])
+            }
+            "rect" => {
+                let (x, y, v) = (need("x", "OQ")?, need("y", "NO")?, need("color", "Q")?);
+                ("heatmap", Some(v), vec![("x", x), ("y", y)])
+            }
+            _ => {
+                let (x, y, v) = (need("x", "Q")?, need("y", "Q")?, need("color", "Q")?);
+                ("map", None, vec![("x", x), ("y", y), ("value", v)])
+            }
+        };
+        let short = Call {
+            name: step.into(),
+            args: value.into_iter().collect(),
+            flags: flags.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+        };
+        MarkStep.run(p, &short).await?;
+        p.chart["encoding"] = Value::Object(enc);
+        p.chart["vlmark"] = json!(mark);
+        if let Some(h) = constant {
+            p.chart["fill"] = json!(h);
+        }
+        Ok(None)
+    }
+}
+
 struct ClearHighlight;
 
 #[async_trait]
@@ -101,6 +226,7 @@ impl Step for ClearHighlight {
 pub fn package() -> Package {
     let mut steps: Vec<(&'static str, Arc<dyn Step>)> =
         MARKS.iter().map(|m| (m.0, Arc::new(MarkStep) as Arc<dyn Step>)).collect();
+    steps.push(("chart", Arc::new(ChartStep)));
     steps.push(("clear-highlight", Arc::new(ClearHighlight)));
     Package { name: "layer", functions: vec![], steps }
 }
@@ -112,14 +238,34 @@ fn hex_of(c: [f32; 4]) -> Option<&'static str> {
     COLOURS.iter().find(|(n, _)| super::pilot::colour_name(Some(c)) == *n).map(|(_, h)| *h)
 }
 
+/// The mark with its encoding, as Vega-Lite would name it.
 fn mark_line(m: Mark) -> &'static str {
     match m {
-        Mark::Bars => "bars n --by label",
-        Mark::Pie => "pie n --by label",
-        Mark::Line => "line n --x t --series line",
-        Mark::Heatmap => "heatmap n --x band --y label",
-        Mark::Map => "map --x cx --y cy --value h",
+        Mark::Bars => "chart bar --x label:N --y n:Q",
+        Mark::Pie => "chart arc --theta n:Q --color label:N",
+        Mark::Line => "chart line --x t:Q --y n:Q --color line:N",
+        Mark::Heatmap => "chart rect --x band:O --y label:N --color n:Q",
+        Mark::Map => "chart point --x cx:Q --y cy:Q --color h:Q",
     }
+}
+
+fn quoted(t: &str) -> String {
+    format!("\"{}\"", t.replace('"', "\\\""))
+}
+
+/// The scale and axis properties that differ from the defaults, as `set`.
+fn props(n: &State) -> Vec<String> {
+    let mut v = vec![];
+    if let Some(t) = &n.x_title {
+        v.push(format!("set x.axis.title {}", quoted(t)));
+    }
+    if let Some(t) = &n.y_title {
+        v.push(format!("set y.axis.title {}", quoted(t)));
+    }
+    if n.y_log {
+        v.push("set y.scale.type log".into());
+    }
+    v
 }
 
 fn zoom_line(m: Mark, q: Quarter, d: &Data) -> String {
@@ -152,6 +298,7 @@ fn fresh(read: bool, n: &State, d: &Data) -> Vec<String> {
     if n.title != n.default_title() {
         out.push(title_line(&n.title));
     }
+    out.extend(props(n));
     out.extend(n.color.and_then(hex_of).map(|h| format!("color {h}")));
     if n.highlight {
         out.push(highlight_line(n, d));
@@ -170,6 +317,15 @@ pub fn lines(s: &State, n: &State, d: &Data) -> Vec<String> {
     let mut out = vec![];
     if n.title != s.title {
         out.push(title_line(&n.title));
+    }
+    if n.x_title != s.x_title {
+        out.push(format!("set x.axis.title {}", quoted(n.x_title.as_deref().unwrap_or(""))));
+    }
+    if n.y_title != s.y_title {
+        out.push(format!("set y.axis.title {}", quoted(n.y_title.as_deref().unwrap_or(""))));
+    }
+    if n.y_log != s.y_log {
+        out.push(format!("set y.scale.type {}", if n.y_log { "log" } else { "linear" }));
     }
     if n.color != s.color {
         out.extend(n.color.and_then(hex_of).map(|h| format!("color {h}")));
@@ -211,10 +367,37 @@ pub fn initial(s: &State, d: &Data) -> Vec<String> {
 // ---------------------------------------------------------------------------
 // The pipeline's chart state → the layer's state.
 
+/// A domain from `zoom` (`x.domain`) or `set x.scale.domain a,b`.
 fn domain(v: &Value) -> Option<(f64, f64)> {
-    let s = v["domain"].as_str()?;
-    let (a, b) = s.split_once(',')?;
+    let s = v["domain"].as_str().or(v["scale"]["domain"].as_str())?;
+    let (a, b) = s.split_once(',').or_else(|| s.split_once(".."))?;
     Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+}
+
+/// The properties `set` may give a channel; anything else is refused, since
+/// the layer would not draw it.
+const PROPS: [&str; 6] = ["axis.title", "title", "scale.type", "scale.domain", "domain", "scale.scheme"];
+
+fn check_props(chart: &Value) -> std::result::Result<(), String> {
+    fn walk(prefix: &str, v: &Value, out: &mut Vec<String>) {
+        match v.as_object() {
+            Some(o) => o.iter().for_each(|(k, x)| walk(&if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") }, x, out)),
+            None => out.push(prefix.to_string()),
+        }
+    }
+    for ch in ["x", "y", "color"] {
+        let mut keys = vec![];
+        walk("", &chart[ch], &mut keys);
+        for k in keys.iter().filter(|k| !k.is_empty() && *k != "field" && *k != "type") {
+            if !PROPS.contains(&k.as_str()) {
+                return Err(format!("the layer draws {ch}.axis.title, {ch}.scale.domain and y.scale.type (bars), not {ch}.{k}"));
+            }
+        }
+    }
+    if let Some(s) = chart["color"]["scale"]["scheme"].as_str().filter(|s| *s != "viridis") {
+        return Err(format!("the heatmap draws viridis only, not {s}"));
+    }
+    Ok(())
 }
 
 /// Fold the pipeline's chart state into what the layer draws. Anything the
@@ -229,9 +412,23 @@ pub fn state(chart: &Value, d: &Data) -> std::result::Result<State, String> {
         other => return Err(format!("no layer mark in the chart ({other:?})")),
     };
     let dataset = Dataset::ALL.iter().map(|x| x.0).find(|x| mark.fits(*x)).unwrap();
+    check_props(chart)?;
     let mut s = State::new(dataset);
     s.mark = mark;
     s.title = chart["title"].as_str().map_or_else(|| s.default_title(), String::from);
+    // `set x.axis.title` (and experiment 6's `set x.title`); empty is the default.
+    let title_of = |ch: &str| chart[ch]["axis"]["title"].as_str().or(chart[ch]["title"].as_str()).filter(|t| !t.is_empty()).map(String::from);
+    s.x_title = title_of("x");
+    s.y_title = title_of("y");
+    if mark == Mark::Pie && (s.x_title.is_some() || s.y_title.is_some()) {
+        return Err("a pie has no axes to title".into());
+    }
+    match chart["y"]["scale"]["type"].as_str() {
+        None | Some("linear") => {}
+        Some("log") if mark == Mark::Bars => s.y_log = true,
+        Some("log") => return Err("the layer draws a log scale on bars only".into()),
+        Some(t) => return Err(format!("the layer draws linear and log scales, not {t}")),
+    }
     if let Some(h) = chart["fill"].as_str() {
         match COLOURS.iter().find(|c| c.1.eq_ignore_ascii_case(h)) {
             Some((name, _)) => {
@@ -249,7 +446,14 @@ pub fn state(chart: &Value, d: &Data) -> std::result::Result<State, String> {
         s.highlight = true;
         s.threshold = (t != top).then_some(t);
     }
-    match (domain(&chart["x"]), domain(&chart["y"])) {
+    // One axis alone keeps the other's full extent.
+    let base = base_domains(mark, d);
+    let (dx, dy) = match (domain(&chart["x"]), domain(&chart["y"]), base) {
+        (Some(x), None, Some((_, by))) => (Some(x), Some(by)),
+        (None, Some(y), Some((bx, _))) => (Some(bx), Some(y)),
+        (x, y, _) => (x, y),
+    };
+    match (dx, dy) {
         (None, None) => {}
         (Some(x), Some(y)) => {
             let base = base_domains(mark, d).ok_or("this mark has no zoom")?;

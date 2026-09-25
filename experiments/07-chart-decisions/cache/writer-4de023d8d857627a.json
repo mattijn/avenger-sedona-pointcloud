@@ -1,0 +1,52 @@
+{
+  "cost": 0.002875,
+  "input_tokens": 1985,
+  "ms": 1539.878042,
+  "raw": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "content": "```pipeline\nread data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 6 THEN 'Building' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 6 THEN 4 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input WHERE classification IN (2, 6) GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 6 THEN 'Building' END ORDER BY o\"\n! chart bar --x label:N --y n:Q\n```",
+          "reasoning": null,
+          "refusal": null,
+          "role": "assistant"
+        },
+        "native_finish_reason": "end_turn"
+      }
+    ],
+    "created": 1790341068,
+    "id": "gen-1790341068-qbaDQnrpmMwUHEjQn23C",
+    "model": "anthropic/claude-haiku-4.5",
+    "object": "chat.completion",
+    "provider": "Amazon Bedrock",
+    "service_tier": "default",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 178,
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "cost": 0.002875,
+      "cost_details": {
+        "upstream_inference_completions_cost": 0.00089,
+        "upstream_inference_cost": 0.002875,
+        "upstream_inference_prompt_cost": 0.001985
+      },
+      "is_byok": false,
+      "prompt_tokens": 1985,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 2163
+    }
+  },
+  "text": "```pipeline\nread data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 6 THEN 'Building' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 6 THEN 4 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input WHERE classification IN (2, 6) GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 6 THEN 'Building' END ORDER BY o\"\n! chart bar --x label:N --y n:Q\n```"
+}

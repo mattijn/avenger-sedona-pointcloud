@@ -149,7 +149,7 @@ pub async fn apply(text: &str, base: &Data) -> Result<Applied, String> {
     });
     let (data_text, note) = match known {
         Some(ds) => (format!("read {}", data::source(ds)), format!("data stages are the {} table: read from its cache, {}", ds.id(), data::source(ds))),
-        None => (written.join(" ! "), "data stages run from the tile".to_string()),
+        None => (written.join(" ! "), "data stages run as written".to_string()),
     };
     p.run(&data_text).await.map_err(|e| e.to_string())?;
     for c in &calls[split..] {

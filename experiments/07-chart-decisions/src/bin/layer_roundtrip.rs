@@ -105,12 +105,35 @@ async fn main() -> Result<(), Error> {
         ("custom zoom and threshold", format!("{base}\n! highlight \"datum.h >= 70\"\n! zoom 657200..657600 6867300..6867700")),
         ("10 m cells", base.replace("floor(x/5)*5", "floor(x/10)*10").replace("floor(y/5)*5", "floor(y/10)*10")),
         ("a predicate the layer cannot draw", format!("{base}\n! highlight \"datum.h < 50\"")),
-        ("a field that is not there", base.replace("--value h", "--value height")),
+        ("a field that is not there", base.replace("--color h:Q", "--color height:Q")),
     ] {
         match editor::apply(&text, &d).await {
             Ok(a) => println!(
                 "{what}: {:?} zoom {:?} threshold {:?} · {} cells · {} · {:.0} ms",
                 a.state.mark, a.state.range, a.state.threshold, a.data.cells.len(), a.note, a.ms
+            ),
+            Err(e) => println!("{what}: refused: {e}"),
+        }
+    }
+    // Channels, types and `set`: what the layer draws, and what it refuses.
+    let bars = all.iter().find(|s| s.mark == Mark::Bars && !s.highlight && s.color.is_none()).unwrap();
+    let line = all.iter().find(|s| s.mark == Mark::Line && s.zoom.is_none()).unwrap();
+    let (bars, line) = (package::full(bars, &d).join("\n! "), package::full(line, &d).join("\n! "));
+    for (what, text) in [
+        ("axis titles and a log scale", format!("{bars}\n! set x.axis.title \"LiDAR class\"\n! set y.axis.title \"points\"\n! set y.scale.type log")),
+        ("the short form of experiment 6", format!("{bars}\n! set x.title \"LiDAR class\"")),
+        ("one axis zoomed", format!("{line}\n! set x.scale.domain 0,5")),
+        ("a constant colour as a value", bars.replace("--y n:Q", "--y n:Q --color #c44e52")),
+        ("a channel the mark does not have", base.replace("--color h:Q", "--color h:Q --size h:Q")),
+        ("a type the layer does not draw", bars.replace("label:N", "label:Q")),
+        ("a mark the layer does not draw", bars.replace("chart bar", "chart area")),
+        ("a property the layer does not draw", format!("{bars}\n! set x.axis.labelAngle -45")),
+        ("a log scale on a map", format!("{base}\n! set y.scale.type log")),
+    ] {
+        match editor::apply(&text, &d).await {
+            Ok(a) => println!(
+                "{what}: {:?} · x title {:?} · y title {:?} · log {} · zoom {:?} · colour {}",
+                a.state.mark, a.state.x_title, a.state.y_title, a.state.y_log, a.state.range, a.state.color.is_some()
             ),
             Err(e) => println!("{what}: refused: {e}"),
         }

@@ -1,7 +1,7 @@
 | Case | jev | haiku | haiku+jev | routed |
 |---|---|---|---|---|
 | v01 make the bars red | bars red | bars red | bars red | bars red |
-| v02 which share does each class have? | pie | pie | pie | pie |
+| v02 which share does each class have? | pie | **✗** bars "Share of points per LiDAR class (%)" (mark) | pie | pie |
 | v03 zoom in on the start of the lines, the top left | line zoom north_west | line zoom north_west | line zoom north_west | line zoom north_west |
 | v04 mark the tallest buildings | map top 10 % | map top 10 % | map top 10 % | map top 10 % |
 | v05 kleur de gebouwen groen | map green | map green | map green | map green |
@@ -17,8 +17,8 @@
 | w09 colour the map green and emphasise everything above 60 m | **✗** map green (highlight, threshold) | map green >= 60 | map green >= 60 | map green >= 60 |
 | w10 show the buildings in 2 m cells | **✗** unchanged (rows_gt) | map 63231 cells | map 63231 cells | map 63231 cells |
 | w11 zoom to the north-east and emphasise buildings over 65 m | **✗** map zoom north_east (highlight, threshold) | map zoom north_east >= 65 | map zoom north_east >= 65 | map zoom north_east >= 65 |
-| w12 draw the buildings as a 3D model | unchanged | map 3316187 cells | map 3316155 cells | map 3316155 cells |
-| w13 emphasise the band with the most points | unchanged | unchanged, 2 tries | unchanged, 3 tries | unchanged, 3 tries |
+| w12 draw the buildings as a 3D model | unchanged | **✗** map zoom custom 3316187 cells (unchanged) | unchanged | unchanged |
+| w13 emphasise the band with the most points | unchanged | unchanged, 2 tries | unchanged, 2 tries | unchanged, 2 tries |
 | w14 filter ground | **✗** unchanged (rows) | pie 1 cells | pie 1 cells | pie 1 cells |
 | w15 only show ground and buildings | **✗** unchanged (rows) | bars 2 cells | bars 2 cells | bars 2 cells |
 | w16 exclude building | **✗** unchanged (rows) | bars 5 cells | bars 5 cells | bars 5 cells |
@@ -26,9 +26,9 @@
 | Arm | Right, vocabulary (v) | Right, own text (w) | Writer used | Accepted on the first try | Tries | Latency p50 / max | Cost |
 |---|---|---|---|---|---|---|---|
 | jev | 6/6 | 2/16 | 0 | – | 0 | 302 / 699 ms | $0.0013 |
-| haiku | 6/6 | 16/16 | 22 | 21/22 | 23 | 1445 / 3859 ms | $0.0643 |
-| haiku+jev | 6/6 | 16/16 | 22 | 21/22 | 24 | 1795 / 5376 ms | $0.0704 |
-| routed | 6/6 | 16/16 | 18 | 17/18 | 20 | 1692 / 5376 ms | $0.0581 |
+| haiku | 5/6 | 15/16 | 22 | 21/22 | 23 | 1639 / 4126 ms | $0.0706 |
+| haiku+jev | 6/6 | 16/16 | 22 | 21/22 | 23 | 1824 / 4236 ms | $0.0730 |
+| routed | 6/6 | 16/16 | 18 | 17/18 | 19 | 1651 / 4236 ms | $0.0595 |
 
 | Case | Start | Expected | Jev | Render | Confidence |
 |---|---|---|---|---|---|
