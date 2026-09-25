@@ -20,7 +20,7 @@ use super::anim::{DAxis, Drawn, UGeo};
 use super::model::{nice, viridis, Axis};
 
 /// The plot square, in pixels.
-pub const P: f64 = 440.0;
+pub const P: f64 = 400.0;
 pub const ORIGIN: [f32; 2] = [100.0, 90.0];
 pub const SIZE: [f32; 2] = [940.0, 640.0];
 const GRID: [f32; 4] = [0.86, 0.88, 0.91, 1.0];

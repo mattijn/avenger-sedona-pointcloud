@@ -53,13 +53,13 @@ use lidar_decide::options::NotApplied;
 use lidar_pipeline::pipeline::{Kind, Pipeline};
 use serde_json::Value;
 
-const W: f32 = 1560.0;
+const W: f32 = 1400.0;
 const H: f32 = 720.0;
 /// The panel on the right: typing, and the pipeline under it.
-const PX: f32 = 1100.0;
+const PX: f32 = 1004.0;
 /// Jev's column, between the chart and the panel.
-const JX: f32 = 744.0;
-const JW: f32 = 326.0;
+const JX: f32 = 704.0;
+const JW: f32 = 280.0;
 const WAKE: &str = "autopilot";
 /// The current pipeline, written on every change.
 const PIPELINE_FILE: &str = "out/autopilot_live/pipeline.txt";
@@ -68,21 +68,21 @@ const DEBOUNCE: Duration = Duration::from_millis(400);
 const GATE: f64 = 0.5;
 const GATE_MARK_EARLY: f64 = 0.9;
 /// The buttons in the panel header.
-const NERDS_BUTTON: [f32; 4] = [PX + 330.0, 24.0, 110.0, 26.0];
-const COPY_BUTTON: [f32; 4] = [PX + 226.0, 24.0, 96.0, 26.0];
-const DATA_BUTTON: [f32; 4] = [PX + 182.0, 24.0, 40.0, 26.0];
+const NERDS_BUTTON: [f32; 4] = [PX + 268.0, 24.0, 108.0, 26.0];
+const COPY_BUTTON: [f32; 4] = [PX + 192.0, 24.0, 72.0, 26.0];
+const DATA_BUTTON: [f32; 4] = [PX + 144.0, 24.0, 44.0, 26.0];
 /// The session as text: what was typed, what became of it, the pipeline.
 const SESSION_FILE: &str = "out/autopilot_live/session.txt";
 /// The view as it was when the session was copied.
 const VIEW_FILE: &str = "out/autopilot_live/session-view.png";
-const AUTOPILOT_BUTTON: [f32; 4] = [PX, 24.0, 84.0, 26.0];
-const EDITOR_BUTTON: [f32; 4] = [PX + 84.0, 24.0, 64.0, 26.0];
+const AUTOPILOT_BUTTON: [f32; 4] = [PX, 24.0, 80.0, 26.0];
+const EDITOR_BUTTON: [f32; 4] = [PX + 80.0, 24.0, 60.0, 26.0];
 /// The editor's text area, and its monospace grid.
-const EDIT_AREA: [f32; 4] = [PX, 196.0, 440.0, 396.0];
+const EDIT_AREA: [f32; 4] = [PX, 196.0, 376.0, 380.0];
 /// Pipeline text size and row height in the editor.
 const CODE: f32 = 12.0;
 /// The autopilot box, and its monospace grid.
-const INPUT_BOX: [f32; 4] = [PX, 102.0, 440.0, 36.0];
+const INPUT_BOX: [f32; 4] = [PX, 102.0, 376.0, 36.0];
 const INPUT: f32 = 14.0;
 const LH: f32 = 16.0;
 /// Two clicks within this time, and this close, are a double click.
@@ -1451,7 +1451,7 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
     // The copy button flashes when clicked, and says so for a moment.
     let since = s.copied_at.map(|t| (clock() - t).as_secs_f64());
     let copy_on = since.is_some_and(|t| t < 0.25);
-    let copy_label = if since.is_some_and(|t| t < 1.5) { "copied ✓" } else { "copy session" };
+    let copy_label = if since.is_some_and(|t| t < 1.5) { "copied ✓" } else { "copy" };
     for (label, r, on) in [
         ("autopilot", AUTOPILOT_BUTTON, !s.editing),
         ("editor", EDITOR_BUTTON, s.editing),
@@ -1472,7 +1472,7 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
         }
     }
     marks.push(t("Type what you want, then press Enter.", PX, 60.0, 13.0, ink(), true));
-    marks.push(t("Tab: stats for nerds · ⌘E: to the pipeline and back · Esc: clear", PX, 78.0, 12.0, muted(), false));
+    marks.push(t("Tab: stats for nerds · ⌘E: pipeline · Esc: clear", PX, 78.0, 12.0, muted(), false));
 
     let [bx, by, _, _] = INPUT_BOX;
     let typing = s.focused && !s.editing;
@@ -1526,7 +1526,7 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
         }
     };
     if let Some((line, colour)) = next {
-        marks.push(t(&fit(&line, 62), PX, 144.0, 12.0, colour, true));
+        marks.push(t(&fit(&line, 54), PX, 144.0, 12.0, colour, true));
     }
     editor_panel(s, marks);
     jev_column(s, marks);
@@ -1542,7 +1542,7 @@ fn jev_column(s: &App, marks: &mut Vec<SceneMark>) {
 
     let mut y = 50.0;
     if let Some(a) = &s.shown {
-        marks.push(t(&format!("decision on \"{}\"{}", fit(&a.prefix, 30), if a.complete { " ⏎" } else { "" }), PX, y, 12.0, muted(), false));
+        marks.push(t(&format!("decision on \"{}\"{}", fit(&a.prefix, 26), if a.complete { " ⏎" } else { "" }), PX, y, 12.0, muted(), false));
         let render = a.decision.answers.get("render").and_then(Value::as_str).filter(|r| *r != "chart");
         let head = pilot::short(&a.decision.answers).replace('/', "  ·  ").replace('_', " ") + &render.map_or(String::new(), |r| format!("  →  {r}"));
         marks.push(t(&head, PX, y + 18.0, 20.0, ink(), true));
@@ -1556,17 +1556,17 @@ fn jev_column(s: &App, marks: &mut Vec<SceneMark>) {
         if !side.is_empty() {
             marks.push(t(&side.join(" · "), PX, y + 44.0, 11.0, muted(), false));
         }
-        let latency = if a.decision.cached { format!("cache · {:.0} ms live", a.decision.ms) } else { format!("{:.0} ms", a.wall_ms) };
-        marks.push(draw::text(&latency, PX + JW, y + 22.0, 12.0, muted(), TextAlign::Right, TextBaseline::Top, false, 0.0));
+        let latency = if a.decision.cached { format!("cache, {:.0} ms", a.decision.ms) } else { format!("{:.0} ms", a.wall_ms) };
+        marks.push(draw::text(&latency, PX + JW - 10.0, y + 44.0, 11.0, muted(), TextAlign::Right, TextBaseline::Top, false, 0.0));
         y += 64.0;
         for (k, (opt, p)) in a.decision.probs.iter().take(6).enumerate() {
             let yy = y + k as f32 * 24.0;
             let chosen = a.decision.answers.get("action").and_then(Value::as_str) == Some(opt);
             marks.push(t(&opt.replace('_', " "), PX, yy + 2.0, 13.0, if chosen { ink() } else { muted() }, chosen));
             let th = &ui().th;
-            marks.push(draw::rect(PX + 96.0, yy + 2.0, 190.0, 14.0, [1.0; 4], Some(th.line), ui().radius(3.0)));
-            marks.push(draw::rect(PX + 96.0, yy + 2.0, (190.0 * *p as f32).max(1.0), 14.0, if chosen { th.accent } else { th.line }, None, ui().radius(3.0)));
-            marks.push(t(&format!("{p:.2}"), PX + 296.0, yy + 2.0, 12.0, muted(), false));
+            marks.push(draw::rect(PX + 90.0, yy + 2.0, 150.0, 14.0, [1.0; 4], Some(th.line), ui().radius(3.0)));
+            marks.push(draw::rect(PX + 90.0, yy + 2.0, (150.0 * *p as f32).max(1.0), 14.0, if chosen { th.accent } else { th.line }, None, ui().radius(3.0)));
+            marks.push(t(&format!("{p:.2}"), PX + 248.0, yy + 2.0, 12.0, muted(), false));
         }
         y += 6.0 * 24.0 + 8.0;
         let gate = if s.writing > 0 && a.written.as_ref().is_some_and(|w| !w.done) {
@@ -1574,7 +1574,9 @@ fn jev_column(s: &App, marks: &mut Vec<SceneMark>) {
         } else {
             a.gate.clone()
         };
-        marks.push(status(&fit(&gate, 44), PX, y, 14.0, a.colour, true, false));
+        for (k, g) in wrap(&gate, 34).iter().take(2).enumerate() {
+            marks.push(status(g, PX, y + k as f32 * 18.0, 14.0, a.colour, true, false));
+        }
     } else {
         y += 56.0 + 6.0 * 24.0 + 8.0;
         marks.push(t("type an instruction", PX, y, 14.0, muted(), false));
@@ -1585,21 +1587,21 @@ fn jev_column(s: &App, marks: &mut Vec<SceneMark>) {
     for (k, (prefix, short)) in s.changes.iter().rev().take(5).enumerate() {
         let i = ink();
         let c = [i[0], i[1], i[2], 1.0 - 0.15 * k as f32];
-        marks.push(t(&fit(prefix, 30), PX, y + 20.0 + k as f32 * 20.0, 12.0, c, false));
-        marks.push(t(short, PX + 250.0, y + 20.0 + k as f32 * 20.0, 12.0, c, true));
+        marks.push(t(&fit(prefix, 26), PX, y + 20.0 + k as f32 * 20.0, 12.0, c, false));
+        marks.push(t(short, PX + 190.0, y + 20.0 + k as f32 * 20.0, 12.0, c, true));
     }
     let footer = if s.message.is_empty() {
-        format!("{} decisions ({} cached) · {} changes · ${:.4} spent", s.decisions, s.cached, s.changes.len(), s.cost)
+        format!("{} decisions, {} cached · {} changes · ${:.4}", s.decisions, s.cached, s.changes.len(), s.cost)
     } else {
         s.message.clone()
     };
     if !s.notice.is_empty() && s.message.is_empty() {
-        marks.push(status(&fit(&s.notice, 54), PX, H - 50.0, 12.0, ui().th.ok, false, false));
+        marks.push(status(&fit(&s.notice, 44), PX, H - 50.0, 12.0, ui().th.ok, false, false));
     }
     if s.message.is_empty() {
-        marks.push(t(&fit(&footer, 54), PX, H - 32.0, 12.0, muted(), false));
+        marks.push(t(&fit(&footer, 44), PX, H - 32.0, 12.0, muted(), false));
     } else {
-        marks.push(status(&fit(&footer, 54), PX, H - 32.0, 12.0, ui().th.error, false, false));
+        marks.push(status(&fit(&footer, 44), PX, H - 32.0, 12.0, ui().th.error, false, false));
     }
 }
 
@@ -1609,7 +1611,7 @@ fn jev_column(s: &App, marks: &mut Vec<SceneMark>) {
 fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
     let [ex, ey, _, eh] = EDIT_AREA;
     marks.push(t("pipeline", PX, ey - 22.0, 13.0, ink(), true));
-    marks.push(t("click to edit · ⌘↵ apply · Esc: the running one", PX + 70.0, ey - 21.0, 12.0, muted(), false));
+    marks.push(t("click to edit · ⌘↵ apply · Esc: the running one", PX + 66.0, ey - 21.0, 11.0, muted(), false));
     let editing = s.focused && s.editing;
     field_frame(EDIT_AREA, editing, marks);
     let text = &s.code.text;
@@ -1649,18 +1651,18 @@ fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
     }
     let mut y = ey + eh + 10.0;
     let (message, colour) = &s.edit_status;
-    for line in wrap(message, 62).iter().take(2) {
+    for line in wrap(message, 54).iter().take(2) {
         marks.push(status(line, PX, y, 12.0, *colour, false, false));
         y += 16.0;
     }
     let help = [
         "chart bar --x f:N --y f:Q · arc --theta f:Q --color f:N",
-        "line --x f:Q --y f:Q --color f:N · rect --x f:O --y f:N --color f:Q",
-        "point --x f:Q --y f:Q --color f:Q · set x.axis.title \"…\" · set y.scale.type log",
-        "color #hex · highlight \"datum.f >= n\" · zoom · data: read, sql · head N · SQL",
+        "line --x f:Q --y f:Q --color f:N · rect / point …",
+        "set x.axis.title \"…\" · set y.scale.type log · title \"…\"",
+        "color #hex · highlight \"datum.f >= n\" · zoom · head N · SQL",
     ];
     for (k, h) in help.iter().enumerate() {
-        marks.push(t(h, PX, H - 70.0 + k as f32 * 15.0, 11.0, muted(), false));
+        marks.push(t(h, PX, H - 72.0 + k as f32 * 15.0, 11.0, muted(), false));
     }
 }
 
