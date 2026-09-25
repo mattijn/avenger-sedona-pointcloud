@@ -113,3 +113,15 @@ pub async fn overview(ctx: &SessionContext, in_chart: Option<&str>) -> std::resu
         ms: t.elapsed().as_secs_f64() * 1e3,
     })
 }
+
+/// The overview with the table the chart draws marked `← chart`; the rest
+/// of it does not depend on the chart, so it is computed once.
+pub fn mark(t: &Table, in_chart: &str) -> Table {
+    let mut t = t.clone();
+    for r in &mut t.rows {
+        if r[0] == in_chart {
+            r[0] = format!("{in_chart} ← chart");
+        }
+    }
+    t
+}

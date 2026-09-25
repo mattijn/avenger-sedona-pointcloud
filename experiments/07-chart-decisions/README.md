@@ -921,6 +921,18 @@ chart (mark, its values, title, items) or the table (its note, columns and
 first rows), and when the session is copied, a PNG of the view goes to
 `out/autopilot_live/session-view.png`.
 
+**Feedback while something runs.** In the fourth trial the data button took
+about a second, without a sign, and was clicked four times; and after Enter
+on "filter high vegetation" nothing seemed to happen until Haiku's pipeline
+arrived. Now a banner over the bottom of the chart says what runs in the
+background and for how long, with a moving bar: Haiku writing a pipeline, the
+editor's pipeline running, data being read for a table or written to Parquet,
+the overview being computed. The panel's gate line counts the seconds too.
+The overview is computed once at startup, so the data button answers at
+once, and clicks while it is still being computed are ignored.
+
+![Haiku writing, 0.8 s in](images/busy.png)
+
 Registering the five tables costs every new pipeline a little:
 `layer_roundtrip`, which builds thousands, went from 3.9 s to 10.1 s for its
 1936 transitions.

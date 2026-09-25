@@ -56,6 +56,7 @@ pub const NO_CHART: &str = "no chart command (bars, pie, line, heatmap, map)";
 
 /// The rows a text without a chart command ends in, or what its queries
 /// printed.
+#[derive(Clone)]
 pub struct Table {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,

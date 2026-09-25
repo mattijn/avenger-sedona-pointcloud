@@ -317,6 +317,12 @@ struct App {
     last_click: Option<(Instant, [f32; 2])>,
     /// A drag that selects text: in the editor (true) or the autopilot box.
     dragging: Option<bool>,
+    /// What runs in the background, for the banner over the chart.
+    busy: String,
+    writing_since: Instant,
+    /// The overview, computed once at startup (it does not depend on the
+    /// chart but for its marker).
+    overview: Arc<Mutex<Option<editor::Table>>>,
     clicks: u32,
     // Editor mode.
     editing: bool,
@@ -897,6 +903,8 @@ impl App {
         self.shown = Some(shown);
         let out = self.queried.clone();
         self.applying = true;
+        self.apply_started = clock();
+        self.busy = if kind == "export" { "writing the data to Parquet".into() } else { "reading the data for the table".into() };
         self.rt.spawn(async move {
             *out.lock().unwrap() = Some(editor::query(&text).await);
         });
@@ -904,14 +912,28 @@ impl App {
 
     /// The overview of the data there is, over the chart.
     fn show_overview(&mut self) {
-        let (out, in_chart) = (self.queried.clone(), self.state.dataset.id());
+        let in_chart = self.state.dataset.id();
+        if let Some(t) = self.overview.lock().unwrap().as_ref() {
+            self.table = Some(Arc::new(lidar_decide::layer::catalog::mark(t, in_chart)));
+        }
+        if self.table.as_ref().is_some_and(|t| t.note.contains(" tables, ")) {
+            let v = self.view_line();
+            self.session.push(format!("  view     {v}"));
+            return;
+        }
+        if self.applying {
+            return;
+        }
         self.applying = true;
+        self.apply_started = clock();
+        self.busy = "computing the overview of the data".into();
+        let (out, cache) = (self.queried.clone(), self.overview.clone());
         self.rt.spawn(async move {
-            let r = match lidar_decide::layer_pipeline().await {
-                Ok((p, _)) => lidar_decide::layer::catalog::overview(&p.ctx, Some(in_chart)).await,
-                Err(e) => Err(e.to_string()),
-            };
-            *out.lock().unwrap() = Some(r);
+            let r = compute_overview().await;
+            if let Ok(t) = &r {
+                *cache.lock().unwrap() = Some(t.clone());
+            }
+            *out.lock().unwrap() = Some(r.map(|t| lidar_decide::layer::catalog::mark(&t, in_chart)));
         });
     }
 
@@ -960,6 +982,7 @@ impl App {
         self.shown = Some(shown.clone());
         self.in_flight += 1;
         self.writing += 1;
+        self.writing_since = clock();
         let (state, data, current, out) = (self.state.clone(), self.data.clone(), self.pipeline.join("\n! "), self.written_back.clone());
         let prefix = shown.prefix.clone();
         self.rt.spawn(async move {
@@ -1113,6 +1136,7 @@ impl App {
         }
         self.applying = true;
         self.apply_started = clock();
+        self.busy = "running the pipeline from the editor".into();
         self.edit_status = ("applying…".into(), accent());
         let text = self.code.string();
         let (base, out, queried) = (self.base.clone(), self.edited.clone(), self.queried.clone());
@@ -1483,7 +1507,12 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
             marks.push(t(&format!("{p:.2}"), PX + 350.0, yy + 2.0, 12.0, muted(), false));
         }
         y += 6.0 * 24.0 + 8.0;
-        marks.push(status(&fit(&a.gate, 60), PX, y, 14.0, a.colour, true, false));
+        let gate = if s.writing > 0 && a.written.as_ref().is_some_and(|w| !w.done) {
+            format!("{} {:.1} s", a.gate, (clock() - s.writing_since).as_secs_f64())
+        } else {
+            a.gate.clone()
+        };
+        marks.push(status(&fit(&gate, 60), PX, y, 14.0, a.colour, true, false));
     } else {
         y += 56.0 + 6.0 * 24.0 + 8.0;
         marks.push(t("type an instruction", PX, y, 14.0, muted(), false));
@@ -1559,6 +1588,40 @@ fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
     for (k, h) in help.iter().enumerate() {
         marks.push(t(h, PX, H - 84.0 + k as f32 * 16.0, 11.0, muted(), false));
     }
+}
+
+/// The overview, unmarked.
+async fn compute_overview() -> Result<editor::Table, String> {
+    let (p, _) = lidar_decide::layer_pipeline().await.map_err(|e| e.to_string())?;
+    lidar_decide::layer::catalog::overview(&p.ctx, None).await
+}
+
+/// A banner over the bottom of the chart while something runs in the
+/// background: what it is, how long it has taken, and a moving bar.
+fn busy_banner(s: &App, now: Instant, marks: &mut Vec<SceneMark>) {
+    let (label, since) = if s.writing > 0 {
+        let what = s.shown.as_ref().map_or(String::new(), |a| format!(" for \"{}\"", fit(&a.prefix, 44)));
+        (format!("Haiku is writing the pipeline{what}"), s.writing_since)
+    } else if s.applying && !s.busy.is_empty() {
+        (s.busy.clone(), s.apply_started)
+    } else {
+        return;
+    };
+    let th = &ui().th;
+    let t = (now - since).as_secs_f64().max(0.0);
+    let (x, y, w, h) = (16.0, H - 16.0 - 36.0, PX - 52.0, 36.0);
+    marks.push(draw::rect(x, y, w, h, th.background, Some(th.line), 0.0));
+    marks.push(draw::rect(x, y, 3.0, h, accent(), None, 0.0));
+    marks.push(t_(&format!("{label}…"), x + 16.0, y + 11.0, 13.0, ink(), false));
+    marks.push(draw::text(&format!("{t:.1} s"), x + w - 14.0, y + 11.0, 13.0, muted(), TextAlign::Right, TextBaseline::Top, false, 0.0));
+    // An indeterminate bar along the bottom edge.
+    let seg = 140.0;
+    let pos = ((t * 0.7) % 1.0) as f32 * (w - seg);
+    marks.push(draw::rect(x + pos, y + h - 3.0, seg, 3.0, accent(), None, 0.0));
+}
+
+fn t_(s: &str, x: f32, y: f32, size: f32, color: [f32; 4], bold: bool) -> SceneMark {
+    t(s, x, y, size, color, bold)
 }
 
 /// The chart in one line: mark, table, colour, zoom, emphasis, title.
@@ -1814,6 +1877,7 @@ fn build(s: &mut App) -> SceneBuild {
     if let Some(t) = &s.table {
         table_view(t, &mut marks);
     }
+    busy_banner(s, now, &mut marks);
     if s.nerds {
         nerds(s, now, &mut marks);
     }
@@ -1952,6 +2016,8 @@ impl EventStreamHandler<App> for Input {
                 } else if inside(p, DATA_BUTTON) {
                     if s.table.as_ref().is_some_and(|t| t.note.contains(" tables, ")) {
                         s.table = None;
+                    } else if s.applying {
+                        s.notice = format!("still {}", s.busy);
                     } else {
                         s.show_overview();
                         s.session.push(format!("{:.1} s, data button: the overview", (clock() - s.t0).as_secs_f64()));
@@ -2262,6 +2328,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         wake_generation: 0,
         last_click: None,
         dragging: None,
+        busy: String::new(),
+        writing_since: clock(),
+        overview: Arc::new(Mutex::new(None)),
         clicks: 0,
         editing: false,
         code: Field::default(),
@@ -2275,6 +2344,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     app.snapshot(&pipe);
     app.first = app.pipeline.join("\n! ");
+    // The overview in the background, so the data button answers at once.
+    {
+        let cache = app.overview.clone();
+        runtime.spawn(async move {
+            if let Ok(t) = compute_overview().await {
+                *cache.lock().unwrap() = Some(t);
+            }
+        });
+    }
     app.pipe = Arc::new(tokio::sync::Mutex::new(pipe));
 
     // `--snapshot <dir> "instruction" ...`: the same path as the window
@@ -2327,6 +2405,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 app.shown = None;
                 app.message.clear();
                 app.collect(clock()).await;
+                // One frame while the writer or a query is still running.
+                if app.writing > 0 || app.applying {
+                    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+                    canvas.set_scene(&build(&mut app).scene_graph)?;
+                    canvas.render().await?.save(format!("{dir}/{i:02}_busy.png"))?;
+                }
                 while app.writing > 0 || app.applying {
                     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                     app.collect_written(clock()).await;
