@@ -13,8 +13,7 @@ a pipeline that has been validated against the data, and the chart drawn is the
 fold of that pipeline. One chart object moves between bars, a pie, a heatmap, a
 time series and a map, with keyed transitions.
 
-[video/autopilot_tour.mp4](video/autopilot_tour.mp4) (68 s) shows it, in the
-two-column layout the window had before Jev got its own column:
+[video/autopilot_tour.mp4](video/autopilot_tour.mp4) (68 s) shows it:
 
 ![The tour, one frame per step](images/tour_sheet.png)
 
