@@ -1156,6 +1156,9 @@ impl App {
         use lidar_decide::layer::model::{Selection, View};
         let View::Tilt { yaw, elevation } = self.state.view else { return };
         let poly: Vec<[f64; 2]> = path.iter().map(|p| [((p[0] - draw::ORIGIN[0]) as f64 / draw::P), 1.0 - (p[1] - draw::ORIGIN[1]) as f64 / draw::P]).collect();
+        // A hand-drawn path has a point every few pixels; the pipeline gets
+        // its outline to within 1 % of the plot (4 px).
+        let poly = simplify(&poly, 0.01);
         let mut n = self.state.clone();
         n.selection = Selection::Lasso { poly, tilt: Some((yaw, elevation)), structure: Some(0.3) };
         self.apply_direct(n, "lasso", now).await;
@@ -1684,6 +1687,27 @@ fn field_frame(r: [f32; 4], focused: bool, marks: &mut Vec<SceneMark>) {
     }
 }
 
+/// Ramer–Douglas–Peucker: the fewest vertices within \`tol\` of the path.
+fn simplify(p: &[[f64; 2]], tol: f64) -> Vec<[f64; 2]> {
+    if p.len() < 3 {
+        return p.to_vec();
+    }
+    let (a, b) = (p[0], p[p.len() - 1]);
+    let dist = |q: [f64; 2]| {
+        let (vx, vy) = (b[0] - a[0], b[1] - a[1]);
+        let len = vx.hypot(vy);
+        if len < 1e-12 { (q[0] - a[0]).hypot(q[1] - a[1]) } else { ((q[0] - a[0]) * vy - (q[1] - a[1]) * vx).abs() / len }
+    };
+    let (i, d) = p[1..p.len() - 1].iter().enumerate().map(|(i, q)| (i + 1, dist(*q))).fold((0, 0.0), |m, x| if x.1 > m.1 { x } else { m });
+    if d <= tol {
+        return vec![a, b];
+    }
+    let mut left = simplify(&p[..=i], tol);
+    left.pop();
+    left.extend(simplify(&p[i..], tol));
+    left
+}
+
 fn fit(s: &str, n: usize) -> String {
     let c = s.chars().count();
     if c <= n { s.to_string() } else { format!("{}…", s.chars().take(n - 1).collect::<String>()) }
@@ -1855,7 +1879,7 @@ fn jev_column(s: &App, marks: &mut Vec<SceneMark>) {
         let i = ink();
         let c = [i[0], i[1], i[2], 1.0 - 0.15 * k as f32];
         marks.push(t(&fit(prefix, 26), PX, y + 20.0 + k as f32 * 20.0, 12.0, c, false));
-        marks.push(t(short, PX + 190.0, y + 20.0 + k as f32 * 20.0, 12.0, c, true));
+        marks.push(t(&fit(short, 13), PX + 190.0, y + 20.0 + k as f32 * 20.0, 12.0, c, true));
     }
     let footer = if s.message.is_empty() {
         format!("{} decisions, {} cached · {} changes · ${:.4}", s.decisions, s.cached, s.changes.len(), s.cost)
