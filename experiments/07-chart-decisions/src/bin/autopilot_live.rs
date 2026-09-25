@@ -53,9 +53,13 @@ use lidar_decide::options::NotApplied;
 use lidar_pipeline::pipeline::{Kind, Pipeline};
 use serde_json::Value;
 
-const W: f32 = 1400.0;
-const H: f32 = 640.0;
-const PX: f32 = 960.0;
+const W: f32 = 1560.0;
+const H: f32 = 720.0;
+/// The panel on the right: typing, and the pipeline under it.
+const PX: f32 = 1100.0;
+/// Jev's column, between the chart and the panel.
+const JX: f32 = 744.0;
+const JW: f32 = 326.0;
 const WAKE: &str = "autopilot";
 /// The current pipeline, written on every change.
 const PIPELINE_FILE: &str = "out/autopilot_live/pipeline.txt";
@@ -64,9 +68,9 @@ const DEBOUNCE: Duration = Duration::from_millis(400);
 const GATE: f64 = 0.5;
 const GATE_MARK_EARLY: f64 = 0.9;
 /// The buttons in the panel header.
-const NERDS_BUTTON: [f32; 4] = [PX + 300.0, 24.0, 110.0, 26.0];
-const COPY_BUTTON: [f32; 4] = [PX + 196.0, 24.0, 96.0, 26.0];
-const DATA_BUTTON: [f32; 4] = [PX + 152.0, 24.0, 40.0, 26.0];
+const NERDS_BUTTON: [f32; 4] = [PX + 330.0, 24.0, 110.0, 26.0];
+const COPY_BUTTON: [f32; 4] = [PX + 226.0, 24.0, 96.0, 26.0];
+const DATA_BUTTON: [f32; 4] = [PX + 182.0, 24.0, 40.0, 26.0];
 /// The session as text: what was typed, what became of it, the pipeline.
 const SESSION_FILE: &str = "out/autopilot_live/session.txt";
 /// The view as it was when the session was copied.
@@ -74,11 +78,11 @@ const VIEW_FILE: &str = "out/autopilot_live/session-view.png";
 const AUTOPILOT_BUTTON: [f32; 4] = [PX, 24.0, 84.0, 26.0];
 const EDITOR_BUTTON: [f32; 4] = [PX + 84.0, 24.0, 64.0, 26.0];
 /// The editor's text area, and its monospace grid.
-const EDIT_AREA: [f32; 4] = [PX, 96.0, 410.0, 392.0];
+const EDIT_AREA: [f32; 4] = [PX, 196.0, 440.0, 396.0];
 /// Pipeline text size and row height in the editor.
 const CODE: f32 = 12.0;
 /// The autopilot box, and its monospace grid.
-const INPUT_BOX: [f32; 4] = [PX, 102.0, 410.0, 36.0];
+const INPUT_BOX: [f32; 4] = [PX, 102.0, 440.0, 36.0];
 const INPUT: f32 = 14.0;
 const LH: f32 = 16.0;
 /// Two clicks within this time, and this close, are a double click.
@@ -332,6 +336,9 @@ struct App {
     applying: bool,
     apply_started: Instant,
     edited: Arc<Mutex<Option<Result<editor::Applied, String>>>>,
+    /// The pipeline text last put in the editor. While the editor still
+    /// holds it, a new pipeline replaces it; once edited, it is kept.
+    code_synced: String,
     /// A text without a chart command runs as a query; its rows are shown
     /// over the chart until the chart changes or the editor is left.
     queried: Arc<Mutex<Option<Result<editor::Table, String>>>>,
@@ -1131,10 +1138,18 @@ impl App {
         self.shown = Some(shown);
     }
 
+    /// Focus the editor, keeping its text.
+    fn focus_editor(&mut self) {
+        self.editing = true;
+        self.focused = true;
+    }
+
+    /// Focus the editor on the pipeline that runs (Esc: drop an edit).
     fn open_editor(&mut self) {
         self.editing = true;
         self.table = None;
         self.code.set(&self.pipeline.join("\n! "));
+        self.code_synced = self.code.string();
         self.focused = true;
         self.edit_status = (String::new(), muted());
     }
@@ -1318,6 +1333,14 @@ impl App {
             .collect();
         self.chart_json = p.chart.to_string();
         self.pipeline = self.data_stages.iter().cloned().chain(package::commands(&self.state, &self.data)).collect();
+        // The editor follows the pipeline, unless it holds an edit.
+        let text = self.pipeline.join("\n! ");
+        if self.code.string() == self.code_synced {
+            self.code.set(&text);
+        } else if text != self.code_synced {
+            self.edit_status = ("the pipeline changed · Esc takes it, ⌘↵ applies yours".into(), accent());
+        }
+        self.code_synced = text;
         let _ = std::fs::create_dir_all("out/autopilot_live");
         let _ = std::fs::write(PIPELINE_FILE, self.pipeline.join("\n! ") + "\n");
     }
@@ -1448,15 +1471,12 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
             marks.push(t(label, bx + 10.0, by + 6.0, 12.0, if on { th.accent } else { th.text }, on));
         }
     }
-    if s.editing {
-        editor_panel(s, marks);
-        return;
-    }
     marks.push(t("Type what you want, then press Enter.", PX, 60.0, 13.0, ink(), true));
-    marks.push(t("Tab: stats for nerds · ⌘E: editor · Esc: clear", PX, 78.0, 12.0, muted(), false));
+    marks.push(t("Tab: stats for nerds · ⌘E: to the pipeline and back · Esc: clear", PX, 78.0, 12.0, muted(), false));
 
     let [bx, by, _, _] = INPUT_BOX;
-    field_frame(INPUT_BOX, s.focused, marks);
+    let typing = s.focused && !s.editing;
+    field_frame(INPUT_BOX, typing, marks);
     let f = &s.input;
     let first = input_first(f);
     let max = INPUT_BOX[2] - 24.0 - ENTER_HINT;
@@ -1470,7 +1490,7 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
     let (tx, ty) = (bx + 12.0, by + 9.0);
     let x_of = |i: usize| tx + ui().width(&f.text[first..i.clamp(first, end)], INPUT, true);
     if f.text.is_empty() {
-        let hint = if s.focused { "type an instruction, then Enter" } else { "click here to type an instruction" };
+        let hint = if typing { "type an instruction, then Enter" } else { "click here to type an instruction" };
         marks.push(mono_sized(hint, tx, ty, INPUT, ui().th.kicker));
     } else {
         if let Some((a, b)) = f.selection() {
@@ -1481,7 +1501,7 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
         }
         marks.push(mono_sized(&shown, tx, ty, INPUT, ink()));
     }
-    if s.focused && caret_on(s) {
+    if typing && caret_on(s) {
         marks.push(draw::rect(x_of(f.caret) - 0.5, ty - 2.0, 1.6, 20.0, ink(), None, 0.0));
     }
     // The key to press, inside the box, while there is text to send.
@@ -1508,10 +1528,21 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
     if let Some((line, colour)) = next {
         marks.push(t(&fit(&line, 62), PX, 144.0, 12.0, colour, true));
     }
+    editor_panel(s, marks);
+    jev_column(s, marks);
+}
 
-    let mut y = 164.0;
+/// Jev's column, right of the chart: what it read in the last decision, how
+/// sure it was of each action, what the window did, and the changes so far.
+fn jev_column(s: &App, marks: &mut Vec<SceneMark>) {
+    const PX: f32 = JX;
+    marks.push(draw::rule(JX - 16.0, 20.0, JX - 16.0, H - 20.0, ui().th.line));
+    marks.push(t("Jev", JX, 24.0, 13.0, accent(), true));
+    marks.push(t("reads while you type, and on Enter", JX + 32.0, 25.0, 12.0, muted(), false));
+
+    let mut y = 50.0;
     if let Some(a) = &s.shown {
-        marks.push(t(&format!("decision on \"{}\"{}", fit(&a.prefix, 34), if a.complete { " ⏎" } else { "" }), PX, y, 12.0, muted(), false));
+        marks.push(t(&format!("decision on \"{}\"{}", fit(&a.prefix, 30), if a.complete { " ⏎" } else { "" }), PX, y, 12.0, muted(), false));
         let render = a.decision.answers.get("render").and_then(Value::as_str).filter(|r| *r != "chart");
         let head = pilot::short(&a.decision.answers).replace('/', "  ·  ").replace('_', " ") + &render.map_or(String::new(), |r| format!("  →  {r}"));
         marks.push(t(&head, PX, y + 18.0, 20.0, ink(), true));
@@ -1526,16 +1557,16 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
             marks.push(t(&side.join(" · "), PX, y + 44.0, 11.0, muted(), false));
         }
         let latency = if a.decision.cached { format!("cache · {:.0} ms live", a.decision.ms) } else { format!("{:.0} ms", a.wall_ms) };
-        marks.push(draw::text(&latency, PX + 410.0, y + 22.0, 12.0, muted(), TextAlign::Right, TextBaseline::Top, false, 0.0));
+        marks.push(draw::text(&latency, PX + JW, y + 22.0, 12.0, muted(), TextAlign::Right, TextBaseline::Top, false, 0.0));
         y += 64.0;
         for (k, (opt, p)) in a.decision.probs.iter().take(6).enumerate() {
             let yy = y + k as f32 * 24.0;
             let chosen = a.decision.answers.get("action").and_then(Value::as_str) == Some(opt);
             marks.push(t(&opt.replace('_', " "), PX, yy + 2.0, 13.0, if chosen { ink() } else { muted() }, chosen));
             let th = &ui().th;
-            marks.push(draw::rect(PX + 100.0, yy + 2.0, 240.0, 14.0, [1.0; 4], Some(th.line), ui().radius(3.0)));
-            marks.push(draw::rect(PX + 100.0, yy + 2.0, (240.0 * *p as f32).max(1.0), 14.0, if chosen { th.accent } else { th.line }, None, ui().radius(3.0)));
-            marks.push(t(&format!("{p:.2}"), PX + 350.0, yy + 2.0, 12.0, muted(), false));
+            marks.push(draw::rect(PX + 96.0, yy + 2.0, 190.0, 14.0, [1.0; 4], Some(th.line), ui().radius(3.0)));
+            marks.push(draw::rect(PX + 96.0, yy + 2.0, (190.0 * *p as f32).max(1.0), 14.0, if chosen { th.accent } else { th.line }, None, ui().radius(3.0)));
+            marks.push(t(&format!("{p:.2}"), PX + 296.0, yy + 2.0, 12.0, muted(), false));
         }
         y += 6.0 * 24.0 + 8.0;
         let gate = if s.writing > 0 && a.written.as_ref().is_some_and(|w| !w.done) {
@@ -1543,19 +1574,19 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
         } else {
             a.gate.clone()
         };
-        marks.push(status(&fit(&gate, 60), PX, y, 14.0, a.colour, true, false));
+        marks.push(status(&fit(&gate, 44), PX, y, 14.0, a.colour, true, false));
     } else {
         y += 56.0 + 6.0 * 24.0 + 8.0;
         marks.push(t("type an instruction", PX, y, 14.0, muted(), false));
     }
     y += 40.0;
-    marks.push(draw::rule(PX, y - 12.0, PX + 410.0, y - 12.0, ui().th.line));
+    marks.push(draw::rule(PX, y - 12.0, PX + JW, y - 12.0, ui().th.line));
     marks.push(t("changes", PX, y, 12.0, muted(), false));
     for (k, (prefix, short)) in s.changes.iter().rev().take(5).enumerate() {
         let i = ink();
         let c = [i[0], i[1], i[2], 1.0 - 0.15 * k as f32];
-        marks.push(t(&fit(prefix, 34), PX, y + 20.0 + k as f32 * 20.0, 12.0, c, false));
-        marks.push(t(short, PX + 280.0, y + 20.0 + k as f32 * 20.0, 12.0, c, true));
+        marks.push(t(&fit(prefix, 30), PX, y + 20.0 + k as f32 * 20.0, 12.0, c, false));
+        marks.push(t(short, PX + 250.0, y + 20.0 + k as f32 * 20.0, 12.0, c, true));
     }
     let footer = if s.message.is_empty() {
         format!("{} decisions ({} cached) · {} changes · ${:.4} spent", s.decisions, s.cached, s.changes.len(), s.cost)
@@ -1563,21 +1594,30 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
         s.message.clone()
     };
     if !s.notice.is_empty() && s.message.is_empty() {
-        marks.push(status(&fit(&s.notice, 70), PX, H - 50.0, 12.0, ui().th.ok, false, false));
+        marks.push(status(&fit(&s.notice, 54), PX, H - 50.0, 12.0, ui().th.ok, false, false));
     }
     if s.message.is_empty() {
-        marks.push(t(&fit(&footer, 64), PX, H - 32.0, 12.0, muted(), false));
+        marks.push(t(&fit(&footer, 54), PX, H - 32.0, 12.0, muted(), false));
     } else {
-        marks.push(status(&fit(&footer, 64), PX, H - 32.0, 12.0, ui().th.error, false, false));
+        marks.push(status(&fit(&footer, 54), PX, H - 32.0, 12.0, ui().th.error, false, false));
     }
 }
 
-/// Editor mode: the pipeline as text.
+/// The pipeline behind the chart, under the autopilot box: it follows every
+/// decision, the stages the last one added in the accent colour, and can be
+/// edited in place.
 fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
-    marks.push(t("the chart as a pipeline · ⌘↵ apply · Esc revert · ⌘E autopilot", PX, 64.0, 12.0, muted(), false));
     let [ex, ey, _, eh] = EDIT_AREA;
-    field_frame(EDIT_AREA, s.focused, marks);
+    marks.push(t("pipeline", PX, ey - 22.0, 13.0, ink(), true));
+    marks.push(t("click to edit · ⌘↵ apply · Esc: the running one", PX + 70.0, ey - 21.0, 12.0, muted(), false));
+    let editing = s.focused && s.editing;
+    field_frame(EDIT_AREA, editing, marks);
     let text = &s.code.text;
+    // Stages the last decision added, while the editor shows the running
+    // pipeline.
+    let synced = s.code.string() == s.code_synced;
+    let stages: Vec<String> = s.code.string().split('\n').map(|l| l.trim_start_matches("! ").to_string()).collect();
+    let added = |i: usize| synced && s.shown.as_ref().is_some_and(|a| stages.get(i).is_some_and(|st| a.lines.iter().any(|l| l.split(" ! ").any(|p| p == st))));
     let r = rows(text);
     let (row, col) = caret_at(&r, s.code.caret);
     let sel = s.code.selection();
@@ -1595,18 +1635,21 @@ fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
             }
         }
         let line: String = text[*a..a + len].iter().collect();
-        // Stage names stand out; continuation rows are quieter.
+        // Stage names stand out; continuation rows are quieter; what the
+        // last decision added is in the accent colour.
         let starts_stage = *a == 0 || text[a - 1] == '\n';
-        marks.push(mono_sized(&line, ex + 8.0, y, CODE, if starts_stage { ink() } else { muted() }));
+        let stage = text[..*a].iter().filter(|c| **c == '\n').count();
+        let colour = if added(stage) { accent() } else if starts_stage { ink() } else { muted() };
+        marks.push(mono_sized(&line, ex + 8.0, y, CODE, colour));
     }
-    if s.focused && row >= s.scroll && row < s.scroll + visible && caret_on(s) {
+    if editing && row >= s.scroll && row < s.scroll + visible && caret_on(s) {
         let a = r[row].0;
         let (cx, cy) = (x_in(a, a + col), ey + 8.0 + (row - s.scroll) as f32 * LH);
         marks.push(draw::rect(cx - 0.5, cy - 1.0, 1.4, LH, ink(), None, 0.0));
     }
     let mut y = ey + eh + 10.0;
     let (message, colour) = &s.edit_status;
-    for line in wrap(message, 62).iter().take(3) {
+    for line in wrap(message, 62).iter().take(2) {
         marks.push(status(line, PX, y, 12.0, *colour, false, false));
         y += 16.0;
     }
@@ -1617,7 +1660,7 @@ fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
         "color #hex · highlight \"datum.f >= n\" · zoom · data: read, sql · head N · SQL",
     ];
     for (k, h) in help.iter().enumerate() {
-        marks.push(t(h, PX, H - 84.0 + k as f32 * 16.0, 11.0, muted(), false));
+        marks.push(t(h, PX, H - 70.0 + k as f32 * 15.0, 11.0, muted(), false));
     }
 }
 
@@ -1640,7 +1683,7 @@ fn busy_banner(s: &App, now: Instant, marks: &mut Vec<SceneMark>) {
     };
     let th = &ui().th;
     let t = (now - since).as_secs_f64().max(0.0);
-    let (x, y, w, h) = (16.0, H - 16.0 - 36.0, PX - 52.0, 36.0);
+    let (x, y, w, h) = (16.0, H - 16.0 - 36.0, JX - 36.0, 36.0);
     marks.push(draw::rect(x, y, w, h, th.background, Some(th.line), 0.0));
     marks.push(draw::rect(x, y, 3.0, h, accent(), None, 0.0));
     marks.push(t_(&format!("{label}…"), x + 16.0, y + 11.0, 13.0, ink(), false));
@@ -1689,7 +1732,7 @@ fn rows_asked(s: &str) -> Option<usize> {
 /// The rows of an editor query, over the chart.
 fn table_view(tb: &editor::Table, marks: &mut Vec<SceneMark>) {
     let th = &ui().th;
-    let (x0, y0, w, h) = (16.0, 16.0, PX - 52.0, H - 32.0);
+    let (x0, y0, w, h) = (16.0, 16.0, JX - 36.0, H - 32.0);
     marks.push(draw::rect(x0, y0, w, h, th.background, Some(th.line), 0.0));
     let (x, mut y) = (x0 + 16.0, y0 + 14.0);
     marks.push(t("query result", x, y, 13.0, accent(), true));
@@ -1889,7 +1932,7 @@ fn build(s: &mut App) -> SceneBuild {
         s.frame_ms = 0.8 * s.frame_ms + 0.2 * (now - last).as_secs_f64() * 1e3;
     }
     s.last_frame = Some(now);
-    if s.editing {
+    {
         let (row, _) = caret_at(&rows(&s.code.text), s.code.caret);
         let visible = ((EDIT_AREA[3] - 16.0) / LH) as usize;
         if row < s.scroll {
@@ -1991,7 +2034,7 @@ impl EventStreamHandler<App> for Input {
             Event::KeyPress(e) => {
                 let cmd = e.modifiers.meta || e.modifiers.control;
                 if matches!(e.key, Key::Character('e') | Key::Character('E')) && cmd {
-                    if s.editing { s.editing = false; s.table = None } else { s.open_editor() }
+                    if s.editing { s.editing = false } else { s.focus_editor() }
                     return rerender;
                 }
                 if matches!(e.key, Key::Named(NamedKey::Tab)) {
@@ -2067,8 +2110,9 @@ impl EventStreamHandler<App> for Input {
                 } else if inside(p, AUTOPILOT_BUTTON) {
                     s.editing = false;
                 } else if inside(p, EDITOR_BUTTON) && !s.editing {
-                    s.open_editor();
-                } else if s.editing && inside(p, EDIT_AREA) {
+                    s.focus_editor();
+                } else if inside(p, EDIT_AREA) {
+                    s.editing = true;
                     s.focused = true;
                     s.last_key = clock();
                     s.click_editor(p, e.modifiers.shift);
@@ -2078,7 +2122,8 @@ impl EventStreamHandler<App> for Input {
                         // A single click starts a drag that selects.
                         _ => s.dragging = Some(true),
                     }
-                } else if !s.editing && inside(p, INPUT_BOX) {
+                } else if inside(p, INPUT_BOX) {
+                    s.editing = false;
                     s.focused = true;
                     s.last_key = clock();
                     s.click_input(p, e.modifiers.shift);
@@ -2257,7 +2302,7 @@ async fn record_script(mut app: App, dir: &str, script: Vec<Act>, captions: bool
                 }
                 Act::Tab => app.nerds = !app.nerds,
                 Act::CmdE => {
-                    if app.editing { app.editing = false } else { app.open_editor() }
+                    if app.editing { app.editing = false } else { app.focus_editor() }
                 }
                 Act::CmdEnter => app.apply_text(),
                 Act::Select(t) => {
@@ -2432,6 +2477,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         applying: false,
         apply_started: clock(),
         edited: Arc::new(Mutex::new(None)),
+        code_synced: String::new(),
         queried: Arc::new(Mutex::new(None)),
         table: None,
     };

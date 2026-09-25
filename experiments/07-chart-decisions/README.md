@@ -13,7 +13,8 @@ a pipeline that has been validated against the data, and the chart drawn is the
 fold of that pipeline. One chart object moves between bars, a pie, a heatmap, a
 time series and a map, with keyed transitions.
 
-[video/autopilot_tour.mp4](video/autopilot_tour.mp4) (68 s) shows it:
+[video/autopilot_tour.mp4](video/autopilot_tour.mp4) (68 s) shows it, in the
+two-column layout the window had before Jev got its own column:
 
 ![The tour, one frame per step](images/tour_sheet.png)
 
@@ -24,10 +25,19 @@ set -a; source <folder with your .env>/.env; set +a    # OPENROUTER_API_KEY
 cargo run --release -p lidar-decide --bin autopilot_live
 ```
 
+Three columns: the chart; **Jev**, right of it, with its last decision (the
+action, how sure it was of each option, what the window did) and the changes
+so far; and the panel, with the box to type in and the pipeline under it.
+
 - **Autopilot.** Type what you want and press Enter. Jev reads while you type
   (400 ms after the last key) and on Enter; the line under the box says what
   Enter will do. What Jev's options cover applies at once; the rest goes to
   Haiku, and a banner over the chart says it is writing.
+- **The pipeline** under the box follows every decision, with the stages the
+  last one added in the accent colour, so the effect of each decision shows
+  as text next to the chart. Click in it to edit, ⌘↵ applies; an edit is kept
+  when the autopilot changes the chart, and Esc takes the running pipeline
+  again. ⌘E moves between the box and the pipeline.
 - **Undo and reset** are instructions like any other ("undo", "go back",
   "start over").
 - **Table, export, overview.** "Show head 5 as a table" shows the rows behind
@@ -36,9 +46,9 @@ cargo run --release -p lidar-decide --bin autopilot_live
   ranges. The chart is left as it is.
 - **Stats for nerds** (Tab): the whole pipeline behind the chart, over it and
   see-through, with Jev's answers, the writer's tries and timings.
-- **Editor** (⌘E): the same pipeline as text, applied with ⌘↵. It also takes
-  plain SQL over the named tables (`SHOW TABLES`,
-  `SELECT * FROM cells LIMIT 5`, `information_schema`), and `overview`.
+- **Queries in the pipeline box.** Plain SQL over the named tables
+  (`SHOW TABLES`, `SELECT * FROM cells LIMIT 5`, `information_schema`), a
+  text that ends in `head N`, or `overview`, show a table over the chart.
 - **Copy session** puts the session on the clipboard and in
   `out/autopilot_live/session.txt`: per decision, the chart it saw, every answer
   of Jev's with its confidence, the cache files of the raw responses, what the
