@@ -65,6 +65,9 @@ const GATE: f64 = 0.5;
 const GATE_MARK_EARLY: f64 = 0.9;
 /// The buttons in the panel header.
 const NERDS_BUTTON: [f32; 4] = [PX + 300.0, 24.0, 110.0, 26.0];
+const COPY_BUTTON: [f32; 4] = [PX + 196.0, 24.0, 96.0, 26.0];
+/// The session as text: what was typed, what became of it, the pipeline.
+const SESSION_FILE: &str = "out/autopilot_live/session.txt";
 const AUTOPILOT_BUTTON: [f32; 4] = [PX, 24.0, 84.0, 26.0];
 const EDITOR_BUTTON: [f32; 4] = [PX + 84.0, 24.0, 64.0, 26.0];
 /// The editor's text area, and its monospace grid.
@@ -212,6 +215,8 @@ struct Shown {
     fold: String,
     /// When Haiku wrote the pipeline: its tries, and what it removed.
     written: Option<WrittenInfo>,
+    /// `table` or `export`: the data is shown or written, not drawn.
+    render: Option<String>,
 }
 
 #[derive(Clone, Default)]
@@ -252,6 +257,13 @@ struct App {
     /// one: undo and reset apply them again.
     history: Vec<String>,
     first: String,
+    /// The instructions sent with Enter, and a line per outcome, for the
+    /// copy button and `--snapshot @@session.txt`.
+    sent: Vec<String>,
+    session: Vec<String>,
+    notice: String,
+    exports: usize,
+    t0: Instant,
     taken: Vec<(String, String)>,
     // The chart.
     state: State,
@@ -595,7 +607,9 @@ impl App {
         self.asked = prefix.clone();
         self.in_flight += 1;
         let obs = pilot::observation(&self.state, &self.data, &prefix);
-        let q = if complete && self.writer.is_some() { self.enter_questions.clone() } else { self.questions.clone() };
+        // With the writer on, typing and Enter ask the same questions, so
+        // what Enter will do shows while typing.
+        let q = if self.writer.is_some() { self.enter_questions.clone() } else { self.questions.clone() };
         let (jev, out) = (self.jev.clone(), self.returned.clone());
         let asked_at = clock();
         self.rt.spawn(async move {
@@ -644,6 +658,28 @@ impl App {
                     Ok(n) => (Some(n), "applied".into()),
                 }
             };
+            let action = d.answers.get("action").and_then(Value::as_str).unwrap_or("").to_string();
+            let render = d.answers.get("render").and_then(Value::as_str).unwrap_or("chart").to_string();
+            let specifics = d.answers.get("specifics").and_then(Value::as_str) == Some("text");
+            // While typing, what only Enter can do is held, and said.
+            let held = if r.complete || self.writer.is_none() || conf < GATE {
+                None
+            } else if render != "chart" {
+                Some(format!("Enter: the data as {}", if render == "table" { "a table" } else { "a Parquet file" }))
+            } else {
+                match action.as_str() {
+                    "transform" => Some("Enter: Haiku writes the change to the data".to_string()),
+                    "undo" => Some("Enter: undo the last change".into()),
+                    "reset" => Some("Enter: back to the first chart".into()),
+                    "title" => Some("Enter: Haiku writes the title".into()),
+                    _ if specifics => Some("Enter: Haiku writes it, with the details".into()),
+                    _ => None,
+                }
+            };
+            let (next, gate) = match held {
+                Some(h) => (None, h),
+                None => (next, gate),
+            };
             // On Enter, the routing measured in phase H: Jev's options when
             // they say it all, otherwise the writer.
             let fast = conf >= GATE
@@ -661,9 +697,27 @@ impl App {
                 lines: vec![],
                 fold: String::new(),
                 written: None,
+                render: None,
             };
+            if shown.gate.starts_with("Enter:") {
+                shown.colour = accent();
+            }
             if let Some(a) = back.filter(|_| r.complete && conf >= GATE) {
                 self.go_back(a == "reset", shown, now).await;
+                continue;
+            }
+            if r.complete && self.writer.is_some() && conf >= GATE && render != "chart" {
+                shown.render = Some(render.clone());
+                // Unless Jev is sure nothing else changes, Haiku writes the
+                // data stages; they are shown or written, not drawn. Jev's
+                // action was wrong for "show the ground points as a table"
+                // (mark/bars), its render answer was not.
+                if action != "no_change" || specifics {
+                    self.write(shown);
+                } else {
+                    let stages = self.data_stages.clone();
+                    self.render_data(&stages, shown);
+                }
                 continue;
             }
             if to_writer {
@@ -702,8 +756,58 @@ impl App {
                 }
                 self.snapshot(&p);
             }
+            if r.complete {
+                self.log(&shown);
+            }
             self.shown = Some(shown);
         }
+    }
+
+    /// One line of the session per outcome.
+    fn log(&mut self, a: &Shown) {
+        let t = format!("{:>6.1} s", (clock() - self.t0).as_secs_f64());
+        self.session.push(format!("{t} ⏎ \"{}\" → {} · {}", a.prefix, pilot::short(&a.decision.answers), a.gate));
+    }
+
+    /// The session as text, for the clipboard and `@@session.txt`: the
+    /// instructions to replay, then the log and the pipeline as comments.
+    fn session_text(&self) -> String {
+        let mut v = vec![
+            "# autopilot session: the instructions sent with Enter, one per line.".to_string(),
+            format!("# replay: cargo run --release -p lidar-decide --bin autopilot_live -- --snapshot out/replay @@{SESSION_FILE}"),
+        ];
+        v.extend(self.sent.iter().cloned());
+        v.push("#".into());
+        v.push("# what became of them:".into());
+        v.extend(self.session.iter().map(|l| format!("# {l}")));
+        v.push("#".into());
+        v.push("# the pipeline now:".into());
+        v.extend(self.pipeline.iter().enumerate().map(|(i, l)| format!("# {}{l}", if i == 0 { "" } else { "! " })));
+        v.join("\n") + "\n"
+    }
+
+    /// Show the data as a table, or write it to Parquet: the stages as
+    /// given, then `head 20` or `write`, run as an editor query.
+    fn render_data(&mut self, stages: &[String], mut shown: Shown) {
+        let kind = shown.render.clone().unwrap_or_else(|| "table".into());
+        let sink = if kind == "export" {
+            self.exports += 1;
+            let _ = std::fs::create_dir_all("out/autopilot_live");
+            format!("write out/autopilot_live/export-{}.parquet", self.exports)
+        } else {
+            "head 20".into()
+        };
+        let text = format!("{} ! {sink}", stages.join(" ! "));
+        shown.lines = vec![sink.clone()];
+        shown.gate = if kind == "export" { format!("{sink}, the chart is unchanged") } else { "the data as a table, the chart is unchanged".into() };
+        shown.colour = ui().th.ok;
+        self.log(&shown);
+        self.shown = Some(shown);
+        let out = self.queried.clone();
+        self.applying = true;
+        self.rt.spawn(async move {
+            *out.lock().unwrap() = Some(editor::query(&text).await);
+        });
     }
 
     /// Have Haiku write the pipeline, in the background.
@@ -742,6 +846,7 @@ impl App {
                     shown.gate = format!("writer: {e}");
                     shown.colour = ui().th.error;
                     shown.written = Some(info);
+                    self.log(&shown);
                     self.shown = Some(shown);
                     continue;
                 }
@@ -750,6 +855,12 @@ impl App {
             self.cost += o.attempts.iter().filter(|a| !a.written.cached).map(|a| a.written.cost).sum::<f64>();
             let n = info.tries.len();
             let tries = if n == 1 { "1 try".to_string() } else { format!("{n} tries") };
+            if let (Some(_), Some(a)) = (&shown.render, &o.applied) {
+                let stages = a.data_stages.clone();
+                shown.written = Some(info);
+                self.render_data(&stages, shown);
+                continue;
+            }
             match o.applied {
                 Some(a) if a.state == self.state && a.data_stages == self.data_stages => {
                     shown.gate = format!("written by Haiku ({tries}): no change");
@@ -780,6 +891,7 @@ impl App {
                 }
             }
             shown.written = Some(info);
+            self.log(&shown);
             self.shown = Some(shown);
         }
     }
@@ -802,6 +914,7 @@ impl App {
         let Some(text) = text else {
             shown.gate = if reset { "already the first chart".into() } else { "nothing to undo".into() };
             shown.colour = muted();
+            self.log(&shown);
             self.shown = Some(shown);
             return;
         };
@@ -829,6 +942,7 @@ impl App {
                 shown.colour = ui().th.error;
             }
         }
+        self.log(&shown);
         self.shown = Some(shown);
     }
 
@@ -875,6 +989,9 @@ impl App {
                 Ok(t) => {
                     let what = if t.columns.is_empty() { format!("{} lines", t.text.len()) } else { t.note.clone() };
                     self.edit_status = (format!("query in {:.0} ms · {what} · the chart is unchanged", t.ms), ui().th.ok);
+                    if self.editing {
+                        self.session.push(format!("{:>6.1} s editor query · {what}", (clock() - self.t0).as_secs_f64()));
+                    }
                     self.table = Some(Arc::new(t));
                 }
                 Err(e) => self.edit_status = (e, ui().th.error),
@@ -886,6 +1003,7 @@ impl App {
         match r {
             Ok(a) => {
                 self.edit_status = (format!("applied in {:.0} ms · {}", a.ms, a.note), ui().th.ok);
+                self.session.push(format!("{:>6.1} s editor applied · {}", (clock() - self.t0).as_secs_f64(), a.note));
                 self.data = Arc::new(a.data);
                 self.data_stages = a.data_stages;
                 self.changes.push(("editor".into(), "pipeline".into()));
@@ -927,12 +1045,17 @@ impl App {
         match key {
             Key::Named(NamedKey::Enter) => {
                 self.typed_at = None;
+                let sent = self.input.string().trim().to_string();
+                if !sent.is_empty() {
+                    self.sent.push(sent);
+                }
                 self.ask(true);
                 self.input.set("");
             }
             Key::Named(NamedKey::Escape) => {
                 self.input.set("");
                 self.typed_at = None;
+                self.table = None;
             }
             Key::Named(NamedKey::ArrowUp) => self.input.move_to(0, m.shift),
             Key::Named(NamedKey::ArrowDown) => {
@@ -1110,6 +1233,7 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
         ("autopilot", AUTOPILOT_BUTTON, !s.editing),
         ("editor", EDITOR_BUTTON, s.editing),
         ("stats for nerds", NERDS_BUTTON, s.nerds),
+        ("copy session", COPY_BUTTON, false),
     ] {
         let [bx, by, bw, bh] = r;
         if th.filled_buttons {
@@ -1206,6 +1330,9 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
     } else {
         s.message.clone()
     };
+    if !s.notice.is_empty() && s.message.is_empty() {
+        marks.push(status(&fit(&s.notice, 70), PX, H - 50.0, 12.0, ui().th.ok, false, false));
+    }
     if s.message.is_empty() {
         marks.push(t(&fit(&footer, 64), PX, H - 32.0, 12.0, muted(), false));
     } else {
@@ -1596,6 +1723,14 @@ impl EventStreamHandler<App> for Input {
                 let p = e.position;
                 if inside(p, NERDS_BUTTON) {
                     s.nerds = !s.nerds;
+                } else if inside(p, COPY_BUTTON) {
+                    let text = s.session_text();
+                    let _ = std::fs::create_dir_all("out/autopilot_live");
+                    let _ = std::fs::write(SESSION_FILE, &text);
+                    s.notice = format!("copied: {} instructions, {} outcomes · also in {SESSION_FILE}", s.sent.len(), s.session.len());
+                    let mut status = rerender;
+                    status.commands.push(RuntimeHostCommand::WriteClipboard { text });
+                    return status;
                 } else if inside(p, AUTOPILOT_BUTTON) {
                     s.editing = false;
                 } else if inside(p, EDITOR_BUTTON) && !s.editing {
@@ -1826,6 +1961,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         writing: 0,
         history: vec![],
         first: String::new(),
+        sent: vec![],
+        session: vec![],
+        notice: String::new(),
+        exports: 0,
+        t0: clock(),
         taken,
         state,
         from: frame.clone(),
@@ -1888,7 +2028,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return runtime.block_on(async move {
             use avenger_wgpu::canvas::{Canvas, PngCanvas};
             let mut canvas = PngCanvas::new(avenger_common::canvas::CanvasDimensions { size: [W, H], scale: 1.0 }, Default::default()).await?;
-            for (i, text) in args[3..].iter().enumerate() {
+            // `@@session.txt` replays the instructions of a copied session.
+            let mut steps: Vec<String> = vec![];
+            for a in &args[3..] {
+                match a.strip_prefix("@@") {
+                    Some(path) => steps.extend(std::fs::read_to_string(path)?.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).map(String::from)),
+                    None => steps.push(a.clone()),
+                }
+            }
+            for (i, text) in steps.iter().enumerate() {
                 if let Some(path) = text.strip_prefix('@') {
                     app.open_editor();
                     app.code.set(std::fs::read_to_string(path)?.trim_end());
@@ -1908,6 +2056,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
                 app.input.set(text);
+                app.sent.push(text.clone());
                 app.ask(true);
                 app.input.set("");
                 while app.returned.lock().unwrap().is_empty() {
@@ -1916,9 +2065,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 app.shown = None;
                 app.message.clear();
                 app.collect(clock()).await;
-                while app.writing > 0 {
+                while app.writing > 0 || app.applying {
                     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                     app.collect_written(clock()).await;
+                    app.collect_edit(clock()).await;
                 }
                 app.started = None;
                 if !app.message.is_empty() {
@@ -1930,7 +2080,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     canvas.set_scene(&build(&mut app).scene_graph)?;
                     canvas.render().await?.save(format!("{dir}/{i:02}{}.png", if nerds { "_nerds" } else { "" }))?;
                 }
-                println!("{text:<45} {:<20} {}", app.shown.as_ref().map_or(String::new(), |a| pilot::short(&a.decision.answers)), app.shown.as_ref().map_or(String::new(), |a| format!("{} | {}", a.gate, a.lines.join(" ; "))));
+                let _ = std::fs::write(SESSION_FILE, app.session_text());
+            println!("{text:<45} {:<20} {}", app.shown.as_ref().map_or(String::new(), |a| pilot::short(&a.decision.answers)), app.shown.as_ref().map_or(String::new(), |a| format!("{} | {}", a.gate, a.lines.join(" ; "))));
             }
             Ok(())
         });

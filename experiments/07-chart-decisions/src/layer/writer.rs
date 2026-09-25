@@ -25,12 +25,21 @@ use crate::options::COLOURS;
 /// they are.
 pub fn questions() -> Value {
     let mut q = pilot::questions();
-    // A way out of the options. Without it, "filter ground" on a pie became
-    // `mark/bars` (0.61): the nearest option, applied on the fast path.
-    q["action"]["criteria"]["other"] = json!("something none of the options above do: filter the data, aggregate it differently, or any other change to the pipeline");
+    // A way out of the options for the data itself. Without it, "filter
+    // ground" on a pie became `mark/bars` (0.61): the nearest option.
+    q["action"]["criteria"]["transform"] = json!("change the data behind the chart: filter rows, exclude or keep classes, aggregate differently, or compute a field");
     // Going back is a change of its own, not "no change".
     q["action"]["criteria"]["undo"] = json!("undo the last change: go back one step to the chart as it was before it");
     q["action"]["criteria"]["reset"] = json!("start over: the whole chart back to how it was at the start (not only the zoom or the emphasis)");
+    q["render"] = json!({
+        "type": "choice",
+        "instructions": "How should the result be shown?",
+        "criteria": {
+            "chart": "as a chart, as usual",
+            "table": "as a table of the rows, instead of a chart",
+            "export": "written to a file (Parquet), to use elsewhere",
+        },
+    });
     q["specifics"] = json!({
         "type": "choice",
         "instructions": "Does the instruction give specifics of its own that none of the options above can hold?",
@@ -52,7 +61,11 @@ pub fn direction(d: &Decision) -> String {
     if let Some(c) = d.confidence {
         change += &format!(" (confidence {c:.2})");
     }
-    format!("{change}; specifics: {}", get("specifics"))
+    let render = match get("render") {
+        "table" | "export" => format!("; render: {}", get("render")),
+        _ => String::new(),
+    };
+    format!("{change}{render}; specifics: {}", get("specifics"))
 }
 
 /// The pipeline behind `s`, as the editor shows it.

@@ -814,10 +814,52 @@ lookalikes that must not go back:
 | leave it as it was | no_change | no_change, 0.99 |
 | go back to the bar chart | mark | mark/bars, 0.87 |
 
-13/13. The two new options left the 21 cases above as they were. In the
+13/13 in this round. The two new options left the 21 cases above as they were. In the
 window, headless: map → title → "maak dat ongedaan" (the title goes) →
 "undo" (back to bars) → "undo" ("nothing to undo") → pie → "start over"
 (bars) → "undo" (the pie again).
+
+### The second live trial: transform, render, and the same questions while typing
+
+"filter ground" and "exclude building" still went wrong, because they were
+decided **while typing**, where the window still asked the pilot's own
+questions: no way out, so `mark/keep` (0.48) and `mark/bars` (0.90, enough to
+change the chart kind before Enter). Changes:
+- `other` became **`transform`**: "change the data behind the chart: filter
+  rows, exclude or keep classes, aggregate differently, or compute a field";
+- a new question, **`render`**: chart, table (the rows instead of a chart) or
+  export (written to Parquet);
+- with the writer on, **typing asks the same questions as Enter**. What only
+  Enter can do (a transform, undo, reset, a title, own details, a table or an
+  export) is held while typing, and the panel says so ("Enter: Haiku writes
+  the change to the data").
+
+On Enter, `render: table` or `export` runs the data stages with `head 20` or
+`write out/autopilot_live/export-<n>.parquet`, and the chart is left as it is.
+Unless Jev says `no_change` without specifics, Haiku writes those data stages
+first, because Jev's action was the weak part: 
+
+| Case | Expected | Jev | Render |
+|---|---|---|---|
+| show the rows as a table | no_change, table | **mark/keep** | table |
+| export this to parquet | no_change, export | no_change | export |
+| show the ground points as a table | transform, table | **mark/bars** | table |
+| exclude building (on a pie) | transform, chart | transform | chart |
+| make the bars red | color, chart | color/red | chart |
+
+With the undo cases, 16/18 on action and render together; `render` was right
+in all 18. With the rule above, both misses behave correctly in the window
+(headless): the first shows the rows as they are, and for the second Haiku
+wrote a filter on class 2 and the table shows ground points. The 22 writer
+cases, with w16 "exclude building" added: jev 2/16 on own text, haiku and
+routed 16/16, routed 16/17 accepted on the first try, 1.8 s p50
+([results/writer.md](results/writer.md)).
+
+**Copy session.** The button puts the session on the clipboard and in
+`out/autopilot_live/session.txt`: the instructions sent with Enter, one per
+line, then as comments what became of each and the pipeline now.
+`autopilot_live --snapshot <dir> @@session.txt` plays the instructions again,
+from the cache without a key once they have been asked.
 
 Not checked: other writer models; Dutch beyond two cases; instructions that
 change the data stages beyond the cell size (other filters, other
