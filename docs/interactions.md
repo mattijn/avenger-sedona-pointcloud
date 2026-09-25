@@ -160,7 +160,9 @@ clouds; the parameters come from pointing, map and touch studies.
 2. **Fuzzy selections** (smooth brushing; built in experiment 7 as `--soft w`): a float column rather than a
    boolean, so interest animates through keyed transitions. It also settles
    the filter-or-fade question from #3394: the degree drives either.
-3. **Lenses as a transform plus a local pipeline:** sampling, regression,
+3. **Lenses as a transform plus a local pipeline** (built in experiment 7:
+   regression on the time series, sampling and MoleView on the map; space
+   folding not built): sampling, regression,
    MoleView, space folding, beside the fisheye and magnifier that exist now.
 4. **A structure-aware lasso on the LiDAR tile:** screen lasso, voxel
    density, threshold. Measurable here, and not in any declarative library.

@@ -292,6 +292,38 @@ techniques as of September 2026: what doing the ordinary ones well takes
 DimpVis), and the trade-off between magnifying by projection and by a nested
 view.
 
+## Interactions: lenses as a local pipeline
+
+The third: a lens is a circle in the plot's unit square plus a step that runs
+only on what lies under it (Bier et al. 1993). `lens <kind> --focus x,y
+[--radius r]` puts one in the pipeline; in the window it follows the pointer,
+re-resolving the frame each move (a few milliseconds on 11,719 cells), and a
+click writes its line. Jev has a `lens` action, so words reach it too.
+
+| Command | Chart | Runs under the circle |
+|---|---|---|
+| `lens regression` | time series | least squares of y on x per line, drawn as a segment, with slope, r² and the number of points (Shao et al. 2017) |
+| `lens sample --keep k` | map | only a share k of the cells, chosen by a hash of the key so it holds from frame to frame (Ellis, Bertini & Dix 2005) |
+| `lens mole --above h` | map, flat or 3D | the cells above h of the height range taken away, to see what they hide (MoleView, Hurter et al. 2011) |
+
+![A regression lens over the flight lines, a sampling lens, the map in 3D, and the same with a mole lens](images/lenses.png)
+
+Removed items leave by the keyed transitions, as any others do. A lens under a
+fisheye or a magnifier is refused (one lens at a time), and so are the kinds a
+chart has no use for, naming the one that works.
+
+Two things were learned by building them. A regression on the map is not the
+regression lens: with x and y both metres there is no dependent axis, and the
+principal axis of the cells under a circle (18° there) measured how the
+blocks are laid out, not the buildings, which visibly run steeper (by eye,
+not measured). It was taken out rather than labelled. And the first hash, FNV-1a alone, sampled cells in
+vertical stripes, because keys of one column differ only in their last bytes;
+a splitmix64 finish fixed it. The map holds buildings only, so a mole lens
+shows lower buildings, not the ground under trees; the raw tile would.
+
+Measured by `layer_roundtrip` (the "lens" cases) and by `autopilot_live
+--snapshot out/lens` with `!hover x,y` and `!click x,y` steps.
+
 ## Results
 
 The cases were written before any decider ran on them, with the expected
@@ -338,20 +370,28 @@ reproducible.
 
 ### Jev steers, Haiku writes
 
-22 cases ([cases_writer.json](cases_writer.json)), each with the state it
+25 cases ([cases_writer.json](cases_writer.json)), each with the state it
 must fold to and a reference pipeline that `writer_eval --check` proves
-reachable: 6 that Jev's options cover, 16 that need text of their own (titles,
-thresholds, ranges, cell sizes, filters).
+reachable: 6 that Jev's options cover, 19 that need text of their own (titles,
+thresholds, ranges, cell sizes, filters, lenses).
 
 | Way | Covered by options | Own text | Writer calls | Accepted first try | Latency p50 | Cost |
 |---|---|---|---|---|---|---|
-| Jev's options only | 6 / 6 | 2 / 16 | 0 | – | 302 ms | $0.0013 |
-| Haiku writes alone | 5 / 6 | 16 / 16 | 22 | 21 / 22 | 1,709 ms | $0.082 |
-| routed (the window) | **6 / 6** | **16 / 16** | 18 | 17 / 18 | 1,788 ms | $0.074 |
+| Jev's options only | 6 / 6 | 4 / 19 | 0 | – | 291 ms | $0.0020 |
+| Haiku writes alone | 5 / 6 | 18 / 19 | 25 | 23 / 25 | 1,840 ms | $0.106 |
+| routed (the window) | **6 / 6** | **19 / 19** | 20 | 19 / 20 | 1,867 ms | $0.085 |
 
 - Haiku alone drew "which share does each class have?" as bars; with Jev's
   reading it did not. The prompt is longer now that it holds views and
   selections, and a run costs about 15% more.
+- Jev had no word for a lens, so it steered away from one: "look through the
+  tall buildings" came back as `view tilt`, and Haiku, following it, tilted
+  the map. With a `lens` question Jev answered `mole` and `regression` rightly
+  while its action still said view or zoom; `normalise` promotes a confident
+  lens answer as it does a view answer, and every way but Haiku alone then
+  got all three lens cases. Haiku alone read "look through" as a magnifier
+  until the grammar said what the mole lens is for ("to see past tall
+  buildings"), not only what it does.
 - A grammar with two ways to filter is read both ways: once `select … --effect
   filter` existed, Haiku alone wrote "filter ground" as a selection, which
   leaves the rows as they are. One line in the prompt ("rows named in words
@@ -436,6 +476,12 @@ and Jon. Each point says where it comes from; the unchecked ones say so.
   policy?").
 - A mark change resets the title and the scale and axis properties to the
   new mark's defaults; they do not travel with the chart.
+- Selections, smooth brushing and the lenses were tested headless
+  (`--snapshot` with `!click`, `!hover`, `!brush` steps), not with a real
+  mouse. No gesture sets softness; space folding and the angular brush are not
+  built.
+- Jev's questions gained `lens`, which changes every Jev cache key; the
+  recorded tour (`--tour`) was not re-recorded and needs the key to replay.
 - Registering the named tables costs every new pipeline a little:
   `layer_roundtrip`, which builds thousands, went from 3.9 s to 10.1 s.
 

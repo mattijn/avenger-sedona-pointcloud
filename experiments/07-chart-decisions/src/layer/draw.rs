@@ -544,6 +544,43 @@ pub fn chart_marks(d: &Drawn, origin: [f32; 2]) -> Vec<SceneMark> {
     // Clip while the plot stays in its square; a bend or a tilt reaches past it.
     let clip = if inside { Clip::Rect { x: 0.0, y: 0.0, width: P as f32, height: P as f32 } } else { Clip::None };
     marks.push(SceneMark::Group(SceneGroup { marks: plot, clip, ..Default::default() }));
+    // A lens: its ring on the ground plane, what it fitted, and a line of
+    // text per finding beside it.
+    for (lens, w) in &d.lenses {
+        if *w < 0.02 {
+            continue;
+        }
+        let (f0, r) = (lens.focus(), lens.radius());
+        let pts: Vec<[f64; 2]> = (0..=72).map(|k| {
+            let a = k as f64 / 72.0 * std::f64::consts::TAU;
+            proj([f0[0] + r * a.cos(), f0[1] + r * a.sin()], 0.0).0
+        }).collect();
+        marks.push(polyline(&pts, fade(style().ink, 0.75 * w), 1.5));
+    }
+    if let Some((lens, _)) = d.lenses.last() {
+        let (f0, r) = (lens.focus(), lens.radius());
+        // Stacked above the ring, kept inside the plot.
+        let ring: Vec<[f64; 2]> = (0..36).map(|k| {
+            let a = k as f64 / 36.0 * std::f64::consts::TAU;
+            proj([f0[0] + r * a.cos(), f0[1] + r * a.sin()], 0.0).0
+        }).collect();
+        let top = ring.iter().map(|p| p[1]).fold(f64::MAX, f64::min) as f32;
+        let mid = (ring.iter().map(|p| p[0]).sum::<f64>() / ring.len() as f64) as f32;
+        let mut y = (top - 6.0).max(18.0 + 19.0 * (d.fits.len() as f32 - 1.0));
+        for (fit, w) in d.fits.iter().rev() {
+            if fit.a != fit.b {
+                let seg = [proj(fit.a, 0.0).0, proj(fit.b, 0.0).0];
+                marks.push(polyline(&seg, fade([1.0; 4], 0.9 * w), 5.0));
+                marks.push(polyline(&seg, fade(fit.color, *w), 2.5));
+            }
+            let width = fit.label.chars().count() as f32 * 6.1 + 10.0;
+            let x = (mid - width / 2.0).clamp(0.0, (P as f32 - width).max(0.0));
+            marks.push(rect(x, y - 16.0, width, 17.0, fade([1.0, 1.0, 1.0, 0.85], *w), None, 3.0));
+            marks.push(rect(x + 3.0, y - 10.5, 6.0, 6.0, fade(fit.color, *w), None, 1.0));
+            marks.push(text(&fit.label, x + 12.0, y - 7.5, 11.0, fade(style().ink, *w), TextAlign::Left, TextBaseline::Middle, false, 0.0));
+            y -= 19.0;
+        }
+    }
     // A magnifier: the same items again, flat and scaled about the focus,
     // inside a circle over the plot. It grows in and out with the view.
     for (v, w) in [(d.view_a, 1.0 - d.vt), (d.view_b, d.vt)] {

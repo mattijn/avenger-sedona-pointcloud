@@ -679,7 +679,7 @@ impl App {
             let d = match r.result {
                 Ok(mut d) => {
                     if self.writer.is_some() {
-                        writer::normalise(&mut d, &self.state.view);
+                        writer::normalise(&mut d, &self.state);
                     }
                     d
                 }
@@ -1106,6 +1106,14 @@ impl App {
     /// Move a lens's focus, live: the chart state and both frames, without a
     /// transition and without a pipeline line (a click commits it).
     fn move_focus(&mut self, u: [f64; 2]) {
+        // A lens changes what is drawn under it, so the frame is resolved
+        // again; that takes a few milliseconds on the map.
+        if let Some(l) = self.state.lens {
+            let mut n = self.state.clone();
+            n.lens = Some(l.with_focus(u));
+            self.set_live(n);
+            return;
+        }
         // An offset callout is placed again, keeping its side when it can.
         let pts = lidar_decide::layer::model::unit_points(&self.to);
         let margin = self.to.legend.is_empty() && self.to.colorbar.is_none();
@@ -1119,7 +1127,7 @@ impl App {
 
     /// Put the view as it is now into the pipeline, as a `view` line.
     async fn commit_view(&mut self, _now: Instant) {
-        let line = package::view_line(&self.state.view);
+        let line = self.state.lens.as_ref().map_or_else(|| package::view_line(&self.state.view), package::lens_line);
         self.remember();
         let pipe = self.pipe.clone();
         let mut p = pipe.lock().await;
@@ -1128,7 +1136,7 @@ impl App {
             return;
         }
         self.snapshot(&p);
-        self.changes.push(("click on the plot".into(), "view focus".into()));
+        self.changes.push(("click on the plot".into(), if self.state.lens.is_some() { "lens focus" } else { "view focus" }.into()));
         self.session.push(format!("{:.1} s, click on the plot: {line}", (clock() - self.t0).as_secs_f64()));
         self.logged += 1;
     }
@@ -2404,7 +2412,7 @@ impl EventStreamHandler<App> for Input {
             Event::MouseDown(e) if e.button == MouseButton::Left => {
                 let p = e.position;
                 // A click on the plot under a lens puts its focus in the pipeline.
-                if let (Some(_), Some(u), None) = (s.state.view.focus(), plot_unit(p), &s.table) {
+                if let (Some(_), Some(u), None) = (s.state.view.focus().or(s.state.lens.map(|l| l.focus())), plot_unit(p), &s.table) {
                     s.move_focus(u);
                     s.commit_view(now).await;
                     return rerender;
@@ -2502,7 +2510,7 @@ impl EventStreamHandler<App> for Input {
                     rerender
                 }
                 // A lens follows the cursor over the plot.
-                None => match (s.state.view.focus(), plot_unit(e.position)) {
+                None => match (s.state.view.focus().or(s.state.lens.map(|l| l.focus())), plot_unit(e.position)) {
                     (Some(_), Some(u)) if s.table.is_none() => {
                         s.move_focus(u);
                         rerender
@@ -2935,6 +2943,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let (x, y) = at.split_once(',').unwrap_or(("0", "0"));
                     let p = [x.trim().parse::<f32>().unwrap_or(0.0), y.trim().parse::<f32>().unwrap_or(0.0)];
                     match verb {
+                        // Under a lens, the pointer moves it and a click commits it, as in the window.
+                        "click" | "hover" if app.state.view.focus().or(app.state.lens.map(|l| l.focus())).is_some() && plot_unit(p).is_some() => {
+                            app.move_focus(plot_unit(p).unwrap());
+                            if verb == "click" {
+                                app.commit_view(clock()).await;
+                            }
+                        }
                         "click" => app.click_chart(p, false, clock()).await,
                         "shiftclick" => app.click_chart(p, true, clock()).await,
                         // `!brush x,y x2,y2`, `!pan dx,dy` (from the plot's centre), `!wheel x,y notches`

@@ -91,6 +91,12 @@ fn check(expect: &Value, start: &State, s: &State, n_rows: usize) -> Option<Stri
             "rows_gt" => v.as_u64().is_some_and(|m| n_rows as u64 > m),
             "view" => v.as_str() == Some(s.view.id()),
             "selected" => v.as_bool() == Some(s.selection != lidar_decide::layer::model::Selection::None),
+            "lens" => v.as_str()
+                == s.lens.map(|l| match l {
+                    lidar_decide::layer::model::Lens::Regression { .. } => "regression",
+                    lidar_decide::layer::model::Lens::Sample { .. } => "sample",
+                    lidar_decide::layer::model::Lens::Mole { .. } => "mole",
+                }),
             other => panic!("unknown expectation {other}"),
         };
         if !ok {
@@ -237,7 +243,7 @@ async fn main() -> Result<(), Error> {
         let text = c["text"].as_str().unwrap();
         let s = start(&c["start"]);
         let mut j = jev.decide(&pilot::observation(&s, &d, text), &writer::questions()).await?;
-        writer::normalise(&mut j, &s.view);
+        writer::normalise(&mut j, &s);
         let dir = writer::direction(&j);
         let jev_state = from_jev(&s, &j);
         let jev_run = Run { rows: rows(&jev_state, &d), state: jev_state, ms: j.ms, cost: j.cost, tries: 0, first: false, texts: vec![], route: "options" };
@@ -303,7 +309,7 @@ async fn main() -> Result<(), Error> {
         let s = start(&c["start"]);
         let text = c["text"].as_str().unwrap();
         let mut j = jev.decide(&pilot::observation(&s, &d, text), &writer::questions()).await?;
-        writer::normalise(&mut j, &s.view);
+        writer::normalise(&mut j, &s);
         let got = j.answers.get("action").and_then(Value::as_str).unwrap_or("?");
         let render = j.answers.get("render").and_then(Value::as_str).unwrap_or("?");
         let view = j.answers.get("view").and_then(Value::as_str).unwrap_or("?");

@@ -120,6 +120,52 @@ pub struct State {
     /// Smooth brushing (Doleisch & Hauser 2002): interest falls off over
     /// this width (unit square) outside a brush, instead of yes or no.
     pub soft: Option<f64>,
+    /// A lens: a local pipeline over what lies under a circle.
+    pub lens: Option<Lens>,
+}
+
+/// A lens as a transform plus a local pipeline (Bier et al. 1993): the items
+/// under a circle in the plot's unit square go through a step of their own.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Lens {
+    /// Every item inside kept with probability `keep`, by a hash of its key,
+    /// so overplotting clears (Ellis, Bertini & Dix 2005).
+    Sample { focus: [f64; 2], radius: f64, keep: f64 },
+    /// A least-squares fit of what is inside, per series (Shao et al. 2017).
+    Regression { focus: [f64; 2], radius: f64 },
+    /// Inside, the items taller than `above` (0..1 of the height range) are
+    /// taken away, to see what they hide (MoleView, Hurter et al. 2011).
+    Mole { focus: [f64; 2], radius: f64, above: f64 },
+}
+
+impl Lens {
+    pub fn focus(&self) -> [f64; 2] {
+        match self {
+            Lens::Sample { focus, .. } | Lens::Regression { focus, .. } | Lens::Mole { focus, .. } => *focus,
+        }
+    }
+    pub fn radius(&self) -> f64 {
+        match self {
+            Lens::Sample { radius, .. } | Lens::Regression { radius, .. } | Lens::Mole { radius, .. } => *radius,
+        }
+    }
+    pub fn with_focus(self, f: [f64; 2]) -> Lens {
+        match self {
+            Lens::Sample { radius, keep, .. } => Lens::Sample { focus: f, radius, keep },
+            Lens::Regression { radius, .. } => Lens::Regression { focus: f, radius },
+            Lens::Mole { radius, above, .. } => Lens::Mole { focus: f, radius, above },
+        }
+    }
+}
+
+/// What a lens found, drawn over it: a segment in the unit square, its
+/// colour, and a line of text.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Fit {
+    pub a: [f64; 2],
+    pub b: [f64; 2],
+    pub color: [f32; 4],
+    pub label: String,
 }
 
 /// A selection, as data: item keys (a click, a legend entry, a brush over
@@ -295,7 +341,7 @@ impl View {
 
 impl State {
     pub fn new(dataset: Dataset) -> Self {
-        let mut s = State { dataset, mark: Mark::default_for(dataset), color: None, zoom: None, range: None, highlight: false, threshold: None, title: String::new(), x_title: None, y_title: None, y_log: false, view: View::Flat, selection: Selection::None, effect: Effect::Fade, soft: None };
+        let mut s = State { dataset, mark: Mark::default_for(dataset), color: None, zoom: None, range: None, highlight: false, threshold: None, title: String::new(), x_title: None, y_title: None, y_log: false, view: View::Flat, selection: Selection::None, effect: Effect::Fade, soft: None, lens: None };
         s.title = s.default_title();
         s
     }
@@ -378,6 +424,8 @@ pub struct Frame {
     pub view: View,
     /// How many items a selection kept, when there is one.
     pub selected: Option<usize>,
+    /// The lens, and what it found.
+    pub lens: Option<(Lens, Vec<Fit>)>,
 }
 
 pub fn class_color(label: &str) -> [f32; 4] {
@@ -485,6 +533,53 @@ pub fn unit_points(f: &Frame) -> Vec<[f64; 2]> {
     out
 }
 
+/// A key to a number in [0, 1), the same on every run.
+fn hash01(key: &str) -> f64 {
+    let mut h = key.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+    // FNV alone leaves keys that differ in their last bytes close together
+    // (cells in a column, as stripes): finish with splitmix64.
+    h = (h ^ (h >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+    h = (h ^ (h >> 27)).wrapping_mul(0x94d049bb133111eb);
+    h ^= h >> 31;
+    (h >> 11) as f64 / (1u64 << 53) as f64
+}
+
+/// Least squares of y on x: slope, intercept and r².
+fn ols(p: &[[f64; 2]]) -> Option<(f64, f64, f64)> {
+    if p.len() < 3 {
+        return None;
+    }
+    let n = p.len() as f64;
+    let (mx, my) = (p.iter().map(|q| q[0]).sum::<f64>() / n, p.iter().map(|q| q[1]).sum::<f64>() / n);
+    let (sxx, syy, sxy) = p.iter().fold((0.0, 0.0, 0.0), |a, q| (a.0 + (q[0] - mx).powi(2), a.1 + (q[1] - my).powi(2), a.2 + (q[0] - mx) * (q[1] - my)));
+    if sxx < 1e-12 {
+        return None;
+    }
+    let slope = sxy / sxx;
+    Some((slope, my - slope * mx, if syy < 1e-12 { 1.0 } else { sxy * sxy / (sxx * syy) }))
+}
+
+/// A slope with its sign and a k or M: -12345 → −12.3k.
+fn signed(v: f64) -> String {
+    let (sign, a) = (if v < 0.0 { "−" } else { "+" }, v.abs());
+    if a >= 1e6 {
+        format!("{sign}{:.1}M", a / 1e6)
+    } else if a >= 1e3 {
+        format!("{sign}{:.1}k", a / 1e3)
+    } else {
+        format!("{sign}{a:.2}")
+    }
+}
+
+/// The unit of an x axis, for "per s".
+fn unit_word(a: &Axis) -> &'static str {
+    match a {
+        Axis::Linear { field, .. } if field.contains("second") => "s",
+        Axis::Linear { field, .. } if field.contains("(m)") || field.contains("Lambert") => "m",
+        _ => "unit of x",
+    }
+}
+
 /// Resolve a state into a frame of keyed items.
 pub fn resolve(s: &State, d: &Data) -> Frame {
     let mut f = Frame {
@@ -499,6 +594,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
         view: s.view,
         legend_keys: vec![],
         selected: None,
+        lens: None,
     };
     match s.mark {
         Mark::Bars | Mark::Pie => {
@@ -678,6 +774,56 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
                 f.items.retain(|_| *k.next().unwrap() >= 0.5);
             }
         }
+    }
+    // A lens runs its own step over what lies under it.
+    if let Some(lens) = s.lens {
+        let dom = |a: &Axis| match a {
+            Axis::Linear { lo, hi, .. } => Some((*lo, *hi)),
+            _ => None,
+        };
+        let (dx, dy) = (dom(&f.x), dom(&f.y));
+        let unit = |p: [f64; 2]| [dx.map_or(p[0], |(lo, hi)| (p[0] - lo) / (hi - lo)), dy.map_or(p[1], |(lo, hi)| (p[1] - lo) / (hi - lo))];
+        let (c, r) = (lens.focus(), lens.radius());
+        let inside = |q: [f64; 2]| (q[0] - c[0]).hypot(q[1] - c[1]) <= r;
+        let mut fits = vec![];
+        match lens {
+            Lens::Sample { keep, .. } | Lens::Mole { above: keep, .. } => {
+                let sample = matches!(lens, Lens::Sample { .. });
+                let (mut under, mut kept) = (0, 0);
+                f.items.retain(|it| match &it.geo {
+                    Geo::Point { x, y } if inside(unit([*x, *y])) => {
+                        let k = if sample { hash01(&it.key) < keep } else { it.h <= keep };
+                        under += 1;
+                        kept += k as usize;
+                        k
+                    }
+                    _ => true,
+                });
+                let label = if sample {
+                    format!("sample: {kept} of {under} cells shown ({:.0} %)", keep * 100.0)
+                } else {
+                    format!("mole: {} of {under} cells above {:.0} % of the height range taken away", under - kept, keep * 100.0)
+                };
+                fits.push(Fit { a: c, b: c, color: [0.13, 0.13, 0.13, 1.0], label });
+            }
+            Lens::Regression { .. } => {
+                // Per series, least squares of y on x over the points inside.
+                let per = unit_word(&f.x);
+                for it in &f.items {
+                    let Geo::Line { pts } = &it.geo else { continue };
+                    let pts: Vec<[f64; 2]> = pts.iter().copied().filter(|p| inside(unit(*p))).collect();
+                    let Some((slope, icpt, r2)) = ols(&pts) else { continue };
+                    let (x0, x1) = pts.iter().fold((f64::MAX, f64::MIN), |a, p| (a.0.min(p[0]), a.1.max(p[0])));
+                    fits.push(Fit {
+                        a: unit([x0, icpt + slope * x0]),
+                        b: unit([x1, icpt + slope * x1]),
+                        color: it.fill,
+                        label: format!("line {}: {} per {per}, r² {:.2}, {} points", bare_key(&it.key), signed(slope), r2, pts.len()),
+                    });
+                }
+            }
+        }
+        f.lens = Some((lens, fits));
     }
     // An offset magnifier's callout goes where it covers the least data.
     if matches!(s.view, View::Magnifier { offset: true, .. }) {

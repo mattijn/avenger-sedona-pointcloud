@@ -33,6 +33,7 @@ pub fn questions() -> Value {
     q["action"]["criteria"]["reset"] = json!("start over: the whole chart back to how it was at the start (not only the zoom or the emphasis)");
     // How the plot is seen, from experiment 5's coordinate systems.
     q["action"]["criteria"]["view"] = json!("change how the chart is seen: a fisheye or a magnifier over one area, a 3D tilt, or back to flat");
+    q["action"]["criteria"]["lens"] = json!("put a lens over one area that works on what is under it: the local trend of the lines there, a sample of crowded cells, or taking tall buildings away to see past them");
     q["action"]["criteria"]["select"] = json!("select some items (as a click or a brush would), show only the selection, fade the rest, or clear the selection");
     // "Magnify" asks for a lens, not for the whole chart to zoom.
     q["action"]["criteria"]["zoom"] = json!("zoom the whole chart to a part of it, or back out to all of it: the axes change (not a lens or a magnifying glass)");
@@ -45,6 +46,17 @@ pub fn questions() -> Value {
             "magnifier": "magnify: a magnifying glass, an enlarged round inset over one area while the rest stays as it is",
             "tilt": "a tilted 3D view, with height as depth",
             "keep": "no view asked for",
+        },
+    });
+    q["lens"] = json!({
+        "type": "choice",
+        "instructions": "If a lens should be put over an area, which?",
+        "criteria": {
+            "regression": "the local trend (a fitted line) of each series under the lens",
+            "sample": "only a sample of the points or cells under the lens, where they are crowded",
+            "mole": "tall items under the lens taken away, to see past or through them",
+            "clear": "take the lens away",
+            "keep": "no lens asked for",
         },
     });
     q["render"] = json!({
@@ -72,13 +84,27 @@ pub fn questions() -> Value {
 /// north-east corner" came back as `zoom` (0.78) with `view magnifier`
 /// (0.73). A view answered with confidence, beside an action that is only a
 /// zoom or no change, becomes the action.
-pub fn normalise(d: &mut Decision, current: &super::model::View) {
+///
+/// A lens the same way: "look through the tall buildings" came back as
+/// `view tilt` beside `lens mole`, and "the local trend of each line" as
+/// `zoom` beside `lens regression`.
+pub fn normalise(d: &mut Decision, state: &super::model::State) {
+    use super::model::Lens;
     let get = |k: &str| d.answers.get(k).and_then(Value::as_str).unwrap_or("keep").to_string();
-    let (action, view) = (get("action"), get("view"));
+    let (action, view, lens) = (get("action"), get("view"), get("lens"));
     // Close to the action's confidence: "magnify" was zoom 0.78 against
     // magnifier 0.73; "zoom in" was zoom 1.00 against magnifier 0.59.
     let (cv, ca) = (d.confidence_of("view").unwrap_or(0.0), d.confidence.unwrap_or(1.0));
-    if matches!(action.as_str(), "zoom" | "no_change") && view != "keep" && view != current.id() && cv >= 0.5 && cv >= ca - 0.15 {
+    let cl = d.confidence_of("lens").unwrap_or(0.0);
+    let lens_now = state.lens.map(|l| match l {
+        Lens::Regression { .. } => "regression",
+        Lens::Sample { .. } => "sample",
+        Lens::Mole { .. } => "mole",
+    });
+    if matches!(action.as_str(), "zoom" | "view" | "no_change") && !matches!(lens.as_str(), "keep" | "clear") && Some(lens.as_str()) != lens_now && cl >= 0.5 && cl >= ca - 0.15 {
+        d.answers.insert("action".into(), json!("lens"));
+        d.confidence = Some(cl);
+    } else if matches!(action.as_str(), "zoom" | "no_change") && view != "keep" && view != state.view.id() && cv >= 0.5 && cv >= ca - 0.15 {
         d.answers.insert("action".into(), json!("view"));
         d.confidence = d.confidence_of("view");
     }
@@ -206,6 +232,10 @@ Aggregate in a `sql` stage before the mark, not in a channel. The layer draws th
   select timebox --x a..b --y c..d     the flight lines that stay inside the box over its x-range
   --soft w on interval, segment and timebox: smooth brushing, interest falls off over w (0..1 of the plot) outside the brush
   select clear
+  lens regression --focus <x>,<y> [--radius r]   the time series: a least-squares trend of each line under a circle
+  lens sample --focus <x>,<y> [--radius r] [--keep k]   the map: only a share k of the cells under the circle, against overplotting
+  lens mole --focus <x>,<y> [--radius r] [--above h]    the map: under the circle, cells above h of the height range taken away, to see past tall buildings
+  lens clear                              A pipeline has at most one `lens` line; focus in the unit square, 0,0 bottom left.
   A pipeline has at most one `select` line, after the mark. Its effect is fade unless the instruction asks to show only the
   selection (filter, axes kept). To change only the effect, keep the keys or interval of the current select line.
   Filtering, excluding or keeping rows named in words (filter ground, only buildings, without water) changes the \

@@ -436,6 +436,63 @@
           "bars n --by label"
         ]
       }
+    },
+    {
+      "id": "w17",
+      "start": {
+        "mark": "line"
+      },
+      "text": "show the local trend of each line between 15 and 25 seconds",
+      "expect": {
+        "mark": "line",
+        "lens": "regression"
+      },
+      "reference": {
+        "data": "flight",
+        "commands": [
+          "line n --x t --series line",
+          "lens regression --focus 0.74,0.5 --radius 0.2"
+        ]
+      },
+      "added": "with the lenses (25 Sep 2026)"
+    },
+    {
+      "id": "w18",
+      "start": {
+        "mark": "map"
+      },
+      "text": "look through the tall buildings in the middle of the map",
+      "expect": {
+        "mark": "map",
+        "lens": "mole"
+      },
+      "reference": {
+        "data": "cells",
+        "commands": [
+          "map --x cx --y cy --value h",
+          "lens mole --focus 0.5,0.5 --radius 0.15 --above 0.3"
+        ]
+      },
+      "added": "with the lenses (25 Sep 2026)"
+    },
+    {
+      "id": "w19",
+      "start": {
+        "mark": "map"
+      },
+      "text": "the north-east is crowded, show only a sample of the cells there",
+      "expect": {
+        "mark": "map",
+        "lens": "sample"
+      },
+      "reference": {
+        "data": "cells",
+        "commands": [
+          "map --x cx --y cy --value h",
+          "lens sample --focus 0.75,0.75 --radius 0.2 --keep 0.25"
+        ]
+      },
+      "added": "with the lenses (25 Sep 2026)"
     }
   ],
   "back_note": "Jev's action (and where given its render answer) only, added after the live trials. Undo and reset need a history, which the window keeps; table and export are shown or written by the window. The lookalikes must not go back.",

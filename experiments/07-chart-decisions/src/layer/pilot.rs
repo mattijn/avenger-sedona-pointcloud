@@ -159,6 +159,7 @@ pub fn apply(s: &State, answers: &Map<String, Value>) -> Result<State, NotApplie
             n.view = super::model::View::Flat;
             n.selection = super::model::Selection::None;
             n.soft = None;
+            n.lens = None;
             n.title = n.default_title();
         }
         "color" => {
@@ -203,6 +204,28 @@ pub fn apply(s: &State, answers: &Map<String, Value>) -> Result<State, NotApplie
                 _ => return unfit("view chosen but no kind"),
             };
         }
+        "lens" => {
+            use super::model::Lens;
+            let focus = match get("region") {
+                "north_east" => [0.75, 0.75],
+                "north_west" => [0.25, 0.75],
+                "south_east" => [0.75, 0.25],
+                "south_west" => [0.25, 0.25],
+                _ => s.lens.map_or([0.5, 0.5], |l| l.focus()),
+            };
+            if matches!(s.view, super::model::View::Fisheye { .. } | super::model::View::Magnifier { .. }) {
+                return unfit("one lens at a time");
+            }
+            n.lens = match get("lens") {
+                "clear" => None,
+                "regression" if s.mark == Mark::Line => Some(Lens::Regression { focus, radius: 0.15 }),
+                "regression" => return unfit("a regression lens fits the time series"),
+                "sample" | "mole" if s.mark != Mark::Map => return unfit("sample and mole lenses work on the map"),
+                "sample" => Some(Lens::Sample { focus, radius: 0.15, keep: 0.25 }),
+                "mole" => Some(Lens::Mole { focus, radius: 0.15, above: 0.3 }),
+                _ => return unfit("lens chosen but no kind"),
+            };
+        }
         "highlight" => {
             if !highlightable(s.mark) {
                 return unfit("no emphasis on this chart");
@@ -232,6 +255,7 @@ pub fn short(answers: &Map<String, Value>) -> String {
         "zoom" => get("region"),
         "highlight" => get("subset"),
         "view" => get("view"),
+        "lens" => get("lens"),
         _ => None,
     };
     arg.map_or(action.to_string(), |a| format!("{action}/{a}"))

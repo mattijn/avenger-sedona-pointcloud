@@ -21,7 +21,7 @@ use datafusion::error::Result;
 use lidar_pipeline::pipeline::{err, Call, Kind, Package, Pipeline, Step};
 use serde_json::{json, Value};
 
-use super::model::{base_domains, emphasis, quarter_domains, Data, Dataset, Effect, Mark, Quarter, Selection, State, View};
+use super::model::{base_domains, emphasis, quarter_domains, Data, Dataset, Effect, Lens, Mark, Quarter, Selection, State, View};
 use crate::options::COLOURS;
 
 /// `(step, chart mark, positional measure, flags)`.
@@ -254,6 +254,56 @@ impl Step for ViewStep {
     }
 }
 
+/// `lens sample|regression|mole --focus x,y [--radius r] [--keep k]
+/// [--above h]`, `lens clear`: a local pipeline over what lies under a
+/// circle in the plot's unit square.
+struct LensStep;
+
+#[async_trait]
+impl Step for LensStep {
+    fn kind(&self) -> Kind {
+        Kind::Command
+    }
+    fn help(&self) -> &'static str {
+        "lens regression --focus x,y [--radius r] · lens sample --focus x,y [--radius r --keep k] · lens mole --focus x,y [--radius r --above h] · lens clear"
+    }
+    async fn run(&self, p: &mut Pipeline, c: &Call) -> Result<Option<String>> {
+        let kind = c.arg(0)?;
+        if kind == "clear" {
+            if let Some(o) = p.chart.as_object_mut() {
+                o.remove("lens");
+            }
+            return Ok(None);
+        }
+        let num = |k: &str, d: f64| -> Result<f64> {
+            let v = c.flag(k).map_or(Ok(d), |v| v.parse().map_err(|_| err(format!("lens: --{k} {v} is not a number"))))?;
+            if !(0.0..=1.0).contains(&v) {
+                return Err(err(format!("lens: --{k} is a fraction, 0..1, not {v}")));
+            }
+            Ok(v)
+        };
+        let focus = match c.flag("focus") {
+            None => [0.5, 0.5],
+            Some(v) => {
+                let (a, b) = v.split_once(',').ok_or_else(|| err(format!("lens: --focus {v} is not x,y")))?;
+                let (a, b): (f64, f64) = (a.trim().parse().map_err(|_| err("lens: --focus x is not a number"))?, b.trim().parse().map_err(|_| err("lens: --focus y is not a number"))?);
+                if !(0.0..=1.0).contains(&a) || !(0.0..=1.0).contains(&b) {
+                    return Err(err(format!("lens: --focus {v} is outside the plot (0..1, 0..1)")));
+                }
+                [a, b]
+            }
+        };
+        let radius = num("radius", 0.15)?;
+        p.chart["lens"] = match kind {
+            "regression" => json!({"kind": "regression", "focus": focus, "radius": radius}),
+            "sample" => json!({"kind": "sample", "focus": focus, "radius": radius, "keep": num("keep", 0.25)?}),
+            "mole" => json!({"kind": "mole", "focus": focus, "radius": radius, "above": num("above", 0.3)?}),
+            other => return Err(err(format!("lens: regression, sample, mole or clear, not `{other}`"))),
+        };
+        Ok(None)
+    }
+}
+
 /// `select point --keys "a;b"`, `select interval --x a..b [--y c..d]`,
 /// `select clear`, and `--effect fade|filter` with any of them (or alone).
 struct SelectStep;
@@ -348,6 +398,7 @@ pub fn package() -> Package {
     steps.push(("chart", Arc::new(ChartStep)));
     steps.push(("view", Arc::new(ViewStep)));
     steps.push(("select", Arc::new(SelectStep)));
+    steps.push(("lens", Arc::new(LensStep)));
     steps.push(("clear-highlight", Arc::new(ClearHighlight)));
     Package { name: "layer", functions: vec![], steps }
 }
@@ -390,7 +441,19 @@ fn props(n: &State) -> Vec<String> {
         v.push(view_line(&n.view));
     }
     v.extend(select_line(n));
+    v.extend(n.lens.as_ref().map(lens_line));
     v
+}
+
+/// The `lens` command for a lens.
+pub fn lens_line(l: &Lens) -> String {
+    let f = l.focus();
+    let head = format!("--focus {},{} --radius {}", short_num(f[0]), short_num(f[1]), short_num(l.radius()));
+    match l {
+        Lens::Regression { .. } => format!("lens regression {head}"),
+        Lens::Sample { keep, .. } => format!("lens sample {head} --keep {}", short_num(*keep)),
+        Lens::Mole { above, .. } => format!("lens mole {head} --above {}", short_num(*above)),
+    }
 }
 
 /// The `select` command for a state's selection and effect, if any.
@@ -497,6 +560,9 @@ pub fn lines(s: &State, n: &State, d: &Data) -> Vec<String> {
     }
     if n.color != s.color {
         out.extend(n.color.and_then(hex_of).map(|h| format!("color {h}")));
+    }
+    if n.lens != s.lens {
+        out.push(n.lens.as_ref().map_or_else(|| "lens clear".into(), lens_line));
     }
     if (n.highlight, n.threshold) != (s.highlight, s.threshold) {
         out.push(if n.highlight { highlight_line(n, d) } else { "clear-highlight".into() });
@@ -623,6 +689,24 @@ pub fn state(chart: &Value, d: &Data) -> std::result::Result<State, String> {
         }
     };
     s.effect = if chart["select_effect"].as_str() == Some("filter") { Effect::Filter } else { Effect::Fade };
+    s.lens = match chart["lens"]["kind"].as_str() {
+        None => None,
+        Some(k) => {
+            let n = |f: &str| chart["lens"][f].as_f64().unwrap_or(0.0);
+            let radius = n("radius");
+            let focus = [chart["lens"]["focus"][0].as_f64().unwrap_or(0.5), chart["lens"]["focus"][1].as_f64().unwrap_or(0.5)];
+            match k {
+                "regression" if mark == Mark::Line => Some(Lens::Regression { focus, radius }),
+                "regression" => return Err("a regression lens fits the time series, per line; on the map, lens sample or lens mole".into()),
+                _ if mark != Mark::Map => return Err(format!("a {k} lens works on the map's cells")),
+                "sample" => Some(Lens::Sample { focus, radius, keep: n("keep") }),
+                _ => Some(Lens::Mole { focus, radius, above: n("above") }),
+            }
+        }
+    };
+    if s.lens.is_some() && matches!(s.view, View::Fisheye { .. } | View::Magnifier { .. }) {
+        return Err("one lens at a time: a lens works on a flat or tilted view, not under a fisheye or magnifier".into());
+    }
     s.soft = chart["select"]["soft"].as_f64().filter(|_| !matches!(s.selection, Selection::None | Selection::Keys(_)));
     if mark == Mark::Pie && matches!(s.view, View::Magnifier { .. }) {
         return Err("the magnifier works on flat charts, not on a pie (a fisheye does)".into());

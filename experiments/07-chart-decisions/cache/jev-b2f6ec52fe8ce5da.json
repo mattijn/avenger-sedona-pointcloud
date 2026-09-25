@@ -1,0 +1,141 @@
+{
+  "answers": {
+    "action": "no_change",
+    "colour": "keep",
+    "lens": "sample",
+    "mark": "keep",
+    "region": "keep",
+    "render": "overview",
+    "specifics": "text",
+    "subset": "keep",
+    "view": "keep"
+  },
+  "confidence": 0.19,
+  "cost": 0.00007854,
+  "input_tokens": 1870,
+  "ms": 289.40329199999996,
+  "raw": {
+    "answers": {
+      "action": {
+        "choice": "no_change",
+        "confidence": 0.19,
+        "probabilities": {
+          "color": 0.01,
+          "highlight": 0.01,
+          "lens": 0.08,
+          "mark": 0.11,
+          "no_change": 0.26,
+          "reset": 0.02,
+          "select": 0.06,
+          "title": 0.1,
+          "transform": 0.13,
+          "undo": 0,
+          "view": 0.02,
+          "zoom": 0.2
+        },
+        "type": "choice"
+      },
+      "colour": {
+        "choice": "keep",
+        "confidence": 0.98,
+        "probabilities": {
+          "blue": 0,
+          "green": 0,
+          "grey": 0.01,
+          "keep": 0.99,
+          "orange": 0,
+          "red": 0
+        },
+        "type": "choice"
+      },
+      "lens": {
+        "choice": "sample",
+        "confidence": 0.21,
+        "probabilities": {
+          "clear": 0.05,
+          "keep": 0.36,
+          "mole": 0.22,
+          "regression": 0.01,
+          "sample": 0.36
+        },
+        "type": "choice"
+      },
+      "mark": {
+        "choice": "keep",
+        "confidence": 0.41,
+        "probabilities": {
+          "bars": 0.12,
+          "heatmap": 0.16,
+          "keep": 0.5,
+          "line": 0.01,
+          "map": 0.2,
+          "pie": 0.01
+        },
+        "type": "choice"
+      },
+      "region": {
+        "choice": "keep",
+        "confidence": 0.42,
+        "probabilities": {
+          "all": 0.48,
+          "keep": 0.52,
+          "north_east": 0,
+          "north_west": 0,
+          "south_east": 0,
+          "south_west": 0
+        },
+        "type": "choice"
+      },
+      "render": {
+        "choice": "overview",
+        "confidence": 0.91,
+        "probabilities": {
+          "chart": 0.05,
+          "export": 0,
+          "overview": 0.93,
+          "table": 0.01
+        },
+        "type": "choice"
+      },
+      "specifics": {
+        "choice": "text",
+        "confidence": 0.27,
+        "probabilities": {
+          "none": 0.37,
+          "text": 0.63
+        },
+        "type": "choice"
+      },
+      "subset": {
+        "choice": "keep",
+        "confidence": 0.53,
+        "probabilities": {
+          "keep": 0.6799999999999999,
+          "none": 0.13,
+          "top_10": 0.19
+        },
+        "type": "choice"
+      },
+      "view": {
+        "choice": "keep",
+        "confidence": 0.6,
+        "probabilities": {
+          "fisheye": 0.01,
+          "flat": 0.1,
+          "keep": 0.68,
+          "magnifier": 0.03,
+          "tilt": 0.18
+        },
+        "type": "choice"
+      }
+    },
+    "id": "gen-dec-1790371322-9oQsrAJsEtGUTfAhDJfA",
+    "model": "typesafe/jev-1.13-20260917",
+    "provider": "TypeSafe",
+    "usage": {
+      "cost": 0.00007854,
+      "input_tokens": 1870,
+      "output_tokens": 495
+    }
+  }
+}

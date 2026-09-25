@@ -138,12 +138,20 @@ async fn main() -> Result<(), Error> {
         ("a soft line brush", format!("{line}\n! select segment --from 18.9,185000 --to 21.6,145000 --soft 0.2")),
         ("a soft timebox", format!("{line}\n! select timebox --x 14..18 --y 120000..200000 --soft 0.1")),
         ("softness wider than the plot", format!("{base}\n! select interval --x 657600..657800 --soft 2")),
+        ("a regression lens on the flight lines", format!("{line}\n! lens regression --focus 0.3,0.6 --radius 0.2")),
+        ("a sampling lens on the map", format!("{base}\n! lens sample --focus 0.7,0.45 --radius 0.15 --keep 0.2")),
+        ("a mole lens on the map in 3D", format!("{base}\n! view tilt\n! lens mole --focus 0.7,0.45 --radius 0.15 --above 0.25")),
+        ("a lens cleared", format!("{base}\n! lens mole --focus 0.7,0.45\n! lens clear")),
+        ("a regression lens on the map", format!("{base}\n! lens regression --focus 0.5,0.5")),
+        ("a sampling lens on bars", format!("{bars}\n! lens sample --focus 0.5,0.5")),
+        ("a lens under a fisheye", format!("{base}\n! view fisheye --focus 0.5,0.5\n! lens mole --focus 0.5,0.5")),
     ] {
         match editor::apply(&text, &d).await {
             Ok(a) => println!(
-                "{what}: {:?} · x title {:?} · y title {:?} · log {} · zoom {:?} · colour {} · selection {:?} {:?} soft {:?} · {} items, {:?} selected",
-                a.state.mark, a.state.x_title, a.state.y_title, a.state.y_log, a.state.range, a.state.color.is_some(), a.state.selection, a.state.effect, a.state.soft,
-                lidar_decide::layer::model::resolve(&a.state, &a.data).items.len(), lidar_decide::layer::model::resolve(&a.state, &a.data).selected
+                "{what}: {:?} · x title {:?} · y title {:?} · log {} · zoom {:?} · colour {} · selection {:?} {:?} soft {:?} · lens {:?} · {} items, {:?} selected, found {:?}",
+                a.state.mark, a.state.x_title, a.state.y_title, a.state.y_log, a.state.range, a.state.color.is_some(), a.state.selection, a.state.effect, a.state.soft, a.state.lens,
+                lidar_decide::layer::model::resolve(&a.state, &a.data).items.len(), lidar_decide::layer::model::resolve(&a.state, &a.data).selected,
+                lidar_decide::layer::model::resolve(&a.state, &a.data).lens.map(|l| l.1.into_iter().map(|f| f.label).collect::<Vec<_>>())
             ),
             Err(e) => println!("{what}: refused: {e}"),
         }

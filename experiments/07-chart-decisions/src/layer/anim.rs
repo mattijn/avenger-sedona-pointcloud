@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use super::model::{Axis, Coords, Frame, Geo, Item, View};
+use super::model::{Axis, Coords, Fit, Frame, Geo, Item, Lens, View};
 
 /// Geometry in the unit square of the plot, before the coordinate system.
 #[derive(Clone, Debug)]
@@ -58,6 +58,9 @@ pub struct Drawn {
     pub titles: Vec<(String, f32)>,
     pub legends: Vec<(Vec<(String, [f32; 4])>, f32)>,
     pub colorbars: Vec<((f64, f64), f32)>,
+    /// Lens rings and what they found, each with its opacity.
+    pub lenses: Vec<(Lens, f32)>,
+    pub fits: Vec<(Fit, f32)>,
 }
 
 pub fn ease(t: f64) -> f64 {
@@ -251,5 +254,20 @@ pub fn transition(a: &Frame, b: &Frame, t: f64) -> Drawn {
         .filter_map(|(c, w)| c.map(|c| (c, w)))
         .collect();
     let vt = if a.view == b.view { 1.0 } else { e };
-    Drawn { bend, view_a: a.view, view_b: b.view, vt, items, x: axes(&a.x, &b.x, dx), y: axes(&a.y, &b.y, dy), titles, legends, colorbars }
+    // A lens of the same kind slides to its new focus; otherwise the rings
+    // crossfade. What it found crossfades either way.
+    let lenses = match (&a.lens, &b.lens) {
+        (Some((la, _)), Some((lb, _))) if std::mem::discriminant(la) == std::mem::discriminant(lb) => {
+            let (fa, fb) = (la.focus(), lb.focus());
+            vec![(lb.with_focus([lerp(fa[0], fb[0], e), lerp(fa[1], fb[1], e)]), 1.0)]
+        }
+        _ => [(&a.lens, 1.0 - e as f32), (&b.lens, e as f32)].into_iter().filter_map(|(l, w)| l.as_ref().map(|l| (l.0, w))).collect(),
+    };
+    let same_fits = a.lens.as_ref().map(|l| &l.1) == b.lens.as_ref().map(|l| &l.1);
+    let fits = [(&a.lens, if same_fits { 0.0 } else { 1.0 - e as f32 }), (&b.lens, if same_fits { 1.0 } else { e as f32 })]
+        .into_iter()
+        .flat_map(|(l, w)| l.iter().flat_map(move |l| l.1.iter().map(move |f| (f.clone(), w))))
+        .filter(|(_, w)| *w > 0.0)
+        .collect();
+    Drawn { bend, view_a: a.view, view_b: b.view, vt, items, x: axes(&a.x, &b.x, dx), y: axes(&a.y, &b.y, dy), titles, legends, colorbars, lenses, fits }
 }
