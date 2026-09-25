@@ -596,8 +596,11 @@ fn caret_at(rows: &[(usize, usize)], caret: usize) -> (usize, usize) {
 }
 
 /// The first character shown in the autopilot box, so the caret is in view.
+/// Room for the "⏎ Enter" key hint at the right of the autopilot box.
+const ENTER_HINT: f32 = 78.0;
+
 fn input_first(f: &Field) -> usize {
-    let max = INPUT_BOX[2] - 24.0;
+    let max = INPUT_BOX[2] - 24.0 - ENTER_HINT;
     let mut first = f.caret;
     let mut w = 0.0;
     while first > 0 {
@@ -1449,19 +1452,14 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
         editor_panel(s, marks);
         return;
     }
-    let about = if s.writer.is_some() {
-        "Jev decides as you type · Enter also: undo, reset, or Haiku writes it"
-    } else {
-        "Jev 1.13 via OpenRouter · asks 400 ms after typing, and on Enter"
-    };
-    marks.push(t(about, PX, 58.0, 12.0, muted(), false));
-    marks.push(t("Tab: stats for nerds · ⌘E: editor · Esc: clear", PX, 74.0, 12.0, muted(), false));
+    marks.push(t("Type what you want, then press Enter.", PX, 60.0, 13.0, ink(), true));
+    marks.push(t("Tab: stats for nerds · ⌘E: editor · Esc: clear", PX, 78.0, 12.0, muted(), false));
 
     let [bx, by, _, _] = INPUT_BOX;
     field_frame(INPUT_BOX, s.focused, marks);
     let f = &s.input;
     let first = input_first(f);
-    let max = INPUT_BOX[2] - 24.0;
+    let max = INPUT_BOX[2] - 24.0 - ENTER_HINT;
     let mut end = first;
     let mut w = 0.0;
     while end < f.text.len() && w + ui().cw(f.text[end], INPUT, true) <= max {
@@ -1486,10 +1484,29 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
     if s.focused && caret_on(s) {
         marks.push(draw::rect(x_of(f.caret) - 0.5, ty - 2.0, 1.6, 20.0, ink(), None, 0.0));
     }
-    if s.writing > 0 {
-        marks.push(status("Haiku writing…", PX + 310.0, 144.0, 12.0, accent(), false, false));
-    } else if s.in_flight > 0 {
-        marks.push(status("deciding…", PX + 330.0, 144.0, 12.0, accent(), false, false));
+    // The key to press, inside the box, while there is text to send.
+    if !f.text.is_empty() {
+        let [_, _, bw, bh] = INPUT_BOX;
+        let (kx, ky) = (bx + bw - ENTER_HINT, by + 7.0);
+        marks.push(draw::rect(kx, ky, ENTER_HINT - 8.0, bh - 14.0, [1.0; 4], Some(accent()), ui().radius(4.0)));
+        marks.push(draw::text("⏎ Enter", kx + (ENTER_HINT - 8.0) / 2.0, by + bh / 2.0, 12.0, accent(), TextAlign::Center, TextBaseline::Middle, true, 0.0));
+    }
+    // Under the box, what Enter will do now, from what Jev read so far.
+    let next = if s.writing > 0 {
+        Some(("Haiku is writing the pipeline…".to_string(), accent()))
+    } else if f.text.is_empty() {
+        None
+    } else {
+        let typed = f.string().trim().to_string();
+        match &s.shown {
+            Some(a) if !a.complete && a.prefix == typed && a.gate.starts_with("Enter:") => Some((format!("⏎ {}", a.gate), accent())),
+            Some(a) if !a.complete && a.prefix == typed && a.gate == "applied" => Some(("applied while you typed · Enter asks again".to_string(), muted())),
+            _ if s.in_flight > 0 => Some(("Jev is reading… press Enter to send it".to_string(), muted())),
+            _ => Some(("⏎ Enter sends it".to_string(), accent())),
+        }
+    };
+    if let Some((line, colour)) = next {
+        marks.push(t(&fit(&line, 62), PX, 144.0, 12.0, colour, true));
     }
 
     let mut y = 164.0;
@@ -2159,8 +2176,8 @@ fn tour() -> Vec<Act> {
         // Motion first: the pie arrives mid-sentence.
         Caption("Type. The chart listens."), Wait(0.4),
         Type("which share"), Wait(1.3), Type(" does each class have?"), enter(), Settle(1.0),
-        Caption("It speaks Dutch too."),
-        Type("maak er een staafdiagram van"), enter(), Settle(0.8),
+        Caption("Plain words. No menus."),
+        Type("back to bars please"), enter(), Settle(0.8),
         Caption("Bars split into a heatmap. One object, never redrawn."),
         Type("how are the classes spread over height?"), enter(), Settle(1.2),
         Caption("… or become four flight lines."),

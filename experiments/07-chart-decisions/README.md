@@ -371,12 +371,14 @@ ffmpeg -framerate 30 -i out/autopilot_live/tour/f%05d.png -c:v libx264 -preset s
 The first cut spent its first 19 seconds on tables appearing after a pause.
 This one follows three rules: something moves within three seconds (the pie
 arrives mid-sentence), something visible changes about every five seconds,
-and the subtitles say what is remarkable rather than what is on screen.
+and the subtitles say what is remarkable rather than what is on screen. It is
+in English only, for an English-speaking viewer; the window understands
+Dutch as well, which the eval cases cover.
 
 | Subtitle | Typed | What happens |
 |---|---|---|
 | Type. The chart listens. | which share … does each class have? | the bars curl into a pie at "which share", 3.5 s in |
-| It speaks Dutch too. | maak er een staafdiagram van | back to bars |
+| Plain words. No menus. | back to bars please | back to bars |
 | Bars split into a heatmap. One object, never redrawn. | how are the classes spread over height? | each bar splits into its height cells |
 | … or become four flight lines. | how many points did each flight line record over time? | the time series |
 | Zoom by asking. | zoom in on the start | the domain tweens to the north-west quarter |
@@ -1002,6 +1004,14 @@ The session now also says **what the view showed** after each decision: the
 chart (mark, its values, title, items) or the table (its note, columns and
 first rows), and when the session is copied, a PNG of the view goes to
 `out/autopilot_live/session-view.png`.
+
+**Where to press Enter.** In the fifth trial it was not clear that an
+instruction needs Enter: the only hint was the box's placeholder, gone once
+typing starts, under two lines of general help. Now the panel says "Type
+what you want, then press Enter." above the box; the box shows an "⏎ Enter"
+key while it holds text; and the line under it says what Enter will do, from
+what Jev has read so far ("⏎ Enter: Haiku writes the change to the data",
+"applied while you typed · Enter asks again").
 
 **Feedback while something runs.** In the fourth trial the data button took
 about a second, without a sign, and was clicked four times; and after Enter
