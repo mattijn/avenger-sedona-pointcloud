@@ -24,6 +24,10 @@ how it was measured, so a recheck is a command rather than an opinion.
 | 7 | scales | Linear domains must have exactly two stops | open |
 | 8 | guides | Axis always set a `band` option | fixed in the stack |
 | 9 | format | `NumberFormatContext` removed from `avenger-format-number` | API change, adapted |
+| 10 | chart-definition | One constant fill per mark, no colour scale, no line or arc | open, suggestion |
+| 11 | chart / chart-definition | No per-item key, so frames cannot be joined for transitions | open, suggestion |
+| 12 | chart-definition | The accepted vocabulary is not available as data | open, suggestion |
+| 13 | chart-definition | Unsupported properties should be errors with a path and a reason | not checked, suggestion |
 
 Findings 1–7 were re-measured on `602b99c` with the two probes and are
 unchanged. The frame-rate numbers under [Live charts](#live-charts) were **not**
@@ -170,6 +174,49 @@ became `PreparedNumberFormat::new(spec, overrides, &locale)` somewhere in the
 formatting rework (`5d1518f` … `e86810b`). One call site in experiment 6
 (`experiments/06-pipelines/src/packages/vega_format.rs`), a one-line change.
 Recorded as drift, not as a defect: the new signature is simpler.
+
+## From experiment 7: charts driven by typed decisions
+
+Experiment 7 drives one chart from typed text (a classifier, and an LLM that
+writes the pipeline). Its [README](experiments/07-chart-decisions/README.md#feedback-for-avenger)
+has the full feedback; the points about Avenger itself:
+
+### 10. One constant fill per mark, no colour scale, no line or arc
+
+At `602b99c`, `RectEncoding` and `SymbolEncoding` take `fill: String`, and
+`Scale` kinds are linear, band and point. A pie, a line per series, a heatmap
+with a colour scale and a log axis could not be described, so the experiment
+draws them on the scenegraph with its own layer (`src/layer/`), although
+`avenger-scales` has log, pow and symlog. Checked by reading
+`avenger-chart-definition/src/model.rs`.
+
+### 11. No per-item key
+
+What makes the experiment's chart feel alive is a key from the data on every
+item: bars curl into a pie, split into a heatmap cell by cell, and come back.
+`avenger-chart` keeps an identity per plot, not per item. A `key` channel,
+carried into the rendered frame, would let a host animate between any two
+frames. Checked by reading; the transitions themselves are measured in the
+experiment's video.
+
+### 12. The vocabulary as data
+
+A classifier needs the option list, and an LLM the grammar; both were written
+by hand from what the layer accepts. A chart definition that could list its
+marks, channels with allowed types, and properties would let deciders,
+editors and prompts be generated, and not drift from the renderer.
+
+### 13. Refuse unsupported properties, with a path
+
+The LLM loop is safe because everything the layer cannot draw is refused with
+a reason, and the model fixed its tries from that text. The Vega-Lite
+compiler's `CompileError::path()` does this. **Not checked:** what
+`ChartDefinition::finish()` does with a property it cannot honour.
+
+Also from experiment 7, as things that worked well: `RequestWakeup` with
+`RuntimeWake` for background work, `WriteClipboard`, `MouseUp` and
+`CursorMoved` for text fields, and headless `PngCanvas` rendering of the same
+`SceneGraph`, which made a video that rebuilds frame for frame from a cache.
 
 ## What worked well
 
