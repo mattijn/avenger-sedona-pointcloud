@@ -222,7 +222,7 @@ pub fn apply(s: &State, answers: &Map<String, Value>) -> Result<State, NotApplie
                 "regression" => return unfit("a regression lens fits the time series"),
                 "sample" | "mole" if s.mark != Mark::Map => return unfit("sample and mole lenses work on the map"),
                 "sample" => Some(Lens::Sample { focus, radius: 0.15, keep: 0.25 }),
-                "mole" => Some(Lens::Mole { focus, radius: 0.15, above: 0.3 }),
+                "mole" => Some(Lens::Mole { focus, radius: 0.15, above: 0.2 }),
                 _ => return unfit("lens chosen but no kind"),
             };
         }

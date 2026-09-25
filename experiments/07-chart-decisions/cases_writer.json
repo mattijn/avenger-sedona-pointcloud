@@ -464,7 +464,8 @@
       "text": "look through the tall buildings in the middle of the map",
       "expect": {
         "mark": "map",
-        "lens": "mole"
+        "lens": "mole",
+        "mole_above_max": 0.5
       },
       "reference": {
         "data": "cells",
@@ -473,7 +474,8 @@
           "lens mole --focus 0.5,0.5 --radius 0.15 --above 0.3"
         ]
       },
-      "added": "with the lenses (25 Sep 2026)"
+      "added": "with the lenses (25 Sep 2026)",
+      "changed": "mole_above_max added (26 Sep 2026): Haiku wrote --above 0.9 for \"tall buildings\", which takes no cell away on this tile"
     },
     {
       "id": "w19",

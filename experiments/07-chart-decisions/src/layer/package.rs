@@ -297,7 +297,7 @@ impl Step for LensStep {
         p.chart["lens"] = match kind {
             "regression" => json!({"kind": "regression", "focus": focus, "radius": radius}),
             "sample" => json!({"kind": "sample", "focus": focus, "radius": radius, "keep": num("keep", 0.25)?}),
-            "mole" => json!({"kind": "mole", "focus": focus, "radius": radius, "above": num("above", 0.3)?}),
+            "mole" => json!({"kind": "mole", "focus": focus, "radius": radius, "above": num("above", 0.2)?}),
             other => return Err(err(format!("lens: regression, sample, mole or clear, not `{other}`"))),
         };
         Ok(None)

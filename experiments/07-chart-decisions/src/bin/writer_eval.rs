@@ -91,6 +91,9 @@ fn check(expect: &Value, start: &State, s: &State, n_rows: usize) -> Option<Stri
             "rows_gt" => v.as_u64().is_some_and(|m| n_rows as u64 > m),
             "view" => v.as_str() == Some(s.view.id()),
             "selected" => v.as_bool() == Some(s.selection != lidar_decide::layer::model::Selection::None),
+            // A mole lens that takes nothing away is no lens: on this tile
+            // no cell reaches 0.9 of the height range.
+            "mole_above_max" => matches!(s.lens, Some(lidar_decide::layer::model::Lens::Mole { above, .. }) if v.as_f64().is_some_and(|m| above <= m)),
             "lens" => v.as_str()
                 == s.lens.map(|l| match l {
                     lidar_decide::layer::model::Lens::Regression { .. } => "regression",

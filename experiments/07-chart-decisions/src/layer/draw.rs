@@ -281,6 +281,16 @@ pub fn tilt(u: [f64; 2], h: f64, yaw: f64, elevation: f64) -> ([f64; 2], f64) {
     ([P / 2.0 + s * sx, P * 0.62 - s * sy2], depth)
 }
 
+/// The inverse of \`tilt\` on the ground (height 0): a plot pixel to the unit
+/// point under it, so a lens can follow the pointer in 3D.
+pub fn untilt(p: [f64; 2], yaw: f64, elevation: f64) -> [f64; 2] {
+    let (sy, cy) = yaw.to_radians().sin_cos();
+    let se = elevation.to_radians().sin().max(1e-6);
+    let s = P / std::f64::consts::SQRT_2 * 0.98;
+    let (xr, yr) = ((p[0] - P / 2.0) / s, (P * 0.62 - p[1]) / s / se);
+    [xr * cy + yr * sy + 0.5, -xr * sy + yr * cy + 0.5]
+}
+
 fn view_point(v: &View, u: [f64; 2], h: f64, bend: f64) -> ([f64; 2], f64) {
     match v {
         View::Flat | View::Magnifier { .. } => (project(u, bend), 0.0),
@@ -741,4 +751,43 @@ pub fn scene(d: &Drawn) -> SceneGraph {
 
 pub fn dims() -> CanvasDimensions {
     CanvasDimensions { size: SIZE, scale: 1.0 }
+}
+
+/// A mouse pointer at `p` (window pixels), for recordings, where no system
+/// cursor is captured; `badge` names the gesture beside it ("⌘ drag").
+pub fn pointer(p: [f32; 2], pressed: bool, badge: &str) -> Vec<SceneMark> {
+    let arrow = [[0.0, 0.0], [0.0, 17.0], [4.2, 13.2], [7.2, 20.0], [9.6, 19.0], [6.7, 12.4], [12.0, 12.4]];
+    let mut b = lyon_path::Path::builder();
+    b.begin(point(p[0] + arrow[0][0], p[1] + arrow[0][1]));
+    for a in &arrow[1..] {
+        b.line_to(point(p[0] + a[0], p[1] + a[1]));
+    }
+    b.end(true);
+    let path = b.build();
+    let mut out: Vec<SceneMark> = vec![];
+    if pressed {
+        // A ring where the button is down.
+        out.push(ScenePathMark { interactive: false, len: 1, path: vec![circle([p[0] as f64, p[1] as f64], 11.0)].into(), fill: c([0.0; 4]).into(), stroke: c([0.95, 0.56, 0.17, 0.9]).into(), stroke_width: Some(2.0), ..Default::default() }.into());
+    }
+    out.push(ScenePathMark { interactive: false, len: 1, path: vec![path].into(), fill: c([0.08, 0.08, 0.08, 1.0]).into(), stroke: c([1.0; 4]).into(), stroke_width: Some(1.3), ..Default::default() }.into());
+    if !badge.is_empty() {
+        let w = badge.chars().count() as f32 * 7.4 + 14.0;
+        out.push(rect(p[0] + 16.0, p[1] + 20.0, w, 21.0, [0.0, 0.145, 0.196, 0.92], None, 4.0));
+        out.push(text(badge, p[0] + 23.0, p[1] + 30.5, 12.5, [1.0; 4], TextAlign::Left, TextBaseline::Middle, true, 0.0));
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn untilt_inverts_tilt_on_the_ground() {
+        for (u, yaw, el) in [([0.2, 0.7], 30.0, 40.0), ([0.9, 0.1], 30.0, 35.0), ([0.5, 0.5], -60.0, 70.0)] {
+            let (p, _) = tilt(u, 0.0, yaw, el);
+            let v = untilt(p, yaw, el);
+            assert!((v[0] - u[0]).abs() < 1e-9 && (v[1] - u[1]).abs() < 1e-9, "{u:?} → {p:?} → {v:?}");
+        }
+    }
 }

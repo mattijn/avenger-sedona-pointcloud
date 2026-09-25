@@ -237,7 +237,7 @@ Aggregate in a `sql` stage before the mark, not in a channel. The layer draws th
   select clear
   lens regression --focus <x>,<y> [--radius r]   the time series: a least-squares trend of each line under a circle
   lens sample --focus <x>,<y> [--radius r] [--keep k]   the map: only a share k of the cells under the circle, against overplotting
-  lens mole --focus <x>,<y> [--radius r] [--above h]    the map: under the circle, cells above h of the height range taken away, to see past tall buildings
+  lens mole --focus <x>,<y> [--radius r] [--above h]    the map: under the circle, cells above h of the height range taken away, to see past tall buildings;\n    heights bunch low on this tile: in the centre 0.2 takes 358 of 515 cells, 0.3 takes 49, 0.5 and above none
   lens clear                              A pipeline has at most one `lens` line; focus in the unit square, 0,0 bottom left.
   A pipeline has at most one `select` line, after the mark. Its effect is fade unless the instruction asks to show only the
   selection (filter, axes kept). To change only the effect, keep the keys or interval of the current select line.

@@ -1143,6 +1143,19 @@ impl App {
         self.logged += 1;
     }
 
+    /// A window position to the unit point a lens focuses on: under the
+    /// pointer, on the ground when the map is tilted.
+    fn focus_unit(&self, p: [f32; 2]) -> Option<[f64; 2]> {
+        use lidar_decide::layer::model::View;
+        match self.state.view {
+            View::Tilt { yaw, elevation } => {
+                let u = draw::untilt([(p[0] - draw::ORIGIN[0]) as f64, (p[1] - draw::ORIGIN[1]) as f64], yaw, elevation);
+                ((0.0..=1.0).contains(&u[0]) && (0.0..=1.0).contains(&u[1])).then_some(u)
+            }
+            _ => plot_unit(p),
+        }
+    }
+
     /// Whether a drag draws a lasso: the map in 3D, where a rectangle on the
     /// screen means little.
     fn lasso_chart(&self) -> bool {
@@ -2464,7 +2477,7 @@ impl EventStreamHandler<App> for Input {
             Event::MouseDown(e) if e.button == MouseButton::Left => {
                 let p = e.position;
                 // A click on the plot under a lens puts its focus in the pipeline.
-                if let (Some(_), Some(u), None) = (s.state.view.focus().or(s.state.lens.map(|l| l.focus())), plot_unit(p), &s.table) {
+                if let (Some(_), Some(u), None) = (s.state.view.focus().or(s.state.lens.map(|l| l.focus())), s.focus_unit(p), &s.table) {
                     s.move_focus(u);
                     s.commit_view(now).await;
                     return rerender;
@@ -2570,7 +2583,7 @@ impl EventStreamHandler<App> for Input {
                     rerender
                 }
                 // A lens follows the cursor over the plot.
-                None => match (s.state.view.focus().or(s.state.lens.map(|l| l.focus())), plot_unit(e.position)) {
+                None => match (s.state.view.focus().or(s.state.lens.map(|l| l.focus())), s.focus_unit(e.position)) {
                     (Some(_), Some(u)) if s.table.is_none() => {
                         s.move_focus(u);
                         rerender
@@ -2648,6 +2661,49 @@ enum Act {
     Settle(f64),
     /// The subtitle under the window, in the tour.
     Caption(&'static str),
+    /// Replace the editor's text (unseen until the editor is shown).
+    Code(&'static str),
+    /// Frames before this are not written: the setup is not in the video.
+    Start,
+    /// Glide the pointer to (x, y) in this many seconds, hovering: a lens
+    /// follows it, otherwise it shows a tooltip.
+    Move(f32, f32, f64),
+    /// Press at the pointer and drag through these points in this many
+    /// seconds; ⌘ (true) on the time series draws a line brush, and on the
+    /// map in 3D a drag is a lasso.
+    Drag(&'static [(f32, f32)], f64, bool),
+    /// Click where the pointer is.
+    Click,
+    /// A label beside the pointer naming the gesture ("" hides it).
+    Badge(&'static str),
+}
+
+/// A pointer gesture under way in a recording.
+struct Motion {
+    path: Vec<[f32; 2]>,
+    t0: Instant,
+    dur: f64,
+    /// None: hovering; Some(true): a line brush; Some(false): a lasso or a brush.
+    drag: Option<bool>,
+}
+
+fn along(path: &[[f32; 2]], f: f64) -> [f32; 2] {
+    if path.len() == 1 {
+        return path[0];
+    }
+    let seg: Vec<f32> = path.windows(2).map(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1])).collect();
+    let total: f32 = seg.iter().sum();
+    // Eased, as a hand starts and stops.
+    let f = f.clamp(0.0, 1.0);
+    let mut d = (f * f * (3.0 - 2.0 * f)) as f32 * total;
+    for (w, l) in path.windows(2).zip(&seg) {
+        if d <= *l || *l == 0.0 {
+            let t = if *l > 0.0 { d / l } else { 0.0 };
+            return [w[0][0] + (w[1][0] - w[0][0]) * t, w[0][1] + (w[1][1] - w[0][1]) * t];
+        }
+        d -= l;
+    }
+    *path.last().unwrap()
 }
 
 /// The recording: the live window, driven by a script on a virtual clock.
@@ -2716,6 +2772,46 @@ fn tour() -> Vec<Act> {
     ]
 }
 
+/// The second tour: pointing, dragging and lenses, with a pointer drawn in.
+fn tour_interactions() -> Vec<Act> {
+    use Act::*;
+    let enter = || Key(NamedKey::Enter);
+    vec![
+        // Setup, not recorded: the flight lines.
+        CmdE, Code("read out/layer/flight.parquet\n! chart line --x t:Q --y n:Q --color line:N"), CmdEnter, Settle(0.2), CmdE, Settle(0.2),
+        Start,
+        Caption("Point at it. Click it."),
+        Move(560.0, 470.0, 0.01), Wait(0.3), Move(159.0, 160.0, 1.4), Wait(1.2), Click, Settle(1.2),
+        Caption("Draw a stroke: only the lines it crosses."),
+        Move(380.0, 120.0, 0.8), Badge("⌘ drag"), Drag(&[(380.0, 120.0), (420.0, 200.0)], 1.2, true), Badge(""), Settle(1.5),
+        Caption("Not yes or no: interest fades with distance."),
+        Move(620.0, 520.0, 0.5), Type("make the selection soft"), enter(), Settle(1.8),
+        Caption("A lens that computes: the trend under the cursor, live."),
+        Type("show the local trend of each line"), enter(), Settle(0.6),
+        Move(170.0, 300.0, 0.8), Move(430.0, 230.0, 3.5), Move(300.0, 250.0, 1.2), Wait(0.3), Click, Settle(1.0),
+        Caption("Same chart object, new data."),
+        Move(620.0, 520.0, 0.5), Type("where are the buildings?"), enter(), Settle(1.5),
+        Caption("Magnify beside, not on top: the callout finds free space."),
+        Type("magnify the north-east corner"), enter(), Settle(0.6),
+        Move(400.0, 190.0, 0.8), Move(330.0, 260.0, 1.6), Move(250.0, 330.0, 1.6), Move(180.0, 420.0, 1.4), Wait(0.5), Click, Settle(0.8),
+        Caption("Height becomes depth."),
+        Move(620.0, 520.0, 0.5), Type("show the map in 3D"), enter(), Settle(1.5),
+        Caption("Look through the tall ones."),
+        Type("look through the tall buildings in the middle of the map"), enter(), Settle(0.6),
+        Move(300.0, 360.0, 0.8), Move(420.0, 330.0, 2.5), Move(360.0, 300.0, 1.5), Wait(0.3), Click, Settle(0.8),
+        Caption("Closer, and the lens away."),
+        Move(620.0, 520.0, 0.5), Type("zoom in on the north-east"), enter(), Settle(1.2),
+        Type("remove the lens"), enter(), Settle(1.2),
+        Caption("Lasso in 3D: it keeps the building, not everything behind it."),
+        Move(420.0, 330.0, 0.8), Badge("drag to lasso"),
+        Drag(&[(420.0, 330.0), (409.0, 352.0), (382.0, 369.0), (345.0, 375.0), (308.0, 369.0), (281.0, 352.0), (270.0, 330.0), (281.0, 308.0), (308.0, 291.0), (345.0, 285.0), (382.0, 291.0), (409.0, 308.0), (420.0, 328.0)], 2.4, false),
+        Badge(""), Settle(3.0),
+        Caption("Every gesture is a line of pipeline. Edit it, replay it."),
+        Move(620.0, 520.0, 0.6), CmdE, Wait(4.5), CmdE,
+        Caption("Jev decides · Claude Haiku writes · DataFusion runs · Avenger draws"), Wait(3.5),
+    ]
+}
+
 /// The height of the subtitle band under the window, in the tour.
 const BAND: f32 = 56.0;
 
@@ -2743,9 +2839,61 @@ async fn record_script(mut app: App, dir: &str, script: Vec<Act>, captions: bool
     let mut ready = base;
     let mut frame = 0usize;
     let mut tail = None;
+    // The pointer, drawn only once a script moves it; frames are written
+    // from `Start` on (from the first, if there is none).
+    let mut cursor: Option<[f32; 2]> = None;
+    let mut motion: Option<Motion> = None;
+    let mut badge = String::new();
+    let mut saving = !acts.iter().any(|a| matches!(a, Act::Start));
+    let mut written = 0usize;
     loop {
         let now = base + Duration::from_secs_f64(frame as f64 / FPS);
         *VIRTUAL.get().unwrap().lock().unwrap() = now;
+        // A gesture under way moves the pointer; at its end a drag is let go.
+        if let Some(m) = &motion {
+            let f = ((now - m.t0).as_secs_f64() / m.dur.max(1e-6)).min(1.0);
+            let p = along(&m.path, f);
+            cursor = Some(p);
+            match m.drag {
+                None => match (app.state.view.focus().or(app.state.lens.map(|l| l.focus())), app.focus_unit(p)) {
+                    (Some(_), Some(u)) if app.table.is_none() => app.move_focus(u),
+                    _ => {
+                        let local = [(p[0] - draw::ORIGIN[0]) as f64, (p[1] - draw::ORIGIN[1]) as f64];
+                        app.hover = if app.animating(now) { None } else { draw::hit(&still(&app.to), local).map(|k| (k, p)) };
+                    }
+                },
+                Some(line) => {
+                    app.hover = None;
+                    if !line && app.lasso_chart() {
+                        let last = app.lasso.last().copied();
+                        if last.is_none_or(|q| (p[0] - q[0]).hypot(p[1] - q[1]) >= 3.0) {
+                            app.lasso.push(p);
+                        }
+                    } else {
+                        app.press_series = Some(line);
+                        app.brush = Some((m.path[0], p));
+                    }
+                }
+            }
+            if f >= 1.0 {
+                let m = motion.take().unwrap();
+                if let Some(line) = m.drag {
+                    let a = m.path[0];
+                    if !line && app.lasso_chart() {
+                        let path = std::mem::take(&mut app.lasso);
+                        app.lasso_select(&path, now).await;
+                    } else {
+                        app.brush = None;
+                        app.press_series = None;
+                        if line && app.series_chart() {
+                            app.series_select(a, p, true, now).await;
+                        } else {
+                            app.brush_select(a, p, false, now).await;
+                        }
+                    }
+                }
+            }
+        }
         while let Some(a) = acts.front() {
             if now < ready {
                 break;
@@ -2783,6 +2931,31 @@ async fn record_script(mut app: App, dir: &str, script: Vec<Act>, captions: bool
                 }
                 Act::Wait(d) => wait = *d,
                 Act::Caption(c) => caption = c.to_string(),
+                Act::Code(t) => app.code.set(t),
+                Act::Start => saving = true,
+                Act::Badge(b) => badge = b.to_string(),
+                Act::Move(x, y, d) => {
+                    let from = cursor.unwrap_or([*x, *y]);
+                    motion = Some(Motion { path: vec![from, [*x, *y]], t0: now, dur: *d, drag: None });
+                    wait = *d;
+                }
+                Act::Drag(pts, d, line) => {
+                    let path: Vec<[f32; 2]> = pts.iter().map(|p| [p.0, p.1]).collect();
+                    app.lasso.clear();
+                    motion = Some(Motion { path, t0: now, dur: *d, drag: Some(*line) });
+                    wait = *d + 1.0 / FPS;
+                }
+                Act::Click => {
+                    let p = cursor.unwrap_or([0.0, 0.0]);
+                    app.hover = None;
+                    match (app.state.view.focus().or(app.state.lens.map(|l| l.focus())), app.focus_unit(p)) {
+                        (Some(_), Some(u)) if app.table.is_none() => {
+                            app.move_focus(u);
+                            app.commit_view(now).await;
+                        }
+                        _ => app.click_chart(p, false, now).await,
+                    }
+                }
                 Act::Settle(d) => {
                     if busy {
                         break;
@@ -2818,14 +2991,22 @@ async fn record_script(mut app: App, dir: &str, script: Vec<Act>, captions: bool
             sg.marks.push(draw::rect(0.0, H, W, band, [0.0, 0x25 as f32 / 255.0, 0x32 as f32 / 255.0, 1.0], None, 0.0));
             sg.marks.push(draw::text(&caption, W / 2.0, H + band / 2.0, 23.0, [1.0; 4], TextAlign::Center, TextBaseline::Middle, true, 0.0));
         }
-        canvas.set_scene(&sg)?;
-        canvas.render().await?.save(format!("{dir}/f{frame:05}.png"))?;
+        if let Some(p) = cursor {
+            let pressed = motion.as_ref().is_some_and(|m| m.drag.is_some());
+            sg.marks.extend(draw::pointer(p, pressed, &badge));
+        }
+        if saving {
+            canvas.set_scene(&sg)?;
+            canvas.render().await?.save(format!("{dir}/f{written:05}.png"))?;
+            written += 1;
+        }
         frame += 1;
         // A step that never settles would fill the disk.
         if frame as f64 > 240.0 * FPS {
             return Err(format!("recording: still busy after {frame} frames, at `{caption}`").into());
         }
-        if acts.is_empty() {
+        // The last wait is played out too.
+        if acts.is_empty() && now >= ready {
             let end = *tail.get_or_insert(frame + FPS as usize / 2);
             if frame >= end {
                 break;
@@ -2833,8 +3014,8 @@ async fn record_script(mut app: App, dir: &str, script: Vec<Act>, captions: bool
         }
     }
     println!(
-        "wrote {frame} frames ({:.0} s) to {dir}: {} decisions, {} from cache, {} changes",
-        frame as f64 / FPS,
+        "wrote {written} frames ({:.0} s) to {dir}: {} decisions, {} from cache, {} changes",
+        written as f64 / FPS,
         app.decisions,
         app.cached,
         app.changes.len()
@@ -2844,7 +3025,7 @@ async fn record_script(mut app: App, dir: &str, script: Vec<Act>, captions: bool
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    if matches!(args.get(1).map(String::as_str), Some("--record") | Some("--tour")) {
+    if matches!(args.get(1).map(String::as_str), Some("--record") | Some("--tour") | Some("--tour-interactions")) {
         let _ = VIRTUAL.set(Mutex::new(Instant::now()));
     }
     // The calm theme, or with `--neutral` the look of the recordings.
@@ -2973,6 +3154,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // `--snapshot <dir> "instruction" ...`: the same path as the window
     // (Enter, gates, pipeline, fold), rendered to PNG with and without stats
     // for nerds, for checking without a display.
+    if args.get(1).map(String::as_str) == Some("--tour-interactions") {
+        let dir = args.get(2).cloned().unwrap_or("out/autopilot_live/tour".into());
+        return runtime.block_on(async move {
+            while app.overview.lock().unwrap().is_none() {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            record_script(app, &dir, tour_interactions(), true).await
+        });
+    }
     if args.get(1).map(String::as_str) == Some("--tour") {
         let dir = args.get(2).cloned().unwrap_or("out/autopilot_live/tour".into());
         return runtime.block_on(async move {
@@ -3009,8 +3199,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let p = [x.trim().parse::<f32>().unwrap_or(0.0), y.trim().parse::<f32>().unwrap_or(0.0)];
                     match verb {
                         // Under a lens, the pointer moves it and a click commits it, as in the window.
-                        "click" | "hover" if app.state.view.focus().or(app.state.lens.map(|l| l.focus())).is_some() && plot_unit(p).is_some() => {
-                            app.move_focus(plot_unit(p).unwrap());
+                        "click" | "hover" if app.state.view.focus().or(app.state.lens.map(|l| l.focus())).is_some() && app.focus_unit(p).is_some() => {
+                            app.move_focus(app.focus_unit(p).unwrap());
                             if verb == "click" {
                                 app.commit_view(clock()).await;
                             }

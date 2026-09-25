@@ -17,6 +17,15 @@ time series and a map, with keyed transitions.
 
 ![The tour, one frame per step](images/tour_sheet.png)
 
+[video/interactions_tour.mp4](video/interactions_tour.mp4) (89 s) shows the
+interactions: a tooltip and a click, a line brush, a soft selection, a
+regression lens that follows the pointer, the offset magnifier, the map in 3D
+with a mole lens, and CloudLasso, ending on the pipeline those gestures
+wrote. The pointer and the gesture labels are drawn into the frames, since a
+headless recording has no system cursor.
+
+![The interactions tour, one frame per step](images/interactions_tour_sheet.png)
+
 ## The window
 
 ```sh
@@ -512,8 +521,17 @@ and Jon. Each point says where it comes from; the unchecked ones say so.
   (`--snapshot` with `!click`, `!hover`, `!brush` steps), not with a real
   mouse. No gesture sets softness; space folding and the angular brush are not
   built.
-- Jev's questions gained `lens`, which changes every Jev cache key; the
-  recorded tour (`--tour`) was not re-recorded and needs the key to replay.
+- Jev's questions gained `lens`, which changes every Jev cache key; the first
+  tour (`--tour`) was not re-recorded and needs the key to replay. The
+  interactions tour replays from the cache.
+- A mole lens is only as good as its threshold: Haiku first wrote `--above
+  0.9` for "tall buildings", which takes no cell away on this tile (heights
+  bunch low: in the centre 0.2 takes 358 of 515 cells, 0.3 takes 49, 0.5
+  none; `layer_roundtrip`, "mole lens at"). The grammar now gives those
+  numbers and w18 requires `--above` of 0.5 or less; Haiku then wrote 0.3.
+  CloudLasso's voxels are a fixed share of the plot, so on the whole tile they
+  are 25 m and join every block into one region; zoomed to a quarter it
+  separates blocks.
 - Registering the named tables costs every new pipeline a little:
   `layer_roundtrip`, which builds thousands, went from 3.9 s to 10.1 s.
 
@@ -534,6 +552,7 @@ cargo run --release -p lidar-decide --bin writer_eval       # Jev steers, Haiku 
 cargo run --release -p lidar-decide --bin layer_roundtrip   # decisions ↔ pipeline, and what is refused
 cargo run --release -p lidar-decide --bin autopilot_live -- --snapshot <dir> "instruction" … | @file | @@session.txt
 cargo run --release -p lidar-decide --bin autopilot_live -- --tour out/autopilot_live/tour
+cargo run --release -p lidar-decide --bin autopilot_live -- --tour-interactions out/autopilot_live/tour   # then ffmpeg as below, to video/interactions_tour.mp4
 ffmpeg -framerate 30 -i out/autopilot_live/tour/f%05d.png -c:v libx264 -preset slow \
     -pix_fmt yuv420p -crf 24 -movflags +faststart experiments/07-chart-decisions/video/autopilot_tour.mp4
 cargo test --release -p lidar-decide --bin autopilot_live   # text editing
