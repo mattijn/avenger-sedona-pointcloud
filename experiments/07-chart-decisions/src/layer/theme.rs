@@ -57,7 +57,8 @@ impl Theme {
             ok: rgb(0x59, 0x59, 0x59),
             error: rgb(0x59, 0x59, 0x59),
             status_italic: true,
-            dark_background: rgb(0x00, 0x25, 0x32),
+            // Translucent, so the chart shows through stats for nerds.
+            dark_background: [0.0, 0x25 as f32 / 255.0, 0x32 as f32 / 255.0, 0.72],
             dark_text: rgb(0xFF, 0xFF, 0xFF),
             dark_muted: rgb(0xB8, 0xB8, 0xB8),
             dark_accent: rgb(0x33, 0xB5, 0xE0),

@@ -8,6 +8,12 @@
 //!   kind before Enter), a complete intent that fits the chart, and a change.
 //! - A decision that passes becomes experiment 6 pipeline lines. The pipeline
 //!   validates and logs them, and the chart drawn is the fold of that log.
+//! - On Enter, Jev also says whether the instruction carries specifics of its
+//!   own (a title, a threshold, a range, a cell size). If it does, or its
+//!   options do not fit, Claude Haiku 4.5 writes the whole new pipeline with
+//!   Jev's reading as direction (phase H, `writer.rs`). What it writes runs
+//!   through the editor's path; stats for nerds shows the diff and the tries.
+//!   `--record` leaves the writer out, so the video rebuilds from the cache.
 //! - Tab (or the button) toggles "stats for nerds": the pipeline, the last
 //!   decision as the decider returned it, its translation, and timings.
 //! - ⌘E (or the button) switches to editor mode: the same pipeline as text,
@@ -37,11 +43,11 @@ use avenger_scenegraph::scene_graph::SceneGraph;
 use avenger_text::measurement::TextMeasurementConfig;
 use avenger_text::types::{FontStyle, FontWeight, FontWeightNameSpec, TextAlign, TextBaseline, TextSyntaxMode};
 use avenger_wgpu::canvas::CanvasConfig;
-use lidar_decide::deciders::{Decider, Decision, Jev};
+use lidar_decide::deciders::{Decider, Decision, Jev, Writer};
 use lidar_decide::layer::anim::{still, transition};
 use lidar_decide::layer::model::{resolve, Data, Dataset, Frame, State};
 use lidar_decide::layer::theme::Theme;
-use lidar_decide::layer::{data, draw, editor, package, pilot};
+use lidar_decide::layer::{data, draw, editor, package, pilot, writer};
 use lidar_decide::layer_pipeline;
 use lidar_decide::options::NotApplied;
 use lidar_pipeline::pipeline::{Kind, Pipeline};
@@ -204,6 +210,25 @@ struct Shown {
     colour: [f32; 4],
     lines: Vec<String>,
     fold: String,
+    /// When Haiku wrote the pipeline: its tries, and what it removed.
+    written: Option<WrittenInfo>,
+}
+
+#[derive(Clone, Default)]
+struct WrittenInfo {
+    direction: String,
+    /// (ms, cost, from cache, why it was refused).
+    tries: Vec<(f64, f64, bool, Option<String>)>,
+    removed: Vec<String>,
+    wall_ms: f64,
+    done: bool,
+}
+
+/// A pipeline Haiku wrote, back from its background task.
+struct WrittenBack {
+    shown: Shown,
+    result: Result<writer::Outcome, String>,
+    wall_ms: f64,
 }
 
 #[derive(Clone)]
@@ -218,6 +243,11 @@ struct App {
     rt: tokio::runtime::Handle,
     jev: Arc<Jev>,
     questions: Arc<Value>,
+    /// The writer, and the questions Jev answers on Enter when it is on.
+    writer: Option<Arc<Writer>>,
+    enter_questions: Arc<Value>,
+    written_back: Arc<Mutex<Vec<WrittenBack>>>,
+    writing: usize,
     taken: Vec<(String, String)>,
     // The chart.
     state: State,
@@ -557,7 +587,8 @@ impl App {
         self.asked = prefix.clone();
         self.in_flight += 1;
         let obs = pilot::observation(&self.state, &self.data, &prefix);
-        let (jev, q, out) = (self.jev.clone(), self.questions.clone(), self.returned.clone());
+        let q = if complete && self.writer.is_some() { self.enter_questions.clone() } else { self.questions.clone() };
+        let (jev, out) = (self.jev.clone(), self.returned.clone());
         let asked_at = clock();
         self.rt.spawn(async move {
             let t = std::time::Instant::now();
@@ -605,6 +636,12 @@ impl App {
                     Ok(n) => (Some(n), "applied".into()),
                 }
             };
+            // On Enter, the routing measured in phase H: Jev's options when
+            // they say it all, otherwise the writer.
+            let fast = conf >= GATE
+                && d.answers.get("specifics").and_then(Value::as_str) != Some("text")
+                && pilot::apply(&self.state, &d.answers).is_ok_and(|n| n != self.state || pilot::short(&d.answers) == "no_change");
+            let to_writer = r.complete && self.writer.is_some() && !fast;
             let mut shown = Shown {
                 prefix: r.prefix.clone(),
                 complete: r.complete,
@@ -614,7 +651,12 @@ impl App {
                 gate,
                 lines: vec![],
                 fold: String::new(),
+                written: None,
             };
+            if to_writer {
+                self.write(shown);
+                continue;
+            }
             if let Some(n) = next {
                 // Another dataset is read from its cache, as it is.
                 if n.dataset != self.state.dataset {
@@ -646,6 +688,83 @@ impl App {
                 }
                 self.snapshot(&p);
             }
+            self.shown = Some(shown);
+        }
+    }
+
+    /// Have Haiku write the pipeline, in the background.
+    fn write(&mut self, mut shown: Shown) {
+        let w = self.writer.clone().expect("the writer is on");
+        let direction = writer::direction(&shown.decision);
+        shown.gate = "Haiku is writing the pipeline…".into();
+        shown.colour = accent();
+        shown.written = Some(WrittenInfo { direction: direction.clone(), ..Default::default() });
+        self.shown = Some(shown.clone());
+        self.in_flight += 1;
+        self.writing += 1;
+        let (state, data, current, out) = (self.state.clone(), self.data.clone(), self.pipeline.join("\n! "), self.written_back.clone());
+        let prefix = shown.prefix.clone();
+        self.rt.spawn(async move {
+            let t = std::time::Instant::now();
+            let result = writer::write(&w, &state, &data, &current, &prefix, Some(&direction), 3).await;
+            let wall_ms = t.elapsed().as_secs_f64() * 1e3;
+            out.lock().unwrap().push(WrittenBack { shown, result, wall_ms });
+        });
+    }
+
+    /// Apply what the writer wrote, as the editor applies a hand edit.
+    async fn collect_written(&mut self, now: Instant) {
+        let all: Vec<WrittenBack> = std::mem::take(&mut *self.written_back.lock().unwrap());
+        for b in all {
+            self.in_flight -= 1;
+            self.writing -= 1;
+            let mut shown = b.shown;
+            let mut info = shown.written.take().unwrap_or_default();
+            info.wall_ms = b.wall_ms;
+            info.done = true;
+            let o = match b.result {
+                Ok(o) => o,
+                Err(e) => {
+                    shown.gate = format!("writer: {e}");
+                    shown.colour = ui().th.error;
+                    shown.written = Some(info);
+                    self.shown = Some(shown);
+                    continue;
+                }
+            };
+            info.tries = o.attempts.iter().map(|a| (a.written.ms, a.written.cost, a.written.cached, a.refused.clone())).collect();
+            self.cost += o.attempts.iter().filter(|a| !a.written.cached).map(|a| a.written.cost).sum::<f64>();
+            let n = info.tries.len();
+            let tries = if n == 1 { "1 try".to_string() } else { format!("{n} tries") };
+            match o.applied {
+                Some(a) if a.state == self.state && a.data_stages == self.data_stages => {
+                    shown.gate = format!("written by Haiku ({tries}): no change");
+                    shown.colour = muted();
+                    shown.fold = "folds to the chart as it is".into();
+                }
+                Some(a) => {
+                    let before = self.pipeline.clone();
+                    self.data = Arc::new(a.data);
+                    self.data_stages = a.data_stages;
+                    let pipe = self.pipe.clone();
+                    let mut p = pipe.lock().await;
+                    *p = a.pipeline;
+                    self.transition_to(a.state, now);
+                    self.snapshot(&p);
+                    shown.lines = self.pipeline.iter().filter(|l| !before.contains(l)).cloned().collect();
+                    info.removed = before.into_iter().filter(|l| !self.pipeline.contains(l)).collect();
+                    shown.gate = format!("written by Haiku ({tries}), applied");
+                    shown.colour = ui().th.ok;
+                    shown.fold = "folds to a state the layer draws".into();
+                    self.changes.push((shown.prefix.clone(), "written".into()));
+                }
+                None => {
+                    let why = o.attempts.last().and_then(|a| a.refused.clone()).unwrap_or_default();
+                    shown.gate = format!("refused {tries}: {why}");
+                    shown.colour = ui().th.error;
+                }
+            }
+            shown.written = Some(info);
             self.shown = Some(shown);
         }
     }
@@ -928,7 +1047,12 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
         editor_panel(s, marks);
         return;
     }
-    marks.push(t("Jev 1.13 via OpenRouter · asks 400 ms after typing, and on Enter", PX, 58.0, 12.0, muted(), false));
+    let about = if s.writer.is_some() {
+        "Jev 1.13 decides while you type; on Enter, Haiku writes what it cannot"
+    } else {
+        "Jev 1.13 via OpenRouter · asks 400 ms after typing, and on Enter"
+    };
+    marks.push(t(about, PX, 58.0, 12.0, muted(), false));
     marks.push(t("Tab: stats for nerds · ⌘E: editor · Esc: clear", PX, 74.0, 12.0, muted(), false));
 
     let [bx, by, _, _] = INPUT_BOX;
@@ -960,7 +1084,9 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
     if s.focused && caret_on(s) {
         marks.push(draw::rect(x_of(f.caret) - 0.5, ty - 2.0, 1.6, 20.0, ink(), None, 0.0));
     }
-    if s.in_flight > 0 {
+    if s.writing > 0 {
+        marks.push(status("Haiku writing…", PX + 310.0, 144.0, 12.0, accent(), false, false));
+    } else if s.in_flight > 0 {
         marks.push(status("deciding…", PX + 330.0, 144.0, 12.0, accent(), false, false));
     }
 
@@ -1144,6 +1270,23 @@ fn nerds(s: &App, now: Instant, marks: &mut Vec<SceneMark>) {
         if !a.fold.is_empty() {
             status_line(marks, "fold", &a.fold, text, &mut y);
         }
+        if let Some(w) = &a.written {
+            line(marks, "direction", &w.direction, text, &mut y);
+            if !w.done {
+                line(marks, "writer", "Claude Haiku 4.5 is writing the pipeline…", fresh, &mut y);
+            }
+            for (i, (ms, cost, cached, refused)) in w.tries.iter().enumerate() {
+                let what = match refused {
+                    None => "accepted".to_string(),
+                    Some(r) => format!("refused: {r}"),
+                };
+                let at = if *cached { "from cache" } else { "live" };
+                line(marks, if i == 0 { "writer" } else { "" }, &format!("try {} · {ms:.0} ms · {at} · ${cost:.4} · {what}", i + 1), if refused.is_some() { dim } else { text }, &mut y);
+            }
+            for (i, r) in w.removed.iter().enumerate() {
+                line(marks, if i == 0 { "removed" } else { "" }, &format!("- {r}"), dim, &mut y);
+            }
+        }
     } else if s.changes.last().is_some_and(|c| c.0 == "editor") {
         line(marks, "edited", "by hand in the editor, not by a decision", text, &mut y);
         status_line(marks, "status", &s.edit_status.0, s.edit_status.1, &mut y);
@@ -1257,6 +1400,7 @@ impl EventStreamHandler<App> for Input {
                     s.ask(false);
                 }
                 s.collect(now).await;
+                s.collect_written(now).await;
                 s.collect_edit(now).await;
                 rerender
             }
@@ -1477,6 +1621,7 @@ async fn record(mut app: App, dir: &str) -> Result<(), Box<dyn std::error::Error
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
         app.collect(now).await;
+        app.collect_written(now).await;
         app.collect_edit(now).await;
         canvas.set_scene(&build(&mut app).scene_graph)?;
         canvas.render().await?.save(format!("{dir}/f{frame:05}.png"))?;
@@ -1527,14 +1672,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let state = package::state(&pipe.chart, &data)?;
     let frame = resolve(&state, &data);
+    // The recording replays the video's script from the cache, so it runs
+    // without the writer; `--no-writer` does the same live.
+    let with_writer = args.get(1).map(String::as_str) != Some("--record") && !args.iter().any(|a| a == "--no-writer");
+    let client = reqwest::Client::new();
     let mut app = App {
         base: data.clone(),
         data: data.clone(),
         data_stages: package::data_stages(state.dataset),
         pipe: Arc::new(tokio::sync::Mutex::new(Pipeline::new(pipe.ctx.clone()))),
         rt: runtime.handle().clone(),
-        jev: Arc::new(Jev { model: "typesafe/jev-1.13", client: reqwest::Client::new() }),
+        jev: Arc::new(Jev { model: "typesafe/jev-1.13", client: client.clone() }),
         questions: Arc::new(pilot::questions()),
+        writer: with_writer.then(|| Arc::new(Writer { model: "anthropic/claude-haiku-4.5", client })),
+        enter_questions: Arc::new(writer::questions()),
+        written_back: Arc::new(Mutex::new(vec![])),
+        writing: 0,
         taken,
         state,
         from: frame.clone(),
@@ -1622,6 +1775,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 app.shown = None;
                 app.message.clear();
                 app.collect(clock()).await;
+                while app.writing > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                    app.collect_written(clock()).await;
+                }
                 app.started = None;
                 if !app.message.is_empty() {
                     println!("{text:<45} error: {}", app.message);

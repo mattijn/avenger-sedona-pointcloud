@@ -1,6 +1,6 @@
 # Experiment 7 — charts driven by decisions
 
-Status: phases A–F run, 24–25 Sep 2026, with Jev 1.13 and Claude Haiku 4.5 through OpenRouter. Phase H (Jev steers, Haiku writes the pipeline) measured 25 Sep 2026, not yet wired into the live window. Phase G (a training run) is not built yet.
+Status: phases A–F run, 24–25 Sep 2026, with Jev 1.13 and Claude Haiku 4.5 through OpenRouter. Phase H (Jev steers, Haiku writes the pipeline) measured 25 Sep 2026, and in the live window behind Enter. Phase G (a training run) is not built yet.
 
 Can a chart be driven by a decider that picks from typed options, rather than
 by a person writing commands? Two starting points:
@@ -664,8 +664,8 @@ Commands after a data stage are refused: data goes first, then the chart.
   package's `apply`, which does not know the layer's marks. It needs a
   fold that includes `layer`'s commands before the window can offer it.
 - **Free text** (titles, custom zooms, other predicates): the pipeline accepts
-  them, but a classifier cannot produce them. Phase H (below) measures a
-  writer for them; the live window does not use it yet.
+  them, but a classifier cannot produce them. Phase H (below) adds a
+  writer for them, behind Enter in the live window.
 
 ## Phase H: Jev steers, Haiku writes the pipeline
 
@@ -752,8 +752,42 @@ cases, so its scores are optimistic. New cases are the honest test.
 
 Not checked: other writer models; Dutch beyond two cases; instructions that
 change the data stages beyond the cell size (other filters, other
-aggregates); and the writer in the live window, where its 2 s would have to be
-shown while the chart waits.
+aggregates).
+
+### The writer in the live window
+
+`autopilot_live` routes Enter the same way as the `routed` column:
+- while typing, nothing changes: Jev decides after 400 ms, with the pilot's
+  questions, and only its options apply;
+- on Enter, Jev also answers `specifics`. When its options say it all, they
+  apply as before. Otherwise the panel shows "Haiku writing…", the chart stays
+  as it is, and Haiku writes the pipeline in the background. What it writes
+  is applied through the editor's path, and the chart makes its usual
+  transition;
+- stats for nerds shows the stages it added (in the accent colour), the
+  stages it removed (`- …`), Jev's reading as it went to the writer, and each
+  try with its time, cost and, if refused, the reason.
+
+The overlay is translucent (alpha 0.72 in the calm theme), so the chart stays
+visible under the plumbing:
+
+![Stats for nerds after "use 10 m cells instead of 5 m"](images/writer_nerds.png)
+
+A headless run of six instructions (`--snapshot`, live calls):
+
+| Instruction | Route | Pipeline change |
+|---|---|---|
+| where are the buildings? | options | `read out/layer/cells.parquet ! map --x cx --y cy --value h` |
+| only emphasise buildings taller than 70 m | Haiku, 1 try | `highlight "datum.h >= 70"` |
+| call it Rooftops of the tile | Haiku, 1 try | `title "Rooftops of the tile"` |
+| use 10 m cells instead of 5 m | Haiku, 1 try | the `sql` stage at 10 m; title and emphasis kept |
+| zoom to the south-east | options | `zoom 657500..658000 6867000..6867500`, on the 10 m data |
+| show this as a pie | options | `read out/layer/classes.parquet ! pie n --by label` |
+
+`--record` runs without the writer, so the video still rebuilds from the
+cache; `--no-writer` does the same in the window. A mark change still resets
+the title to the mark's default, as before: the title of the map does not
+travel to the pie.
 
 ## Advanced: a training run as the data source
 

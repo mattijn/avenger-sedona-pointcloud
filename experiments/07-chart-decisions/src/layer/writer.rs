@@ -104,9 +104,10 @@ fn chart_now(s: &State, d: &Data) -> String {
     v.join("\n")
 }
 
-/// The prompt for one try. `refused` holds the earlier tries of this
+/// The prompt for one try. `current` is the pipeline behind the chart now,
+/// as the editor shows it; `refused` holds the earlier tries of this
 /// instruction and why each was refused.
-pub fn prompt(s: &State, d: &Data, instruction: &str, direction: Option<&str>, refused: &[(String, String)]) -> String {
+pub fn prompt(s: &State, d: &Data, current: &str, instruction: &str, direction: Option<&str>, refused: &[(String, String)]) -> String {
     let palette = COLOURS.iter().map(|(n, h)| format!("{h} ({n})")).collect::<Vec<_>>().join(", ");
     let examples = Dataset::ALL
         .iter()
@@ -149,7 +150,7 @@ The pipeline now:
 Instruction: {instruction}
 ",
         chart_now(s, d),
-        pipeline_text(s, d),
+        current,
     );
     if let Some(dir) = direction {
         out += &format!(
@@ -192,11 +193,11 @@ impl Outcome {
 }
 
 /// Write, apply, and on a refusal try again with its reason.
-pub async fn write(w: &Writer, s: &State, d: &Data, instruction: &str, direction: Option<&str>, tries: usize) -> Result<Outcome, String> {
+pub async fn write(w: &Writer, s: &State, d: &Data, current: &str, instruction: &str, direction: Option<&str>, tries: usize) -> Result<Outcome, String> {
     let mut refused: Vec<(String, String)> = vec![];
     let mut attempts = vec![];
     for _ in 0..tries {
-        let written = w.write(&prompt(s, d, instruction, direction, &refused)).await?;
+        let written = w.write(&prompt(s, d, current, instruction, direction, &refused)).await?;
         let text = extract(&written.text);
         match editor::apply(&text, d).await {
             Ok(a) => {

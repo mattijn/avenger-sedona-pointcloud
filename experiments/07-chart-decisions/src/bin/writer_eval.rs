@@ -172,7 +172,7 @@ fn from_jev(s: &State, j: &Decision) -> State {
 }
 
 async fn from_writer(w: &Writer, s: &State, d: &Data, text: &str, dir: Option<&str>) -> Result<Run, Error> {
-    let o = writer::write(w, s, d, text, dir, TRIES).await?;
+    let o = writer::write(w, s, d, &writer::pipeline_text(s, d), text, dir, TRIES).await?;
     let texts = o.attempts.iter().map(|a| json!({"pipeline": a.text, "refused": a.refused, "cached": a.written.cached})).collect();
     let (state, n) = match &o.applied {
         Some(a) => (a.state.clone(), rows(&a.state, &a.data)),
