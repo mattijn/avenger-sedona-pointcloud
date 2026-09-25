@@ -417,6 +417,111 @@ fn item_marks(d: &Drawn, proj: &dyn Fn([f64; 2], f64) -> ([f64; 2], f64), flat: 
     plot
 }
 
+/// The item under a point in plot pixels (origin top left of the plot),
+/// through the same projection as the drawing: a rect by its outline (which
+/// a bend, a lens or a tilt may curve), a point by its symbol, a line by
+/// distance to its segments. The topmost wins.
+pub fn hit(d: &Drawn, p: [f64; 2]) -> Option<String> {
+    let proj = projector(d);
+    let p2 = |u: [f64; 2]| proj(u, 0.0).0;
+    let inside = |poly: &[[f64; 2]]| {
+        let mut c = false;
+        let n = poly.len();
+        for i in 0..n {
+            let (a, b) = (poly[i], poly[(i + n - 1) % n]);
+            if (a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0] {
+                c = !c;
+            }
+        }
+        c
+    };
+    let seg = |a: [f64; 2], b: [f64; 2]| {
+        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+        let t = (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy).max(1e-9)).clamp(0.0, 1.0);
+        (p[0] - (a[0] + t * dx)).hypot(p[1] - (a[1] + t * dy))
+    };
+    for it in d.items.iter().rev() {
+        // Faded items stay clickable (⇧ adds them); only invisible ones do not.
+        if it.fill[3] < 0.02 {
+            continue;
+        }
+        let hit = match &it.geo {
+            UGeo::Rect([x0, x1, y0, y1]) => {
+                let n = 12;
+                let edge = |a: [f64; 2], b: [f64; 2]| (0..n).map(move |k| {
+                    let s = k as f64 / n as f64;
+                    [a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s]
+                });
+                let poly: Vec<[f64; 2]> = edge([*x0, *y0], [*x1, *y0]).chain(edge([*x1, *y0], [*x1, *y1])).chain(edge([*x1, *y1], [*x0, *y1])).chain(edge([*x0, *y1], [*x0, *y0])).map(p2).collect();
+                inside(&poly)
+            }
+            UGeo::Point(u) => {
+                let q = proj(*u, it.h).0;
+                (q[0] - p[0]).hypot(q[1] - p[1]) <= (it.size.sqrt() / 2.0).max(3.0)
+            }
+            UGeo::Line(pts) => {
+                let q: Vec<[f64; 2]> = pts.iter().map(|u| p2(*u)).collect();
+                q.windows(2).any(|w| seg(w[0], w[1]) <= 5.0)
+            }
+        };
+        if hit {
+            return Some(it.key.clone());
+        }
+    }
+    None
+}
+
+/// Every item's key and the box it covers on screen, in plot pixels
+/// (`[x0, y0, x1, y1]`): a rect's outline, a point, each vertex of a line (so
+/// a brush can take any part of it).
+pub fn item_bounds(d: &Drawn) -> Vec<(String, [f64; 4])> {
+    let proj = projector(d);
+    let mut out = vec![];
+    for it in &d.items {
+        if it.fill[3] < 0.02 {
+            continue;
+        }
+        match &it.geo {
+            UGeo::Rect([x0, x1, y0, y1]) => {
+                let n = 8;
+                let pts: Vec<[f64; 2]> = (0..=n)
+                    .flat_map(|k| {
+                        let s = k as f64 / n as f64;
+                        [[x0 + (x1 - x0) * s, *y0], [x0 + (x1 - x0) * s, *y1], [*x0, y0 + (y1 - y0) * s], [*x1, y0 + (y1 - y0) * s]]
+                    })
+                    .map(|u| proj(u, 0.0).0)
+                    .collect();
+                let (mut b0, mut b1) = ([f64::MAX; 2], [f64::MIN; 2]);
+                for p in pts {
+                    b0 = [b0[0].min(p[0]), b0[1].min(p[1])];
+                    b1 = [b1[0].max(p[0]), b1[1].max(p[1])];
+                }
+                out.push((it.key.clone(), [b0[0], b0[1], b1[0], b1[1]]));
+            }
+            UGeo::Point(u) => {
+                let q = proj(*u, it.h).0;
+                out.push((it.key.clone(), [q[0], q[1], q[0], q[1]]));
+            }
+            UGeo::Line(pts) => out.extend(pts.iter().map(|u| {
+                let q = proj(*u, 0.0).0;
+                (it.key.clone(), [q[0], q[1], q[0], q[1]])
+            })),
+        }
+    }
+    out
+}
+
+/// The legend entry under a point in plot pixels, as its index.
+pub fn legend_hit(d: &Drawn, p: [f64; 2]) -> Option<usize> {
+    let lx = P + 36.0;
+    let n = d.legends.iter().filter(|(_, a)| *a > 0.5).map(|(l, _)| l.len()).max()?;
+    // The swatch and the label are one target.
+    (0..n).find(|k| {
+        let y = 6.0 + *k as f64 * 22.0;
+        p[0] >= lx - 4.0 && p[0] <= lx + 170.0 && p[1] >= y - 4.0 && p[1] <= y + 16.0
+    })
+}
+
 /// The chart as scene marks, placed at `origin` (top left of the plot).
 pub fn chart_marks(d: &Drawn, origin: [f32; 2]) -> Vec<SceneMark> {
     let proj = projector(d);

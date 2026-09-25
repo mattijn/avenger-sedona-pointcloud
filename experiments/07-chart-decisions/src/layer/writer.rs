@@ -33,6 +33,7 @@ pub fn questions() -> Value {
     q["action"]["criteria"]["reset"] = json!("start over: the whole chart back to how it was at the start (not only the zoom or the emphasis)");
     // How the plot is seen, from experiment 5's coordinate systems.
     q["action"]["criteria"]["view"] = json!("change how the chart is seen: a fisheye or a magnifier over one area, a 3D tilt, or back to flat");
+    q["action"]["criteria"]["select"] = json!("select some items (as a click or a brush would), show only the selection, fade the rest, or clear the selection");
     // "Magnify" asks for a lens, not for the whole chart to zoom.
     q["action"]["criteria"]["zoom"] = json!("zoom the whole chart to a part of it, or back out to all of it: the axes change (not a lens or a magnifying glass)");
     q["view"] = json!({
@@ -148,6 +149,9 @@ fn chart_now(s: &State, d: &Data) -> String {
     if s.view != super::model::View::Flat {
         v.push(format!("view: {}", package::view_line(&s.view)));
     }
+    if let Some(l) = package::select_line(s) {
+        v.push(format!("selection: {l}"));
+    }
     if !matches!(s.mark, Mark::Bars | Mark::Map) {
         v.push(format!("colour: fixed on a {}, its colours encode the data", s.mark.id()));
     }
@@ -178,7 +182,8 @@ Data stages:
   filter --vega \"<Vega expression>\"   keep rows, for example \"datum.classification == 6\"
   sql \"<SELECT ... FROM input ...>\"   the previous stage is the table `input`
 
-Chart commands: exactly one mark first, then any of the others. A mark names its encoding channels as \
+Chart commands: exactly one mark first, then any of the others. Keep the mark (and its data) unless the instruction \
+asks for another kind of chart or other data. A mark names its encoding channels as \
 `--channel field:type`, the types as in Vega-Lite (N nominal, O ordinal, Q quantitative, T temporal). \
 Aggregate in a `sql` stage before the mark, not in a channel. The layer draws these five:
   chart bar --x <f>:N --y <f>:Q [--color <same f as x>]
@@ -195,6 +200,13 @@ Aggregate in a `sql` stage before the mark, not in a channel. The layer draws th
   view tilt [--yaw a] [--elevation e]                          3D, the map only, height as z
   view flat
   A pipeline has at most one `view` line, after the mark: a new view replaces the old line.
+  select point --keys \"a;b\" [--effect fade|filter]   items by key: a class label, label|band on the heatmap, a flight line id, cx,cy on the map
+  select interval --x a..b [--y c..d] [--effect fade|filter]   a brush in data units, on the time series and the map
+  select segment --from x,y --to x,y   a line brush: the flight lines that cross the segment (data units)
+  select timebox --x a..b --y c..d     the flight lines that stay inside the box over its x-range
+  select clear
+  A pipeline has at most one `select` line, after the mark. Its effect is fade unless the instruction asks to show only the
+  selection (filter, axes kept). To change only the effect, keep the keys or interval of the current select line.
   color <hex>                            bars and map only; write the hex, not the name: {palette}
   highlight \"datum.<field> >= <number>\"  bars, pie and map; this is the only predicate form
   clear-highlight

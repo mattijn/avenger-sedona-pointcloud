@@ -353,14 +353,17 @@
       },
       "text": "emphasise the band with the most points",
       "expect": {
-        "unchanged": true
+        "mark": "heatmap",
+        "selected": true
       },
       "reference": {
         "data": "class_height",
         "commands": [
-          "heatmap n --x band --y label"
+          "heatmap n --x band --y label",
+          "select point --keys \"Ground|0\""
         ]
-      }
+      },
+      "changed": "expected unchanged until the layer had selections (25 Sep 2026): a selection is now a way to emphasise a heatmap cell"
     },
     {
       "id": "w14",

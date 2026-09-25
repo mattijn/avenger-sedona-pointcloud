@@ -129,11 +129,16 @@ async fn main() -> Result<(), Error> {
         ("a mark the layer does not draw", bars.replace("chart bar", "chart area")),
         ("a property the layer does not draw", format!("{bars}\n! set x.axis.labelAngle -45")),
         ("a log scale on a map", format!("{base}\n! set y.scale.type log")),
+        ("two classes selected", format!("{bars}\n! select point --keys \"Ground;Building\"")),
+        ("only the selection, axes kept", format!("{bars}\n! select point --keys \"Ground;Building\" --effect filter")),
+        ("a brush on the map", format!("{base}\n! select interval --x 657200..657600 --y 6867300..6867700")),
+        ("a brush on bars", format!("{bars}\n! select interval --x 0..3")),
     ] {
         match editor::apply(&text, &d).await {
             Ok(a) => println!(
-                "{what}: {:?} · x title {:?} · y title {:?} · log {} · zoom {:?} · colour {}",
-                a.state.mark, a.state.x_title, a.state.y_title, a.state.y_log, a.state.range, a.state.color.is_some()
+                "{what}: {:?} · x title {:?} · y title {:?} · log {} · zoom {:?} · colour {} · selection {:?} {:?} · {} items",
+                a.state.mark, a.state.x_title, a.state.y_title, a.state.y_log, a.state.range, a.state.color.is_some(), a.state.selection, a.state.effect,
+                lidar_decide::layer::model::resolve(&a.state, &a.data).items.len()
             ),
             Err(e) => println!("{what}: refused: {e}"),
         }

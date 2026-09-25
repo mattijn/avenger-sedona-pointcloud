@@ -157,6 +157,7 @@ pub fn apply(s: &State, answers: &Map<String, Value>) -> Result<State, NotApplie
             n.y_title = None;
             n.y_log = false;
             n.view = super::model::View::Flat;
+            n.selection = super::model::Selection::None;
             n.title = n.default_title();
         }
         "color" => {

@@ -33,6 +33,8 @@ pub struct DItem {
     pub z: i32,
     /// Height in unit space, for a tilted view.
     pub h: f64,
+    /// The item's key, for hit-testing.
+    pub key: String,
 }
 
 /// An axis to draw, with its opacity during a crossfade.
@@ -194,10 +196,10 @@ pub fn transition(a: &Frame, b: &Frame, t: f64) -> Drawn {
         let k = it.key.as_str();
         match ib.get(k) {
             Some(jt) => match lerp_geo(&ua[k], &ub[k], g) {
-                Some(geo) => items.push(DItem { geo, fill: lerp_c(it.fill, jt.fill, e), size: lerp(it.size, jt.size, e), z: 0, h: lerp(it.h, jt.h, e) }),
+                Some(geo) => items.push(DItem { geo, fill: lerp_c(it.fill, jt.fill, e), size: lerp(it.size, jt.size, e), z: 0, h: lerp(it.h, jt.h, e), key: it.key.clone() }),
                 None => {
-                    items.push(DItem { geo: ua[k].clone(), fill: alpha(it.fill, 1.0 - e), size: it.size, z: 0, h: it.h });
-                    items.push(DItem { geo: ub[k].clone(), fill: alpha(jt.fill, e), size: jt.size, z: 1, h: jt.h });
+                    items.push(DItem { geo: ua[k].clone(), fill: alpha(it.fill, 1.0 - e), size: it.size, z: 0, h: it.h, key: it.key.clone() });
+                    items.push(DItem { geo: ub[k].clone(), fill: alpha(jt.fill, e), size: jt.size, z: 1, h: jt.h, key: jt.key.clone() });
                 }
             },
             None => {
@@ -207,11 +209,11 @@ pub fn transition(a: &Frame, b: &Frame, t: f64) -> Drawn {
                     slice(ub.get(p.as_str())?, sibs.iter().position(|s| s == k)?, sibs.len())
                 });
                 match target.and_then(|t| lerp_geo(&ua[k], &t, g)) {
-                    Some(geo) => items.push(DItem { geo, fill: alpha(it.fill, 1.0 - smooth(0.75, 1.0, t)), size: it.size, z: 1, h: it.h }),
+                    Some(geo) => items.push(DItem { geo, fill: alpha(it.fill, 1.0 - smooth(0.75, 1.0, t)), size: it.size, z: 1, h: it.h, key: it.key.clone() }),
                     None => {
                         // A parent whose children take over leaves quickly.
                         let fade = if cb.contains_key(k) { 1.0 - smooth(0.0, 0.25, t) } else { exit_a };
-                        items.push(DItem { geo: ua[k].clone(), fill: alpha(it.fill, fade), size: it.size, z: 0, h: it.h });
+                        items.push(DItem { geo: ua[k].clone(), fill: alpha(it.fill, fade), size: it.size, z: 0, h: it.h, key: it.key.clone() });
                     }
                 }
             }
@@ -229,10 +231,10 @@ pub fn transition(a: &Frame, b: &Frame, t: f64) -> Drawn {
             Some((slice(ua.get(p.as_str())?, sibs.iter().position(|s| s == k)?, sibs.len())?, parent.fill))
         });
         match start.and_then(|(s, pf)| lerp_geo(&s, &ub[k], g).map(|geo| (geo, pf))) {
-            Some((geo, pf)) => items.push(DItem { geo, fill: lerp_c(pf, jt.fill, e), size: jt.size, z: 1, h: jt.h }),
+            Some((geo, pf)) => items.push(DItem { geo, fill: lerp_c(pf, jt.fill, e), size: jt.size, z: 1, h: jt.h, key: jt.key.clone() }),
             None => {
                 let fade = if ca.contains_key(k) { smooth(0.75, 1.0, t) } else { enter_b };
-                items.push(DItem { geo: ub[k].clone(), fill: alpha(jt.fill, fade), size: jt.size, z: 1, h: jt.h });
+                items.push(DItem { geo: ub[k].clone(), fill: alpha(jt.fill, fade), size: jt.size, z: 1, h: jt.h, key: jt.key.clone() });
             }
         }
     }

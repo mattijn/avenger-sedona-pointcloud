@@ -21,7 +21,7 @@ use datafusion::error::Result;
 use lidar_pipeline::pipeline::{err, Call, Kind, Package, Pipeline, Step};
 use serde_json::{json, Value};
 
-use super::model::{base_domains, emphasis, quarter_domains, Data, Dataset, Mark, Quarter, State, View};
+use super::model::{base_domains, emphasis, quarter_domains, Data, Dataset, Effect, Mark, Quarter, Selection, State, View};
 use crate::options::COLOURS;
 
 /// `(step, chart mark, positional measure, flags)`.
@@ -254,6 +254,69 @@ impl Step for ViewStep {
     }
 }
 
+/// `select point --keys "a;b"`, `select interval --x a..b [--y c..d]`,
+/// `select clear`, and `--effect fade|filter` with any of them (or alone).
+struct SelectStep;
+
+fn range(v: &str) -> Result<(f64, f64)> {
+    let (a, b) = v.split_once("..").ok_or_else(|| err(format!("select: {v} is not a..b")))?;
+    let (a, b): (f64, f64) = (a.trim().parse().map_err(|_| err(format!("select: {a} is not a number")))?, b.trim().parse().map_err(|_| err(format!("select: {b} is not a number")))?);
+    Ok((a.min(b), a.max(b)))
+}
+
+#[async_trait]
+impl Step for SelectStep {
+    fn kind(&self) -> Kind {
+        Kind::Command
+    }
+    fn help(&self) -> &'static str {
+        "select point --keys \"a;b\" · select interval --x a..b [--y c..d] · select segment --from x,y --to x,y · select timebox --x a..b --y c..d · select clear · [--effect fade|filter]"
+    }
+    async fn run(&self, p: &mut Pipeline, c: &Call) -> Result<Option<String>> {
+        let kind = c.args.first().map(String::as_str);
+        let effect = c.flag("effect");
+        if let Some(e) = effect.filter(|e| !matches!(*e, "fade" | "filter")) {
+            return Err(err(format!("select: --effect is fade or filter, not {e}")));
+        }
+        match kind {
+            Some("point") => {
+                let keys: Vec<String> = c.flag("keys").ok_or_else(|| err("select point needs --keys"))?.split(';').map(|k| k.trim().to_string()).filter(|k| !k.is_empty()).collect();
+                p.chart["select"] = json!({"kind": "point", "keys": keys});
+            }
+            Some("interval") => {
+                let x = range(c.flag("x").ok_or_else(|| err("select interval needs --x"))?)?;
+                let y = c.flag("y").map(range).transpose()?;
+                p.chart["select"] = json!({"kind": "interval", "x": [x.0, x.1], "y": y.map(|y| vec![y.0, y.1])});
+            }
+            Some("segment") => {
+                let pt = |k: &str| -> Result<[f64; 2]> {
+                    let v = c.flag(k).ok_or_else(|| err(format!("select segment needs --{k} x,y")))?;
+                    let (a, b) = v.split_once(',').ok_or_else(|| err(format!("select segment: --{k} {v} is not x,y")))?;
+                    Ok([a.trim().parse().map_err(|_| err(format!("select segment: {a} is not a number")))?, b.trim().parse().map_err(|_| err(format!("select segment: {b} is not a number")))?])
+                };
+                p.chart["select"] = json!({"kind": "segment", "from": pt("from")?, "to": pt("to")?});
+            }
+            Some("timebox") => {
+                let x = range(c.flag("x").ok_or_else(|| err("select timebox needs --x"))?)?;
+                let y = range(c.flag("y").ok_or_else(|| err("select timebox needs --y"))?)?;
+                p.chart["select"] = json!({"kind": "timebox", "x": [x.0, x.1], "y": [y.0, y.1]});
+            }
+            Some("clear") => {
+                if let Some(o) = p.chart.as_object_mut() {
+                    o.remove("select");
+                }
+            }
+            Some(other) => return Err(err(format!("select: point, interval, segment, timebox or clear, not {other}"))),
+            None if effect.is_none() => return Err(err("select: point, interval or clear")),
+            None => {}
+        }
+        if let Some(e) = effect {
+            p.chart["select_effect"] = json!(e);
+        }
+        Ok(None)
+    }
+}
+
 struct ClearHighlight;
 
 #[async_trait]
@@ -277,6 +340,7 @@ pub fn package() -> Package {
         MARKS.iter().map(|m| (m.0, Arc::new(MarkStep) as Arc<dyn Step>)).collect();
     steps.push(("chart", Arc::new(ChartStep)));
     steps.push(("view", Arc::new(ViewStep)));
+    steps.push(("select", Arc::new(SelectStep)));
     steps.push(("clear-highlight", Arc::new(ClearHighlight)));
     Package { name: "layer", functions: vec![], steps }
 }
@@ -318,7 +382,26 @@ fn props(n: &State) -> Vec<String> {
     if n.view != View::Flat {
         v.push(view_line(&n.view));
     }
+    v.extend(select_line(n));
     v
+}
+
+/// The `select` command for a state's selection and effect, if any.
+pub fn select_line(n: &State) -> Option<String> {
+    let effect = if n.effect == Effect::Filter { " --effect filter" } else { "" };
+    match &n.selection {
+        Selection::None if n.effect == Effect::Filter => Some("select --effect filter".into()),
+        Selection::None => None,
+        Selection::Keys(k) => Some(format!("select point --keys \"{}\"{effect}", k.join(";"))),
+        Selection::Interval { x, y } => Some(format!(
+            "select interval --x {}..{}{}{effect}",
+            short_num(x.0),
+            short_num(x.1),
+            y.map_or(String::new(), |y| format!(" --y {}..{}", short_num(y.0), short_num(y.1)))
+        )),
+        Selection::Segment { a, b } => Some(format!("select segment --from {},{} --to {},{}{effect}", short_num(a[0]), short_num(a[1]), short_num(b[0]), short_num(b[1]))),
+        Selection::Timebox { x, y } => Some(format!("select timebox --x {}..{} --y {}..{}{effect}", short_num(x.0), short_num(x.1), short_num(y.0), short_num(y.1))),
+    }
 }
 
 fn short_num(x: f64) -> String {
@@ -397,6 +480,12 @@ pub fn lines(s: &State, n: &State, d: &Data) -> Vec<String> {
     }
     if n.view != s.view {
         out.push(view_line(&n.view));
+    }
+    if (&n.selection, n.effect) != (&s.selection, s.effect) {
+        out.push(select_line(n).unwrap_or_else(|| "select clear".into()));
+        if n.selection == Selection::None && n.effect != s.effect {
+            out.push(format!("select --effect {}", if n.effect == Effect::Filter { "filter" } else { "fade" }));
+        }
     }
     if n.color != s.color {
         out.extend(n.color.and_then(hex_of).map(|h| format!("color {h}")));
@@ -507,6 +596,25 @@ pub fn state(chart: &Value, d: &Data) -> std::result::Result<State, String> {
             }
         }
     };
+    s.selection = match chart["select"]["kind"].as_str() {
+        None => Selection::None,
+        Some("point") => Selection::Keys(chart["select"]["keys"].as_array().map(|a| a.iter().filter_map(|k| k.as_str().map(String::from)).collect()).unwrap_or_default()),
+        Some("segment" | "timebox") if mark != Mark::Line => return Err("a line brush and a timebox select series: the time series".into()),
+        Some("segment") => {
+            let p = |v: &Value| Some([v[0].as_f64()?, v[1].as_f64()?]);
+            Selection::Segment { a: p(&chart["select"]["from"]).ok_or("select segment needs --from")?, b: p(&chart["select"]["to"]).ok_or("select segment needs --to")? }
+        }
+        Some("timebox") => {
+            let pair = |v: &Value| Some((v[0].as_f64()?, v[1].as_f64()?));
+            Selection::Timebox { x: pair(&chart["select"]["x"]).ok_or("select timebox needs --x")?, y: pair(&chart["select"]["y"]).ok_or("select timebox needs --y")? }
+        }
+        Some(_) if !matches!(mark, Mark::Line | Mark::Map) => return Err("an interval selects on continuous axes (the time series, the map); select categories with select point".into()),
+        Some(_) => {
+            let pair = |v: &Value| Some((v[0].as_f64()?, v[1].as_f64()?));
+            Selection::Interval { x: pair(&chart["select"]["x"]).ok_or("select interval needs --x")?, y: pair(&chart["select"]["y"]) }
+        }
+    };
+    s.effect = if chart["select_effect"].as_str() == Some("filter") { Effect::Filter } else { Effect::Fade };
     if mark == Mark::Pie && matches!(s.view, View::Magnifier { .. }) {
         return Err("the magnifier works on flat charts, not on a pie (a fisheye does)".into());
     }
@@ -525,7 +633,12 @@ pub fn state(chart: &Value, d: &Data) -> std::result::Result<State, String> {
         }
     }
     if let Some(w) = chart["highlight"]["where"].as_str() {
-        let (f, top) = emphasis(mark, d).ok_or("this mark has no emphasis")?;
+        let (f, top) = emphasis(mark, d).ok_or_else(|| match mark {
+            // A refusal that names the way that works lets a writer fix its try.
+            Mark::Heatmap => "the heatmap has no emphasis; to single out cells, select them: select point --keys \"label|band\"".to_string(),
+            Mark::Line => "the time series has no emphasis; to single out lines, select them: select point --keys \"31\", or a line brush".to_string(),
+            _ => "this mark has no emphasis".to_string(),
+        })?;
         let t: f64 = w
             .strip_prefix(&format!("datum.{f} >= "))
             .and_then(|t| t.trim().parse().ok())

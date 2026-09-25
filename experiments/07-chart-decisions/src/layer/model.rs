@@ -114,6 +114,63 @@ pub struct State {
     pub y_log: bool,
     /// How the plot is seen: flat, through a lens, or tilted in 3D.
     pub view: View,
+    /// What is selected, and what that does to the rest.
+    pub selection: Selection,
+    pub effect: Effect,
+}
+
+/// A selection, as data: item keys (a click, a legend entry, a brush over
+/// categories), or an interval in data units (a brush over continuous axes).
+#[derive(Clone, Debug, PartialEq, Default)]
+pub enum Selection {
+    #[default]
+    None,
+    /// Bare keys: a class label, `label|band`, a flight line, `cx,cy`.
+    Keys(Vec<String>),
+    Interval { x: (f64, f64), y: Option<(f64, f64)> },
+    /// A line brush (Konyha et al. 2006; vega-lite#9833): the series whose
+    /// line crosses the segment from `a` to `b`, in data units.
+    Segment { a: [f64; 2], b: [f64; 2] },
+    /// A timebox (Hochheiser & Shneiderman 2004): the series whose every
+    /// point within `x` has its value within `y`.
+    Timebox { x: (f64, f64), y: (f64, f64) },
+}
+
+/// Whether segments p1-p2 and q1-q2 cross (or touch).
+pub fn crosses(p1: [f64; 2], p2: [f64; 2], q1: [f64; 2], q2: [f64; 2]) -> bool {
+    let o = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    let (d1, d2, d3, d4) = (o(q1, q2, p1), o(q1, q2, p2), o(p1, p2, q1), o(p1, p2, q2));
+    (d1 * d2 <= 0.0) && (d3 * d4 <= 0.0)
+}
+
+/// Whether a series (its vertices in data units) meets a series predicate.
+pub fn series_selected(sel: &Selection, pts: &[[f64; 2]]) -> bool {
+    match sel {
+        Selection::Segment { a, b } => pts.windows(2).any(|w| crosses(w[0], w[1], *a, *b)),
+        Selection::Timebox { x, y } => {
+            let within: Vec<&[f64; 2]> = pts.iter().filter(|p| p[0] >= x.0 && p[0] <= x.1).collect();
+            !within.is_empty() && within.iter().all(|p| p[1] >= y.0 && p[1] <= y.1)
+        }
+        _ => true,
+    }
+}
+
+/// What a selection does to the unselected items, chosen apart from the
+/// selection itself (vega/altair#3394). Filtering keeps the scale domains, so
+/// axes and legends keep their meaning.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum Effect {
+    #[default]
+    Fade,
+    Filter,
+}
+
+/// An item's bare key, as a selection names it: `class:Ground` is
+/// `Ground`, `class:Ground|h:8` is `Ground|8`, `line:31` is `31`,
+/// `cell:657200,6867300` is `657200,6867300`.
+pub fn bare_key(key: &str) -> String {
+    let k = key.split_once(':').map_or(key, |(_, v)| v);
+    k.replace("|h:", "|")
 }
 
 /// A view over the plot's unit square, after the coordinate system (the
@@ -235,7 +292,7 @@ impl View {
 
 impl State {
     pub fn new(dataset: Dataset) -> Self {
-        let mut s = State { dataset, mark: Mark::default_for(dataset), color: None, zoom: None, range: None, highlight: false, threshold: None, title: String::new(), x_title: None, y_title: None, y_log: false, view: View::Flat };
+        let mut s = State { dataset, mark: Mark::default_for(dataset), color: None, zoom: None, range: None, highlight: false, threshold: None, title: String::new(), x_title: None, y_title: None, y_log: false, view: View::Flat, selection: Selection::None, effect: Effect::Fade };
         s.title = s.default_title();
         s
     }
@@ -309,11 +366,15 @@ pub struct Frame {
     pub x: Axis,
     pub y: Axis,
     pub legend: Vec<(String, [f32; 4])>,
+    /// The item key each legend entry stands for, so an entry can select.
+    pub legend_keys: Vec<String>,
     /// For a heatmap: the value range of the colour scale.
     pub colorbar: Option<(f64, f64)>,
     /// Equal aspect for maps.
     pub square: bool,
     pub view: View,
+    /// How many items a selection kept, when there is one.
+    pub selected: Option<usize>,
 }
 
 pub fn class_color(label: &str) -> [f32; 4] {
@@ -433,6 +494,8 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
         colorbar: None,
         square: false,
         view: s.view,
+        legend_keys: vec![],
+        selected: None,
     };
     match s.mark {
         Mark::Bars | Mark::Pie => {
@@ -468,6 +531,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             } else {
                 f.coords = Coords::Polar;
                 f.legend = d.classes.iter().map(|c| (format!("{} {:.0} %", c.0, 100.0 * c.2 / total), s.color.unwrap_or(c.1))).collect();
+                f.legend_keys = d.classes.iter().map(|c| format!("class:{}", c.0)).collect();
             }
         }
         Mark::Line => {
@@ -481,6 +545,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
                 let fill = s.color.filter(|_| lines.len() == 1).unwrap_or(LINE_COLOURS[k % 4]);
                 f.items.push(Item { key: format!("line:{l}"), parent: None, geo: Geo::Line { pts }, fill, size: 2.0, h: 0.0 });
                 f.legend.push((format!("flight line {l}"), fill));
+                f.legend_keys.push(format!("line:{l}"));
             }
             f.x = Axis::Linear { field: "seconds since the line entered the tile".into(), lo: x0, hi: x1 };
             f.y = Axis::Linear { field: "points per 0.5 s".into(), lo: y0, hi: y1 };
@@ -543,6 +608,36 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             f.x = Axis::Linear { field: "easting (Lambert-93, m)".into(), lo: x0, hi: x1 };
             f.y = Axis::Linear { field: "northing (m)".into(), lo: y0, hi: y1 };
             f.square = true;
+        }
+    }
+    // A selection fades or removes what it leaves out.
+    if s.selection != Selection::None {
+        let chosen = |it: &Item| match &s.selection {
+            Selection::None => true,
+            Selection::Keys(keys) => keys.contains(&bare_key(&it.key)),
+            Selection::Interval { x, y } => {
+                let inside = |p: [f64; 2]| p[0] >= x.0 && p[0] <= x.1 && y.is_none_or(|y| p[1] >= y.0 && p[1] <= y.1);
+                match &it.geo {
+                    Geo::Point { x, y } => inside([*x, *y]),
+                    Geo::Line { pts } => pts.iter().any(|p| inside(*p)),
+                    Geo::Rect { .. } => true,
+                }
+            }
+            Selection::Segment { .. } | Selection::Timebox { .. } => match &it.geo {
+                Geo::Line { pts } => series_selected(&s.selection, pts),
+                _ => true,
+            },
+        };
+        f.selected = Some(f.items.iter().filter(|it| chosen(it)).count());
+        match s.effect {
+            Effect::Fade => {
+                for it in &mut f.items {
+                    if !chosen(it) {
+                        it.fill[3] *= 0.15;
+                    }
+                }
+            }
+            Effect::Filter => f.items.retain(|it| chosen(it)),
         }
     }
     // An offset magnifier's callout goes where it covers the least data.

@@ -90,6 +90,7 @@ fn check(expect: &Value, start: &State, s: &State, n_rows: usize) -> Option<Stri
             "rows" => v.as_u64() == Some(n_rows as u64),
             "rows_gt" => v.as_u64().is_some_and(|m| n_rows as u64 > m),
             "view" => v.as_str() == Some(s.view.id()),
+            "selected" => v.as_bool() == Some(s.selection != lidar_decide::layer::model::Selection::None),
             other => panic!("unknown expectation {other}"),
         };
         if !ok {

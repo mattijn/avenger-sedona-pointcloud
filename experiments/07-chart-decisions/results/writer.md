@@ -1,7 +1,7 @@
 | Case | jev | haiku | haiku+jev | routed |
 |---|---|---|---|---|
 | v01 make the bars red | bars red | bars red | bars red | bars red |
-| v02 which share does each class have? | pie | **✗** bars "Share of points per LiDAR class (%)" (mark) | pie | pie |
+| v02 which share does each class have? | pie | pie | pie | pie |
 | v03 zoom in on the start of the lines, the top left | line zoom north_west | line zoom north_west | line zoom north_west | line zoom north_west |
 | v04 mark the tallest buildings | map top 10 % | map top 10 % | map top 10 % | map top 10 % |
 | v05 kleur de gebouwen groen | map green | map green | map green | map green |
@@ -18,42 +18,42 @@
 | w10 show the buildings in 2 m cells | **✗** unchanged (rows_gt) | map 63231 cells | map 63231 cells | map 63231 cells |
 | w11 zoom to the north-east and emphasise buildings over 65 m | **✗** map zoom north_east (highlight, threshold) | map zoom north_east >= 65 | map zoom north_east >= 65 | map zoom north_east >= 65 |
 | w12 draw the buildings as a 3D model | map | map | map | map |
-| w13 emphasise the band with the most points | unchanged | unchanged, 2 tries | heatmap 1 cells, 2 tries | heatmap 1 cells, 2 tries |
+| w13 emphasise the band with the most points | **✗** unchanged (selected) | heatmap, 2 tries | heatmap, 3 tries | heatmap, 3 tries |
 | w14 filter ground | **✗** unchanged (rows) | pie 1 cells | pie 1 cells | pie 1 cells |
 | w15 only show ground and buildings | **✗** unchanged (rows) | bars 2 cells | bars 2 cells | bars 2 cells |
 | w16 exclude building | **✗** unchanged (rows) | bars 5 cells | bars 5 cells | bars 5 cells |
 
 | Arm | Right, vocabulary (v) | Right, own text (w) | Writer used | Accepted on the first try | Tries | Latency p50 / max | Cost |
 |---|---|---|---|---|---|---|---|
-| jev | 6/6 | 2/16 | 0 | – | 0 | 297 / 644 ms | $0.0015 |
-| haiku | 5/6 | 16/16 | 22 | 21/22 | 23 | 1688 / 3895 ms | $0.0738 |
-| haiku+jev | 6/6 | 16/16 | 22 | 21/22 | 23 | 2135 / 4243 ms | $0.0767 |
-| routed | 6/6 | 16/16 | 17 | 16/17 | 18 | 1847 / 4243 ms | $0.0598 |
+| jev | 6/6 | 1/16 | 0 | – | 0 | 336 / 562 ms | $0.0016 |
+| haiku | 6/6 | 16/16 | 22 | 21/22 | 23 | 1777 / 5805 ms | $0.0796 |
+| haiku+jev | 6/6 | 16/16 | 22 | 21/22 | 24 | 1895 / 7400 ms | $0.0867 |
+| routed | 6/6 | 16/16 | 18 | 17/18 | 20 | 1767 / 7400 ms | $0.0717 |
 
 | Case | Start | Expected | Jev | Render | Confidence |
 |---|---|---|---|---|---|
-| b01 undo | bars | undo | undo | chart | 0.91 |
+| b01 undo | bars | undo | undo | chart | 0.90 |
 | b02 undo that | map | undo | undo | chart | 0.88 |
-| b03 go back | pie | undo | undo | chart | 0.81 |
-| b04 that was wrong, revert it | map | undo | undo | chart | 0.90 |
-| b05 maak dat ongedaan | bars | undo | undo | chart | 0.91 |
-| b06 terug naar hoe het was | line | undo | undo | chart | 0.58 |
-| b07 start over | map | reset | reset | chart | 0.96 |
-| b08 reset everything | heatmap | reset | reset | chart | 0.96 |
-| b09 begin opnieuw | pie | reset | reset | chart | 0.93 |
-| b10 reset the zoom | map | zoom | zoom/all | chart | 0.82 |
+| b03 go back | pie | undo | undo | chart | 0.79 |
+| b04 that was wrong, revert it | map | undo | undo | chart | 0.89 |
+| b05 maak dat ongedaan | bars | undo | undo | chart | 0.87 |
+| b06 terug naar hoe het was | line | undo | undo | chart | 0.52 |
+| b07 start over | map | reset | reset | chart | 0.95 |
+| b08 reset everything | heatmap | reset | reset | chart | 0.97 |
+| b09 begin opnieuw | pie | reset | reset | chart | 0.91 |
+| b10 reset the zoom | map | zoom | zoom/all | chart | 0.89 |
 | b11 remove the emphasis | map | highlight | highlight/none | chart | 1.00 |
 | b12 leave it as it was | bars | no_change | no_change | chart | 0.98 |
-| b13 go back to the bar chart | line | mark | mark/bars | chart | 0.90 |
-| r01 show the rows as a table | bars | no_change, table | **✗** mark/keep | table | 0.63 |
+| b13 go back to the bar chart | line | mark | mark/bars | chart | 0.91 |
+| r01 show the rows as a table | bars | no_change, table | **✗** mark/keep | table | 0.48 |
 | r02 export this to parquet | map | no_change, export | no_change | export | 0.72 |
-| r03 show the ground points as a table | bars | transform, table | **✗** mark/bars | table | 0.61 |
+| r03 show the ground points as a table | bars | transform, table | **✗** mark/bars | table | 0.65 |
 | r04 exclude building | pie | transform, chart | transform | chart | 1.00 |
 | r05 make the bars red | bars | color, chart | color/red | chart | 1.00 |
-| o01 what data is there? | bars | no_change, overview | no_change | overview | 0.68 |
-| o02 welke kolommen heeft de tile? | map | no_change, overview | no_change | overview | 0.21 |
-| o03 I don't know what I can do with this data, show me what's in it | pie | no_change, overview | **✗** mark/bars | overview | 0.64 |
-| x01 magnify the north-east corner | map | view | view/magnifier | chart | 0.73 |
+| o01 what data is there? | bars | no_change, overview | no_change | overview | 0.77 |
+| o02 welke kolommen heeft de tile? | map | no_change, overview | no_change | overview | 0.26 |
+| o03 I don't know what I can do with this data, show me what's in it | pie | no_change, overview | **✗** mark/bars | overview | 0.69 |
+| x01 magnify the north-east corner | map | view | view/magnifier | chart | 0.81 |
 | x02 show the map in 3D | map | view | view/tilt | chart | 1.00 |
 | x03 put a fisheye lens on the left | bars | view | view/fisheye | chart | 1.00 |
 | x04 zoom in on the north-east | map | zoom | zoom/north_east | chart | 1.00 |

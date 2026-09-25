@@ -200,6 +200,66 @@ checked with a real mouse: only headless.
 
 ![Offset magnifiers placed like labels, and one in place](images/magnifier.png)
 
+## Interactions: the ordinary ones, done well
+
+Following the lessons of vega/altair#3394 (in [docs/interactions.md](../../docs/interactions.md)):
+
+| Gesture | Does |
+|---|---|
+| click a mark | selects it; ⇧ adds or removes; a click on empty space clears |
+| click a legend entry | toggles its category; the swatch and the label are one target |
+| drag | brushes: an interval in data units on the time series and the map, the items it overlaps on bars, pie and heatmap (⇧ adds) |
+| ⌥-drag | pans the time series or the map |
+| wheel | zooms about the pointer |
+| hover | a tooltip with the item's values from the data |
+| under a lens | hover moves the lens, a click fixes it |
+
+- **A selection is data, in the pipeline:** `select point --keys "Ground;Building"`,
+  `select interval --x a..b --y c..d`, `select clear`. It folds into the
+  chart state, shows in the pipeline and in stats for nerds, and undo takes it
+  back. A pan or a wheel zoom is one `zoom` line when the gesture ends, not
+  one per frame.
+- **The effect is chosen apart from the selection:** `--effect fade` (the
+  default) or `filter`. Filtering keeps the scale domains, so the axes and
+  legends keep their meaning.
+- **Hit-testing goes through the drawing's projection**, so a click also
+  lands under a fisheye, on the pie and in 3D. Faded items stay clickable.
+- **Text reaches the same commands.** Jev has an action `select`, and Haiku
+  the grammar: "select ground and buildings", "only show the selection",
+  "clear the selection" and "select the buildings in the north-east corner"
+  each gave the right `select` line, once the prompt said a pipeline holds
+  one `select` line and that a change of effect keeps its keys.
+- Tested headless, with `--snapshot` steps `!click x,y`, `!shiftclick`,
+  `!brush`, `!pan`, `!wheel` and `!hover`; `layer_roundtrip` folds each form
+  and refuses an interval on bars. Not tried with a real mouse.
+
+![A brush on bars, a brush on the map, a tooltip, a legend selection](images/interactions.png)
+
+## Interactions: series predicates
+
+The first of the research-grade techniques in [docs/interactions.md](../../docs/interactions.md),
+on the time series:
+
+| Gesture | Command | Selects |
+|---|---|---|
+| ⌘-drag | `select segment --from x,y --to x,y` | the flight lines that cross the segment: a line brush (Konyha et al. 2006; vega-lite#9833) |
+| ⌃-drag | `select timebox --x a..b --y c..d` | the flight lines whose every point within the box's x-range lies inside it (Hochheiser & Shneiderman 2004) |
+
+Both are in data units, so they hold under any zoom; in SQL they are window
+functions over `PARTITION BY line ORDER BY t` (a segment intersection with
+`LEAD`, or `bool_and(n BETWEEN …)`), here evaluated on the drawn series. A
+selection that keeps nothing says so instead of fading everything. The
+angular brush needs parallel coordinates, which the layer does not have.
+
+![A line brush crossing flight line 31, and a timebox no line stays inside](images/series.png)
+
+A refusal that names the way that works is what let Haiku fix a try:
+"emphasise the band with the most points" on the heatmap was refused as
+emphasis three times until the refusal said "to single out cells, select
+them: `select point --keys "label|band"`"; then every writing way selected
+the cell. w13 expected "unchanged" until the layer had selections, and now
+expects a selection.
+
 [docs/interactions.md](../../docs/interactions.md) catalogues interaction
 techniques as of September 2026: what doing the ordinary ones well takes
 (from vega/altair#3394), research-grade ones not in any mainstream library

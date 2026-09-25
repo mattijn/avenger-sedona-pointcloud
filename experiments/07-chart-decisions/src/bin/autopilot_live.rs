@@ -318,6 +318,20 @@ struct App {
     last_click: Option<(Instant, [f32; 2])>,
     /// A drag that selects text: in the editor (true) or the autopilot box.
     dragging: Option<bool>,
+    /// A press on the plot, not yet a click or a drag: where, and with ⇧.
+    press: Option<([f32; 2], bool)>,
+    /// The item under the pointer, for the tooltip, and where the pointer is.
+    hover: Option<(String, [f32; 2])>,
+    /// A press with ⌥, which pans rather than brushes.
+    press_alt: bool,
+    /// A press with ⌘ draws a line brush, with ⌃ a timebox (on the time series).
+    press_series: Option<bool>,
+    /// A brush being dragged, in window pixels.
+    brush: Option<([f32; 2], [f32; 2])>,
+    /// A pan or a wheel zoom under way: the state before it (committed as one
+    /// pipeline line when it ends), and for the wheel, its last tick.
+    live_base: Option<State>,
+    wheel_at: Option<Instant>,
     /// What runs in the background, for the banner over the chart.
     busy: String,
     writing_since: Instant,
@@ -1119,6 +1133,193 @@ impl App {
         self.logged += 1;
     }
 
+    /// Whether series predicates apply: the time series, seen flat.
+    fn series_chart(&self) -> bool {
+        use lidar_decide::layer::model::{Mark, View};
+        self.state.mark == Mark::Line && matches!(self.state.view, View::Flat)
+    }
+
+    /// A window position to data units, under the domains shown now.
+    fn to_data(&self, p: [f32; 2]) -> Option<[f64; 2]> {
+        let ((x0, x1), (y0, y1)) = self.domains()?;
+        let (ux, uy) = ((p[0] - draw::ORIGIN[0]) as f64 / draw::P, 1.0 - (p[1] - draw::ORIGIN[1]) as f64 / draw::P);
+        Some([x0 + ux * (x1 - x0), y0 + uy * (y1 - y0)])
+    }
+
+    /// A line brush from `a` to `b` (the series it crosses) or a timebox
+    /// between them (the series that stay inside it).
+    async fn series_select(&mut self, a: [f32; 2], b: [f32; 2], line: bool, now: Instant) {
+        use lidar_decide::layer::model::Selection;
+        let (Some(p), Some(q)) = (self.to_data(a), self.to_data(b)) else { return };
+        let mut n = self.state.clone();
+        n.selection = if line {
+            Selection::Segment { a: p, b: q }
+        } else {
+            Selection::Timebox { x: (p[0].min(q[0]), p[0].max(q[0])), y: (p[1].min(q[1]), p[1].max(q[1])) }
+        };
+        self.apply_direct(n, if line { "line brush" } else { "timebox" }, now).await;
+    }
+
+    /// Whether the chart has continuous axes seen flat, so pan, wheel and an
+    /// interval brush apply.
+    fn continuous(&self) -> bool {
+        use lidar_decide::layer::model::{Mark, View};
+        matches!(self.state.mark, Mark::Line | Mark::Map) && matches!(self.state.view, View::Flat)
+    }
+
+    /// The x and y domains shown now.
+    fn domains(&self) -> Option<((f64, f64), (f64, f64))> {
+        use lidar_decide::layer::model::{base_domains, quarter_domains};
+        let (bx, by) = base_domains(self.state.mark, &self.data)?;
+        Some(self.state.range.unwrap_or_else(|| quarter_domains(self.state.zoom, bx, by)))
+    }
+
+    /// Show a state at once, without a transition or a pipeline line: the
+    /// frames of a pan or a wheel zoom while it lasts.
+    fn set_live(&mut self, n: State) {
+        self.to = resolve(&n, &self.data);
+        self.from = self.to.clone();
+        self.started = None;
+        self.state = n;
+    }
+
+    fn pan_from(&mut self, base: &State, d: [f32; 2]) {
+        let saved = std::mem::replace(&mut self.state, base.clone());
+        let doms = self.domains();
+        self.state = saved;
+        let Some(((x0, x1), (y0, y1))) = doms else { return };
+        let (dx, dy) = (-(d[0] as f64) / draw::P * (x1 - x0), (d[1] as f64) / draw::P * (y1 - y0));
+        let mut n = base.clone();
+        n.zoom = None;
+        n.range = Some(((x0 + dx, x1 + dx), (y0 + dy, y1 + dy)));
+        self.set_live(n);
+    }
+
+    fn zoom_about(&mut self, u: [f64; 2], f: f64) {
+        let Some(((x0, x1), (y0, y1))) = self.domains() else { return };
+        let (cx, cy) = (x0 + u[0] * (x1 - x0), y0 + u[1] * (y1 - y0));
+        let mut n = self.state.clone();
+        n.zoom = None;
+        n.range = Some(((cx - (cx - x0) * f, cx + (x1 - cx) * f), (cy - (cy - y0) * f, cy + (y1 - cy) * f)));
+        self.set_live(n);
+    }
+
+    /// Commit a wheel zoom once the wheel has rested.
+    async fn commit_wheel(&mut self, now: Instant) {
+        if self.wheel_at.is_some_and(|t| (now - t).as_secs_f64() > 0.4) && self.press.is_none() {
+            self.wheel_at = None;
+            if let Some(base) = self.live_base.take() {
+                let n = self.state.clone();
+                self.state = base;
+                self.apply_direct(n, "wheel to zoom", now).await;
+            }
+        }
+    }
+
+    /// A brush from `a` to `b` (window pixels): an interval in data units on
+    /// continuous axes seen flat; otherwise the items whose centre lies
+    /// inside, by key (⇧ adds them to what is selected).
+    async fn brush_select(&mut self, a: [f32; 2], b: [f32; 2], shift: bool, now: Instant) {
+        use lidar_decide::layer::model::{bare_key, Selection};
+        let (lo, hi) = ([a[0].min(b[0]), a[1].min(b[1])], [a[0].max(b[0]), a[1].max(b[1])]);
+        let mut n = self.state.clone();
+        n.selection = if self.continuous() {
+            let Some(((x0, x1), (y0, y1))) = self.domains() else { return };
+            let ux = |x: f32| ((x - draw::ORIGIN[0]) as f64 / draw::P).clamp(0.0, 1.0);
+            let uy = |y: f32| (1.0 - (y - draw::ORIGIN[1]) as f64 / draw::P).clamp(0.0, 1.0);
+            let (xa, xb) = (x0 + ux(lo[0]) * (x1 - x0), x0 + ux(hi[0]) * (x1 - x0));
+            let (ya, yb) = (y0 + uy(hi[1]) * (y1 - y0), y0 + uy(lo[1]) * (y1 - y0));
+            Selection::Interval { x: (xa, xb), y: Some((ya, yb)) }
+        } else {
+            let o = draw::ORIGIN;
+            let mut keys: Vec<String> = if shift { match &self.state.selection { Selection::Keys(k) => k.clone(), _ => vec![] } } else { vec![] };
+            // An item is taken when the brush overlaps what it covers.
+            for (k, b) in draw::item_bounds(&still(&self.to)) {
+                let (bx0, by0, bx1, by1) = (b[0] as f32 + o[0], b[1] as f32 + o[1], b[2] as f32 + o[0], b[3] as f32 + o[1]);
+                let k = bare_key(&k);
+                if bx1 >= lo[0] && bx0 <= hi[0] && by1 >= lo[1] && by0 <= hi[1] && !keys.contains(&k) {
+                    keys.push(k);
+                }
+            }
+            if keys.is_empty() { Selection::None } else { Selection::Keys(keys) }
+        };
+        self.apply_direct(n, "brush", now).await;
+    }
+
+    /// A click on the chart: a mark selects it (⇧ adds or removes), a legend
+    /// entry toggles its category, empty space clears the selection.
+    async fn click_chart(&mut self, at: [f32; 2], shift: bool, now: Instant) {
+        use lidar_decide::layer::model::{bare_key, Selection};
+        let local = [(at[0] - draw::ORIGIN[0]) as f64, (at[1] - draw::ORIGIN[1]) as f64];
+        let drawn = still(&self.to);
+        let mut keys = match &self.state.selection {
+            Selection::Keys(k) => k.clone(),
+            _ => vec![],
+        };
+        let (what, toggle) = if let Some(i) = draw::legend_hit(&drawn, local) {
+            match self.to.legend_keys.get(i) {
+                Some(k) => ("click on the legend", Some((bare_key(k), true))),
+                None => return,
+            }
+        } else if let Some(k) = draw::hit(&drawn, local) {
+            ("click on the chart", Some((bare_key(&k), shift)))
+        } else {
+            ("click on empty space", None)
+        };
+        let mut n = self.state.clone();
+        n.selection = match toggle {
+            // ⇧ (and the legend) add or remove; a plain click selects one.
+            Some((k, true)) => {
+                if let Some(i) = keys.iter().position(|x| *x == k) {
+                    keys.remove(i);
+                } else {
+                    keys.push(k);
+                }
+                if keys.is_empty() { Selection::None } else { Selection::Keys(keys) }
+            }
+            Some((k, false)) if keys == [k.clone()] => Selection::None,
+            Some((k, false)) => Selection::Keys(vec![k]),
+            None => Selection::None,
+        };
+        self.apply_direct(n, what, now).await;
+    }
+
+    /// A change made by hand on the chart (a click, a brush, a drag): the
+    /// same pipeline lines a decision would give, validated and folded, so it
+    /// shows in the pipeline and undo takes it back.
+    async fn apply_direct(&mut self, n: State, what: &str, now: Instant) {
+        if n == self.state {
+            return;
+        }
+        let lines = package::lines(&self.state, &n, &self.data);
+        let pipe = self.pipe.clone();
+        let mut p = pipe.lock().await;
+        for l in &lines {
+            if let Err(e) = p.run(l).await {
+                self.message = format!("{what}: {e}");
+                return;
+            }
+        }
+        match package::state(&p.chart, &self.data) {
+            Ok(folded) => {
+                self.remember();
+                self.transition_to(folded, now);
+                self.snapshot(&p);
+                self.message.clear();
+                // A selection that keeps nothing says so, rather than fading all.
+                self.notice = match self.to.selected {
+                    Some(0) => format!("{what}: nothing matches; undo, or click empty space to clear"),
+                    Some(k) => format!("{what}: {k} selected"),
+                    None => String::new(),
+                };
+                self.changes.push((what.into(), lines.first().cloned().unwrap_or_default()));
+                self.session.push(format!("{:.1} s, {what}: {}", (clock() - self.t0).as_secs_f64(), lines.join(" ! ")));
+                self.logged += 1;
+            }
+            Err(e) => self.message = format!("{what}: {e}"),
+        }
+    }
+
     /// Keep the pipeline behind the chart now, before it changes.
     fn remember(&mut self) {
         self.history.push(self.pipeline.join("\n! "));
@@ -1351,6 +1552,7 @@ impl App {
 
     fn transition_to(&mut self, n: State, now: Instant) {
         self.table = None;
+        self.hover = None;
         let next = resolve(&n, &self.data);
         // A change during a transition starts from where that one was going.
         self.from = self.to.clone();
@@ -1703,6 +1905,60 @@ fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
     }
 }
 
+/// What a tooltip says about an item, from the data behind it.
+fn tooltip_lines(key: &str, d: &Data) -> Vec<String> {
+    let n = |v: f64| {
+        let s = format!("{:.0}", v);
+        let mut out = String::new();
+        for (i, c) in s.chars().enumerate() {
+            if i > 0 && (s.len() - i) % 3 == 0 {
+                out.push(' ');
+            }
+            out.push(c);
+        }
+        out
+    };
+    let (kind, rest) = key.split_once(':').unwrap_or(("", key));
+    match kind {
+        "class" if rest.contains("|h:") => {
+            let (label, band) = rest.split_once("|h:").unwrap_or((rest, "0"));
+            let b: f64 = band.parse().unwrap_or(0.0);
+            let v = d.class_height.iter().find(|r| r.0 == label && r.1 == b).map_or(0.0, |r| r.2);
+            vec![label.to_string(), format!("{:.0}–{:.0} m above 42 m", b, b + 4.0), format!("{} points", n(v))]
+        }
+        "class" => {
+            let total: f64 = d.classes.iter().map(|c| c.2).sum();
+            let v = d.classes.iter().find(|c| c.0 == rest).map_or(0.0, |c| c.2);
+            vec![rest.to_string(), format!("{} points", n(v)), format!("{:.1} % of the tile", 100.0 * v / total.max(1.0))]
+        }
+        "line" => {
+            let id: i64 = rest.parse().unwrap_or(0);
+            let total: f64 = d.flight.iter().filter(|r| r.0 == id).map(|r| r.2).sum();
+            vec![format!("flight line {id}"), format!("{} points", n(total))]
+        }
+        "cell" => {
+            let (x, y) = rest.split_once(',').unwrap_or((rest, "0"));
+            let (x, y): (f64, f64) = (x.parse().unwrap_or(0.0), y.parse().unwrap_or(0.0));
+            let h = d.cells.iter().find(|c| c.0 == x && c.1 == y).map_or(0.0, |c| c.2);
+            vec![format!("cell {} E, {} N", n(x), n(y)), format!("highest point {h:.1} m")]
+        }
+        _ => vec![key.to_string()],
+    }
+}
+
+/// A tooltip box beside the pointer, kept inside the chart area.
+fn tooltip(lines: &[String], at: [f32; 2], marks: &mut Vec<SceneMark>) {
+    let th = &ui().th;
+    let w = lines.iter().map(|l| ui().width(&l.chars().collect::<Vec<_>>(), 12.0, false)).fold(0.0f32, f32::max) + 20.0;
+    let h = 10.0 + 17.0 * lines.len() as f32;
+    let x = if at[0] + 16.0 + w > JX - 24.0 { at[0] - 16.0 - w } else { at[0] + 16.0 };
+    let y = (at[1] + 12.0).min(H - h - 8.0);
+    marks.push(draw::rect(x, y, w, h, th.background, Some(th.line), ui().radius(4.0)));
+    for (i, l) in lines.iter().enumerate() {
+        marks.push(t(l, x + 10.0, y + 6.0 + 17.0 * i as f32, 12.0, if i == 0 { ink() } else { muted() }, i == 0));
+    }
+}
+
 /// A window position over the plot, in its unit square (0,0 bottom left).
 fn plot_unit(p: [f32; 2]) -> Option<[f64; 2]> {
     let (x, y) = ((p[0] - draw::ORIGIN[0]) as f64 / draw::P, (p[1] - draw::ORIGIN[1]) as f64 / draw::P);
@@ -1998,6 +2254,21 @@ fn build(s: &mut App) -> SceneBuild {
         table_view(t, &mut marks);
     }
     busy_banner(s, now, &mut marks);
+    if let Some((a, b)) = s.brush {
+        let ac = accent();
+        if s.press_series == Some(true) && s.series_chart() {
+            // A line brush: the segment itself.
+            marks.push(draw::rule(a[0], a[1], b[0], b[1], ac));
+            marks.push(draw::rect(b[0] - 3.0, b[1] - 3.0, 6.0, 6.0, ac, None, 0.0));
+        } else {
+            let (x, y, w, h) = (a[0].min(b[0]), a[1].min(b[1]), (a[0] - b[0]).abs(), (a[1] - b[1]).abs());
+            let fill = if s.press_series == Some(false) { 0.04 } else { 0.1 };
+            marks.push(draw::rect(x, y, w, h, [ac[0], ac[1], ac[2], fill], Some(ac), 0.0));
+        }
+    }
+    if let Some((key, at)) = &s.hover {
+        tooltip(&tooltip_lines(key, &s.data), *at, &mut marks);
+    }
     if s.nerds {
         nerds(s, now, &mut marks);
     }
@@ -2009,7 +2280,7 @@ fn build(s: &mut App) -> SceneBuild {
     let mut commands = vec![];
     let deadline = match s.typed_at {
         Some(at) if s.input.string().trim() != s.asked => (at + DEBOUNCE).min(now + FRAME * 30),
-        _ if s.animating(now) || s.in_flight > 0 || s.applying || s.copied_at.is_some_and(|t| (now - t).as_secs_f64() < 1.6) => now + FRAME,
+        _ if s.animating(now) || s.in_flight > 0 || s.applying || s.wheel_at.is_some() || s.copied_at.is_some_and(|t| (now - t).as_secs_f64() < 1.6) => now + FRAME,
         _ => now + Duration::from_millis(500),
     };
     s.wake_generation += 1;
@@ -2075,6 +2346,7 @@ impl EventStreamHandler<App> for Input {
                 s.collect(now).await;
                 s.collect_written(now).await;
                 s.collect_edit(now).await;
+                s.commit_wheel(now).await;
                 rerender
             }
             Event::KeyPress(e) => {
@@ -2135,6 +2407,14 @@ impl EventStreamHandler<App> for Input {
                 if let (Some(_), Some(u), None) = (s.state.view.focus(), plot_unit(p), &s.table) {
                     s.move_focus(u);
                     s.commit_view(now).await;
+                    return rerender;
+                }
+                // A press on the chart becomes a click when released in place.
+                if s.table.is_none() && p[0] < JX - 20.0 {
+                    s.press = Some((p, e.modifiers.shift));
+                    s.press_alt = e.modifiers.alt;
+                    s.press_series = if e.modifiers.meta { Some(true) } else if e.modifiers.control { Some(false) } else { None };
+                    s.focused = false;
                     return rerender;
                 }
                 if inside(p, NERDS_BUTTON) {
@@ -2203,18 +2483,75 @@ impl EventStreamHandler<App> for Input {
                     s.last_key = clock();
                     rerender
                 }
+                // A press that moves is a pan (⌥, continuous axes) or a brush.
+                None if s.press.is_some() => {
+                    let (at, _) = s.press.unwrap();
+                    if (e.position[0] - at[0]).hypot(e.position[1] - at[1]) < 4.0 && s.brush.is_none() && s.live_base.is_none() {
+                        return UpdateStatus::default();
+                    }
+                    if s.press_alt && s.continuous() {
+                        if s.live_base.is_none() {
+                            s.live_base = Some(s.state.clone());
+                        }
+                        let base = s.live_base.clone().unwrap();
+                        s.pan_from(&base, [e.position[0] - at[0], e.position[1] - at[1]]);
+                    } else {
+                        s.brush = Some((at, e.position));
+                    }
+                    s.hover = None;
+                    rerender
+                }
                 // A lens follows the cursor over the plot.
                 None => match (s.state.view.focus(), plot_unit(e.position)) {
                     (Some(_), Some(u)) if s.table.is_none() => {
                         s.move_focus(u);
                         rerender
                     }
-                    _ => UpdateStatus::default(),
+                    _ => {
+                        // Otherwise the pointer shows what it is over.
+                        let local = [(e.position[0] - draw::ORIGIN[0]) as f64, (e.position[1] - draw::ORIGIN[1]) as f64];
+                        let key = if s.table.is_none() && s.press.is_none() && !s.animating(now) { draw::hit(&still(&s.to), local) } else { None };
+                        let changed = key.as_deref() != s.hover.as_ref().map(|h| h.0.as_str());
+                        let moved = s.hover.as_ref().is_some_and(|h| h.1 != e.position);
+                        s.hover = key.map(|k| (k, e.position));
+                        if changed || moved { rerender } else { UpdateStatus::default() }
+                    }
                 },
             },
-            Event::MouseUp(_) => {
+            Event::MouseUp(e) => {
                 s.dragging = None;
+                if let Some((at, shift)) = s.press.take() {
+                    if let Some(base) = s.live_base.take() {
+                        // A pan ends: one `zoom` line for the whole drag.
+                        let n = s.state.clone();
+                        s.state = base;
+                        s.apply_direct(n, "drag to pan", now).await;
+                    } else if let Some((a, b)) = s.brush.take() {
+                        match s.press_series.take() {
+                            Some(line) if s.series_chart() => s.series_select(a, b, line, now).await,
+                            _ => s.brush_select(a, b, shift, now).await,
+                        }
+                    } else if (e.position[0] - at[0]).hypot(e.position[1] - at[1]) < 4.0 {
+                        s.click_chart(at, shift, now).await;
+                    }
+                    return rerender;
+                }
                 UpdateStatus::default()
+            }
+            // The wheel zooms continuous axes about the pointer, live; the
+            // zoom goes into the pipeline once the wheel has rested.
+            Event::MouseWheel(e) if plot_unit(e.position).is_some() && s.continuous() => {
+                let dy = match e.delta {
+                    avenger_eventstream::window::MouseScrollDelta::LineDelta(_, y) => y as f64,
+                    avenger_eventstream::window::MouseScrollDelta::PixelDelta(_, y) => y / 40.0,
+                };
+                if s.live_base.is_none() {
+                    s.live_base = Some(s.state.clone());
+                }
+                s.wheel_at = Some(now);
+                let u = plot_unit(e.position).unwrap();
+                s.zoom_about(u, 0.9f64.powf(dy));
+                rerender
             }
             _ => UpdateStatus::default(),
         }
@@ -2525,6 +2862,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         wake_generation: 0,
         last_click: None,
         dragging: None,
+        press: None,
+        hover: None,
+        press_alt: false,
+        press_series: None,
+        brush: None,
+        live_base: None,
+        wheel_at: None,
         busy: String::new(),
         writing_since: clock(),
         overview: Arc::new(Mutex::new(None)),
@@ -2585,6 +2929,57 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             for (i, text) in steps.iter().enumerate() {
+                // `!click x,y`, `!shiftclick x,y`, `!hover x,y`: the pointer, in window pixels.
+                if let Some(rest) = text.strip_prefix('!') {
+                    let (verb, at) = rest.split_once(' ').unwrap_or((rest, "0,0"));
+                    let (x, y) = at.split_once(',').unwrap_or(("0", "0"));
+                    let p = [x.trim().parse::<f32>().unwrap_or(0.0), y.trim().parse::<f32>().unwrap_or(0.0)];
+                    match verb {
+                        "click" => app.click_chart(p, false, clock()).await,
+                        "shiftclick" => app.click_chart(p, true, clock()).await,
+                        // `!brush x,y x2,y2`, `!pan dx,dy` (from the plot's centre), `!wheel x,y notches`
+                        "brush" => {
+                            let parts: Vec<f32> = at.split(|c: char| c == ',' || c == ' ').filter_map(|v| v.trim().parse().ok()).collect();
+                            if parts.len() == 4 {
+                                app.brush_select([parts[0], parts[1]], [parts[2], parts[3]], false, clock()).await;
+                            }
+                        }
+                        "segment" | "timebox" => {
+                            let parts: Vec<f32> = at.split(|c: char| c == ',' || c == ' ').filter_map(|v| v.trim().parse().ok()).collect();
+                            if parts.len() == 4 {
+                                app.series_select([parts[0], parts[1]], [parts[2], parts[3]], verb == "segment", clock()).await;
+                            }
+                        }
+                        "pan" => {
+                            let base = app.state.clone();
+                            app.pan_from(&base, p);
+                            let n = app.state.clone();
+                            app.state = base;
+                            app.apply_direct(n, "drag to pan", clock()).await;
+                        }
+                        "wheel" => {
+                            let parts: Vec<f32> = at.split(|c: char| c == ',' || c == ' ').filter_map(|v| v.trim().parse().ok()).collect();
+                            if parts.len() == 3 {
+                                let base = app.state.clone();
+                                app.zoom_about(plot_unit([parts[0], parts[1]]).unwrap_or([0.5, 0.5]), 0.9f64.powf(parts[2] as f64));
+                                let n = app.state.clone();
+                                app.state = base;
+                                app.apply_direct(n, "wheel to zoom", clock()).await;
+                            }
+                        }
+                        "hover" => {
+                            let local = [(p[0] - draw::ORIGIN[0]) as f64, (p[1] - draw::ORIGIN[1]) as f64];
+                            app.hover = draw::hit(&still(&app.to), local).map(|k| (k, p));
+                        }
+                        _ => {}
+                    }
+                    app.started = None;
+                    app.nerds = false;
+                    canvas.set_scene(&build(&mut app).scene_graph)?;
+                    canvas.render().await?.save(format!("{dir}/{i:02}.png"))?;
+                    println!("{text:<45} selection {:?} · hover {:?} · {}", app.state.selection, app.hover.as_ref().map(|h| &h.0), app.message);
+                    continue;
+                }
                 if let Some(path) = text.strip_prefix('@') {
                     app.open_editor();
                     app.code.set(std::fs::read_to_string(path)?.trim_end());
@@ -2647,7 +3042,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(Builder),
         vec![(
             EventStreamConfig {
-                types: vec![Type::KeyPress, Type::TextInput, Type::Ime, Type::Clipboard, Type::MouseDown, Type::MouseUp, Type::CursorMoved, Type::RuntimeWake],
+                types: vec![Type::KeyPress, Type::TextInput, Type::Ime, Type::Clipboard, Type::MouseDown, Type::MouseUp, Type::CursorMoved, Type::MouseWheel, Type::RuntimeWake],
                 ..Default::default()
             },
             Arc::new(Input) as Arc<dyn EventStreamHandler<App>>,

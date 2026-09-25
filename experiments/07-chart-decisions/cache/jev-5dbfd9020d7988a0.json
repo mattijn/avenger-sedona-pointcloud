@@ -1,0 +1,127 @@
+{
+  "answers": {
+    "action": "no_change",
+    "colour": "keep",
+    "mark": "keep",
+    "region": "all",
+    "render": "overview",
+    "specifics": "none",
+    "subset": "keep",
+    "view": "keep"
+  },
+  "confidence": 0.77,
+  "cost": 0.000070182,
+  "input_tokens": 1671,
+  "ms": 279.23058299999997,
+  "raw": {
+    "answers": {
+      "action": {
+        "choice": "no_change",
+        "confidence": 0.77,
+        "probabilities": {
+          "color": 0.01,
+          "highlight": 0.01,
+          "mark": 0.15,
+          "no_change": 0.8,
+          "reset": 0,
+          "select": 0,
+          "title": 0.01,
+          "transform": 0.01,
+          "undo": 0,
+          "view": 0,
+          "zoom": 0.01
+        },
+        "type": "choice"
+      },
+      "colour": {
+        "choice": "keep",
+        "confidence": 0.99,
+        "probabilities": {
+          "blue": 0,
+          "green": 0,
+          "grey": 0,
+          "keep": 1,
+          "orange": 0,
+          "red": 0
+        },
+        "type": "choice"
+      },
+      "mark": {
+        "choice": "keep",
+        "confidence": 0.67,
+        "probabilities": {
+          "bars": 0.08,
+          "heatmap": 0.04,
+          "keep": 0.73,
+          "line": 0.01,
+          "map": 0.01,
+          "pie": 0.13
+        },
+        "type": "choice"
+      },
+      "region": {
+        "choice": "all",
+        "confidence": 0.53,
+        "probabilities": {
+          "all": 0.61,
+          "keep": 0.39,
+          "north_east": 0,
+          "north_west": 0,
+          "south_east": 0,
+          "south_west": 0
+        },
+        "type": "choice"
+      },
+      "render": {
+        "choice": "overview",
+        "confidence": 0.59,
+        "probabilities": {
+          "chart": 0.3,
+          "export": 0,
+          "overview": 0.69,
+          "table": 0.01
+        },
+        "type": "choice"
+      },
+      "specifics": {
+        "choice": "none",
+        "confidence": 0.89,
+        "probabilities": {
+          "none": 0.95,
+          "text": 0.05
+        },
+        "type": "choice"
+      },
+      "subset": {
+        "choice": "keep",
+        "confidence": 0.62,
+        "probabilities": {
+          "keep": 0.75,
+          "none": 0.1,
+          "top_10": 0.15
+        },
+        "type": "choice"
+      },
+      "view": {
+        "choice": "keep",
+        "confidence": 0.9,
+        "probabilities": {
+          "fisheye": 0,
+          "flat": 0.07,
+          "keep": 0.92,
+          "magnifier": 0,
+          "tilt": 0.01
+        },
+        "type": "choice"
+      }
+    },
+    "id": "gen-dec-1790367737-Sxypq9nc4fqV1tNFl6fe",
+    "model": "typesafe/jev-1.13-20260917",
+    "provider": "TypeSafe",
+    "usage": {
+      "cost": 0.000070182,
+      "input_tokens": 1671,
+      "output_tokens": 436
+    }
+  }
+}
