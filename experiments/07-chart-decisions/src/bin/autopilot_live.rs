@@ -315,6 +315,8 @@ struct App {
     wake_generation: u64,
     /// The last click in a text field, and how many came in a row.
     last_click: Option<(Instant, [f32; 2])>,
+    /// A drag that selects text: in the editor (true) or the autopilot box.
+    dragging: Option<bool>,
     clicks: u32,
     // Editor mode.
     editing: bool,
@@ -1976,7 +1978,8 @@ impl EventStreamHandler<App> for Input {
                     match s.multi_click(p) {
                         2 => s.code.select_word(),
                         n if n >= 3 => s.code.select_line(),
-                        _ => {}
+                        // A single click starts a drag that selects.
+                        _ => s.dragging = Some(true),
                     }
                 } else if !s.editing && inside(p, INPUT_BOX) {
                     s.focused = true;
@@ -1985,13 +1988,32 @@ impl EventStreamHandler<App> for Input {
                     match s.multi_click(p) {
                         2 => s.input.select_word(),
                         n if n >= 3 => s.input.select_line(),
-                        _ => {}
+                        _ => s.dragging = Some(false),
                     }
                 } else {
                     // A click anywhere else takes the focus away.
                     s.focused = false;
                 }
                 rerender
+            }
+            // Dragging with the button down extends the selection from
+            // where it was pressed; letting go ends it.
+            Event::CursorMoved(e) => match s.dragging {
+                Some(true) => {
+                    s.click_editor(e.position, true);
+                    s.last_key = clock();
+                    rerender
+                }
+                Some(false) => {
+                    s.click_input(e.position, true);
+                    s.last_key = clock();
+                    rerender
+                }
+                None => UpdateStatus::default(),
+            },
+            Event::MouseUp(_) => {
+                s.dragging = None;
+                UpdateStatus::default()
             }
             _ => UpdateStatus::default(),
         }
@@ -2239,6 +2261,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         items: 0,
         wake_generation: 0,
         last_click: None,
+        dragging: None,
         clicks: 0,
         editing: false,
         code: Field::default(),
@@ -2332,7 +2355,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(Builder),
         vec![(
             EventStreamConfig {
-                types: vec![Type::KeyPress, Type::TextInput, Type::Ime, Type::Clipboard, Type::MouseDown, Type::RuntimeWake],
+                types: vec![Type::KeyPress, Type::TextInput, Type::Ime, Type::Clipboard, Type::MouseDown, Type::MouseUp, Type::CursorMoved, Type::RuntimeWake],
                 ..Default::default()
             },
             Arc::new(Input) as Arc<dyn EventStreamHandler<App>>,
@@ -2375,6 +2398,20 @@ mod tests {
     }
     fn typed(f: &mut Field, s: &str) {
         edit(f, &Key::Character(s.chars().next().unwrap()), Some(s), NO);
+    }
+
+    #[test]
+    fn a_drag_selects_from_where_it_was_pressed() {
+        // Press at 2, drag to 7, then back to 4: the selection is 2..4.
+        let mut f = field("filter ground");
+        f.move_to(2, false);
+        f.move_to(7, true);
+        assert_eq!(f.selection(), Some((2, 7)));
+        f.move_to(4, true);
+        assert_eq!(f.selection(), Some((2, 4)));
+        // Dragging back past the press point selects the other way.
+        f.move_to(0, true);
+        assert_eq!(f.selection(), Some((0, 2)));
     }
 
     #[test]

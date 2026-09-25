@@ -582,7 +582,8 @@ should:
   caret, and typing into an unfocused window focuses the field;
 - ← → (⌥ by word, ⌘ to the line's ends), and ↑ ↓ in the editor;
 - ⇧ with any of those selects, ⌘A selects all, a double click selects a word,
-  and a triple click a line;
+  and a triple click a line; dragging with the button down selects from where
+  it was pressed;
 - typing replaces the selection; Backspace and Delete remove it (⌥ a word,
   ⌘ to the line start);
 - ⌘X, ⌘C and ⌘V go through the system clipboard;
