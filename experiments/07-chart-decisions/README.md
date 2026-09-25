@@ -556,6 +556,37 @@ colour but not unset it. A reset to the default colour now restarts the mark.
 
 ![Stats for nerds over the map](images/autopilot_nerds.png)
 
+Both text fields (the autopilot box and the editor) edit as a text field
+should:
+- click to focus; the focused field has an accent border and a blinking
+  caret, and typing into an unfocused window focuses the field;
+- ← → (⌥ by word, ⌘ to the line's ends), and ↑ ↓ in the editor;
+- ⇧ with any of those selects, ⌘A selects all, a double click selects a word,
+  and a triple click a line;
+- typing replaces the selection; Backspace and Delete remove it (⌥ a word,
+  ⌘ to the line start);
+- ⌘X, ⌘C and ⌘V go through the system clipboard;
+- in the autopilot box, Enter asks and clears the box for the next
+  instruction.
+
+The editing is unit-tested (`cargo test -p lidar-decide --bin autopilot_live`).
+macOS can deliver Backspace as the DEL control character; that counts as
+Backspace. Text is measured per character, so caret, selection and wrapping
+work in a proportional typeface.
+
+The window uses `Theme::calm()` ([`theme.rs`](src/layer/theme.rs)):
+- one accent colour, square corners, and no fills or shadows; lines set
+  things apart;
+- one typeface throughout, pipeline text included;
+- status in grey italic text;
+- a grey kicker above the chart title.
+
+`--neutral` gives the look of the recordings. The recordings themselves are
+unchanged, byte for byte.
+
+`AUTOPILOT_DEBUG=1` logs every input event to
+`out/autopilot_live/events.log`.
+
 `autopilot_live --snapshot <dir> "instruction" …` runs the same path (Enter,
 gates, pipeline, fold) without a display, and writes each state as PNG with
 and without the overlay.

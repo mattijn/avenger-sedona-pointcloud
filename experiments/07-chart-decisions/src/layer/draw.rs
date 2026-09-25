@@ -25,6 +25,29 @@ pub const ORIGIN: [f32; 2] = [100.0, 90.0];
 pub const SIZE: [f32; 2] = [940.0, 640.0];
 const GRID: [f32; 4] = [0.86, 0.88, 0.91, 1.0];
 
+/// How the chart's guides and titles look. The default is the look of the
+/// recordings; the live window may set another once, at startup.
+#[derive(Clone, Debug)]
+pub struct Style {
+    pub font: String,
+    pub ink: [f32; 4],
+    pub muted: [f32; 4],
+    pub grid: [f32; 4],
+    pub title: [f32; 4],
+    /// A grey line above the title, naming the subject.
+    pub kicker: Option<(String, [f32; 4])>,
+}
+
+static STYLE: std::sync::OnceLock<Style> = std::sync::OnceLock::new();
+
+pub fn set_style(s: Style) {
+    let _ = STYLE.set(s);
+}
+
+fn style() -> &'static Style {
+    STYLE.get_or_init(|| Style { font: "sans-serif".into(), ink: INK, muted: MUTED, grid: GRID, title: INK, kicker: None })
+}
+
 pub fn c(rgba: [f32; 4]) -> ColorOrGradient {
     ColorOrGradient::Color(rgba)
 }
@@ -86,6 +109,7 @@ pub fn text(s: &str, x: f32, y: f32, size: f32, color: [f32; 4], align: TextAlig
         text: s.to_string().into(),
         x: x.into(),
         y: y.into(),
+        font: style().font.clone().into(),
         font_size: size.into(),
         color: c(color).into(),
         align: align.into(),
@@ -156,7 +180,8 @@ fn axis_marks(ax: &DAxis, horizontal: bool, marks: &mut Vec<SceneMark>) {
     if a < 0.01 {
         return;
     }
-    let (ink, muted, grid) = (fade(INK, a), fade(MUTED, a), fade(GRID, a));
+    let st = style();
+    let (ink, muted, grid) = (fade(st.ink, a), fade(st.muted, a), fade(st.grid, a));
     match &ax.axis {
         Axis::None => {}
         Axis::Linear { field, lo, hi } => {
@@ -296,7 +321,10 @@ pub fn chart_marks(d: &Drawn, origin: [f32; 2]) -> Vec<SceneMark> {
     // Title, legend, colour bar.
     for (t, a) in &d.titles {
         if *a > 0.01 {
-            marks.push(text(t, 0.0, -30.0, 17.0, fade(INK, *a), TextAlign::Left, TextBaseline::Alphabetic, true, 0.0));
+            marks.push(text(t, 0.0, -30.0, 17.0, fade(style().title, *a), TextAlign::Left, TextBaseline::Alphabetic, true, 0.0));
+            if let Some((k, c)) = &style().kicker {
+                marks.push(text(k, 0.0, -52.0, 17.0, fade(*c, *a), TextAlign::Left, TextBaseline::Alphabetic, true, 0.0));
+            }
         }
     }
     let lx = P as f32 + 36.0;
@@ -319,7 +347,7 @@ pub fn chart_marks(d: &Drawn, origin: [f32; 2]) -> Vec<SceneMark> {
                 }
                 .into(),
             );
-            marks.push(text(label, lx + 18.0, y + 6.0, 12.0, fade(INK, *a), TextAlign::Left, TextBaseline::Middle, false, 0.0));
+            marks.push(text(label, lx + 18.0, y + 6.0, 12.0, fade(style().ink, *a), TextAlign::Left, TextBaseline::Middle, false, 0.0));
         }
     }
     for ((_, vmax), a) in &d.colorbars {
@@ -351,10 +379,10 @@ pub fn chart_marks(d: &Drawn, origin: [f32; 2]) -> Vec<SceneMark> {
         while v <= *vmax {
             let t = (v.ln_1p() / vmax.ln_1p()) as f32;
             let label = if v >= 1e6 { format!("{:.0}M", v / 1e6) } else if v >= 1e3 { format!("{:.0}k", v / 1e3) } else { format!("{v:.0}") };
-            marks.push(text(&label, lx + 22.0, h * (1.0 - t), 11.0, fade(MUTED, *a), TextAlign::Left, TextBaseline::Middle, false, 0.0));
+            marks.push(text(&label, lx + 22.0, h * (1.0 - t), 11.0, fade(style().muted, *a), TextAlign::Left, TextBaseline::Middle, false, 0.0));
             v *= 100.0;
         }
-        marks.push(text("points (log scale)", lx, h + 20.0, 11.0, fade(INK, *a), TextAlign::Left, TextBaseline::Top, false, 0.0));
+        marks.push(text("points (log scale)", lx, h + 20.0, 11.0, fade(style().ink, *a), TextAlign::Left, TextBaseline::Top, false, 0.0));
     }
     vec![SceneMark::Group(SceneGroup { origin, marks, ..Default::default() })]
 }

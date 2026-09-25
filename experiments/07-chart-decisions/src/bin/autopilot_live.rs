@@ -29,17 +29,18 @@ use avenger_eventstream::manager::EventStreamHandler;
 use avenger_eventstream::runtime::{RuntimeHostCommand, RuntimeWakeKey};
 use avenger_eventstream::scene::{SceneGraphEvent as Event, SceneGraphEventType as Type};
 use avenger_eventstream::stream::{EventStreamConfig, UpdateStatus};
-use avenger_eventstream::window::{Key, MouseButton, NamedKey};
+use avenger_eventstream::window::{ClipboardEvent, Key, MouseButton, NamedKey};
 use avenger_geometry::rtree::SceneGraphRTree;
 use avenger_scenegraph::marks::mark::SceneMark;
 use avenger_scenegraph::marks::text::SceneTextMark;
 use avenger_scenegraph::scene_graph::SceneGraph;
-use avenger_text::types::{TextAlign, TextBaseline};
+use avenger_text::measurement::TextMeasurementConfig;
+use avenger_text::types::{FontStyle, FontWeight, FontWeightNameSpec, TextAlign, TextBaseline, TextSyntaxMode};
 use avenger_wgpu::canvas::CanvasConfig;
-use lidar_common::{INK, MUTED};
 use lidar_decide::deciders::{Decider, Decision, Jev};
 use lidar_decide::layer::anim::{still, transition};
 use lidar_decide::layer::model::{resolve, Data, Dataset, Frame, State};
+use lidar_decide::layer::theme::Theme;
 use lidar_decide::layer::{data, draw, editor, package, pilot};
 use lidar_decide::layer_pipeline;
 use lidar_decide::options::NotApplied;
@@ -56,20 +57,117 @@ const FRAME: Duration = Duration::from_millis(16);
 const DEBOUNCE: Duration = Duration::from_millis(400);
 const GATE: f64 = 0.5;
 const GATE_MARK_EARLY: f64 = 0.9;
-const GREEN: [f32; 4] = [0.23, 0.55, 0.30, 1.0];
-const AMBER: [f32; 4] = [0.80, 0.50, 0.10, 1.0];
-const RED: [f32; 4] = [0.70, 0.10, 0.08, 1.0];
-const BAR: [f32; 4] = [0.30, 0.47, 0.66, 1.0];
-const LIGHT: [f32; 4] = [0.93, 0.94, 0.96, 1.0];
 /// The buttons in the panel header.
 const NERDS_BUTTON: [f32; 4] = [PX + 300.0, 24.0, 110.0, 26.0];
 const AUTOPILOT_BUTTON: [f32; 4] = [PX, 24.0, 84.0, 26.0];
 const EDITOR_BUTTON: [f32; 4] = [PX + 84.0, 24.0, 64.0, 26.0];
 /// The editor's text area, and its monospace grid.
 const EDIT_AREA: [f32; 4] = [PX, 96.0, 410.0, 392.0];
-const COLS: usize = 60;
-const CW: f32 = 6.62;
-const LH: f32 = 14.0;
+/// Pipeline text size and row height in the editor.
+const CODE: f32 = 12.0;
+/// The autopilot box, and its monospace grid.
+const INPUT_BOX: [f32; 4] = [PX, 102.0, 410.0, 36.0];
+const INPUT: f32 = 14.0;
+const LH: f32 = 16.0;
+/// Two clicks within this time, and this close, are a double click.
+const MULTI_CLICK: f64 = 0.4;
+
+/// The theme, its typefaces, and text widths, set once at startup.
+struct Ui {
+    th: Theme,
+    font: String,
+    code: String,
+    engine: avenger_text::TextEngine,
+    widths: Mutex<std::collections::HashMap<(char, u32, bool), f32>>,
+}
+
+static UI: std::sync::OnceLock<Ui> = std::sync::OnceLock::new();
+
+fn ui() -> &'static Ui {
+    UI.get().expect("the theme is set at startup")
+}
+
+fn measure(engine: &avenger_text::TextEngine, s: &str, font: &str, size: f32) -> Option<f32> {
+    let params = avenger_text::LabelParams::default();
+    engine
+        .measure_bounds(&TextMeasurementConfig {
+            text: s,
+            font,
+            font_size: size,
+            font_weight: FontWeight::Name(FontWeightNameSpec::Normal),
+            font_style: FontStyle::Normal,
+            syntax_mode: TextSyntaxMode::Plain,
+            params: &params,
+            number_locale: None,
+            number_locale_specs: None,
+            datetime_locale: None,
+            datetime_timezone: None,
+            datetime_locale_specs: None,
+        })
+        .ok()
+        .map(|b| b.width)
+}
+
+impl Ui {
+    fn new(th: Theme) -> Self {
+        let engine = avenger_text::default_text_engine();
+        // A family that is not installed cannot be measured.
+        let font = th
+            .fonts
+            .iter()
+            .find(|f| measure(&engine, "Hamburgefonstiv", f, 20.0).is_some())
+            .unwrap_or(&"sans-serif")
+            .to_string();
+        let code = th.code_font.map_or(font.clone(), String::from);
+        Ui { th, font, code, engine, widths: Mutex::new(Default::default()) }
+    }
+
+    /// The advance of one character, measured once.
+    fn cw(&self, c: char, size: f32, code: bool) -> f32 {
+        let key = (c, (size * 10.0) as u32, code);
+        if let Some(w) = self.widths.lock().unwrap().get(&key) {
+            return *w;
+        }
+        let f = if code { &self.code } else { &self.font };
+        let w = match (measure(&self.engine, &format!("|{c}|"), f, size), measure(&self.engine, "||", f, size)) {
+            (Some(a), Some(b)) => (a - b).max(0.0),
+            _ => size * 0.55,
+        };
+        self.widths.lock().unwrap().insert(key, w);
+        w
+    }
+
+    fn width(&self, s: &[char], size: f32, code: bool) -> f32 {
+        s.iter().map(|c| self.cw(*c, size, code)).sum()
+    }
+
+    /// The character boundary nearest to `x` from the start of `s`.
+    fn index_at(&self, s: &[char], x: f32, size: f32, code: bool) -> usize {
+        let mut acc = 0.0;
+        for (i, c) in s.iter().enumerate() {
+            let w = self.cw(*c, size, code);
+            if x < acc + w / 2.0 {
+                return i;
+            }
+            acc += w;
+        }
+        s.len()
+    }
+
+    fn radius(&self, r: f32) -> f32 {
+        if self.th.radius == 0.0 { 0.0 } else { r }
+    }
+}
+
+fn ink() -> [f32; 4] {
+    ui().th.text
+}
+fn muted() -> [f32; 4] {
+    ui().th.muted
+}
+fn accent() -> [f32; 4] {
+    ui().th.accent
+}
 
 fn inside(p: [f32; 2], r: [f32; 4]) -> bool {
     p[0] >= r[0] && p[0] <= r[0] + r[2] && p[1] >= r[1] && p[1] <= r[1] + r[3]
@@ -116,7 +214,11 @@ struct App {
     started: Option<Instant>,
     dur: f64,
     // Input.
-    input: String,
+    input: Field,
+    /// Whether the text field (the autopilot box, or the editor) has
+    /// keyboard focus: a blue border and a blinking caret.
+    focused: bool,
+    last_key: std::time::Instant,
     typed_at: Option<Instant>,
     asked: String,
     // Decisions.
@@ -139,35 +241,259 @@ struct App {
     last_frame: Option<Instant>,
     items: usize,
     wake_generation: u64,
-    started_at: std::time::Instant,
+    /// The last click in a text field, and how many came in a row.
+    last_click: Option<(std::time::Instant, [f32; 2])>,
+    clicks: u32,
     // Editor mode.
     editing: bool,
-    text: Vec<char>,
-    caret: usize,
+    code: Field,
     scroll: usize,
     edit_status: (String, [f32; 4]),
     applying: bool,
     edited: Arc<Mutex<Option<Result<editor::Applied, String>>>>,
 }
 
+/// What a key did to a text field.
+#[derive(PartialEq)]
+enum Edit {
+    Changed,
+    Moved,
+    Unhandled,
+}
+
+/// A text field: its characters, the caret, and where a selection
+/// started (the selection runs from there to the caret).
+#[derive(Clone, Default)]
+struct Field {
+    text: Vec<char>,
+    caret: usize,
+    anchor: Option<usize>,
+}
+
+impl Field {
+    fn selection(&self) -> Option<(usize, usize)> {
+        let a = self.anchor?;
+        (a != self.caret).then(|| (a.min(self.caret), a.max(self.caret)))
+    }
+
+    /// Move the caret; with Shift the selection grows, without it collapses.
+    fn move_to(&mut self, to: usize, shift: bool) {
+        if shift {
+            self.anchor.get_or_insert(self.caret);
+        } else {
+            self.anchor = None;
+        }
+        self.caret = to.min(self.text.len());
+    }
+
+    fn delete_selection(&mut self) -> bool {
+        match self.selection() {
+            Some((a, b)) => {
+                self.text.drain(a..b);
+                self.caret = a;
+                self.anchor = None;
+                true
+            }
+            None => {
+                self.anchor = None;
+                false
+            }
+        }
+    }
+
+    fn insert(&mut self, s: &str) {
+        self.delete_selection();
+        for c in s.chars() {
+            self.text.insert(self.caret, c);
+            self.caret += 1;
+        }
+    }
+
+    fn set(&mut self, s: &str) {
+        self.text = s.chars().collect();
+        self.caret = self.text.len();
+        self.anchor = None;
+    }
+
+    fn string(&self) -> String {
+        self.text.iter().collect()
+    }
+
+    /// Select the word (or run of spaces, or of punctuation) at the caret.
+    fn select_word(&mut self) {
+        let t = &self.text;
+        let class = |c: char| if c.is_alphanumeric() || c == '_' { 0 } else if c == ' ' { 1 } else { 2 };
+        let at = if self.caret < t.len() && t[self.caret] != '\n' {
+            self.caret
+        } else if self.caret > 0 {
+            self.caret - 1
+        } else {
+            return;
+        };
+        if t.get(at) == Some(&'\n') {
+            return;
+        }
+        let k = class(t[at]);
+        let (mut a, mut b) = (at, at + 1);
+        while a > 0 && t[a - 1] != '\n' && class(t[a - 1]) == k {
+            a -= 1;
+        }
+        while b < t.len() && t[b] != '\n' && class(t[b]) == k {
+            b += 1;
+        }
+        self.anchor = Some(a);
+        self.caret = b;
+    }
+
+    /// Select the line at the caret.
+    fn select_line(&mut self) {
+        let a = self.text[..self.caret].iter().rposition(|c| *c == '\n').map_or(0, |i| i + 1);
+        let b = self.text[self.caret..].iter().position(|c| *c == '\n').map_or(self.text.len(), |i| self.caret + i);
+        self.anchor = Some(a);
+        self.caret = b;
+    }
+
+    /// The start of the word before the caret, or the end of the one after.
+    fn word(&self, forward: bool) -> usize {
+        let t = &self.text;
+        let mut i = self.caret;
+        if forward {
+            while i < t.len() && !t[i].is_alphanumeric() {
+                i += 1;
+            }
+            while i < t.len() && t[i].is_alphanumeric() {
+                i += 1;
+            }
+        } else {
+            while i > 0 && !t[i - 1].is_alphanumeric() {
+                i -= 1;
+            }
+            while i > 0 && t[i - 1].is_alphanumeric() {
+                i -= 1;
+            }
+        }
+        i
+    }
+}
+
+/// The modifier keys held with a key.
+#[derive(Clone, Copy)]
+struct Mods {
+    cmd: bool,
+    shift: bool,
+    alt: bool,
+}
+
+/// Editing shared by the autopilot box and the editor: typing, Backspace
+/// and Delete (a selection first), ⌘Backspace (to the start of the line),
+/// ⌥Backspace (a word), ⌘A, ← → (⌥ by word, ⌘ to the line's ends), with
+/// Shift to select. What is typed replaces a selection. macOS can send
+/// Backspace as a control character; that counts as Backspace too.
+fn edit(f: &mut Field, key: &Key, t: Option<&str>, m: Mods) -> Edit {
+    let backspace = matches!(key, Key::Named(NamedKey::Backspace) | Key::Character('\u{8}') | Key::Character('\u{7f}'))
+        || matches!(t, Some("\u{8}") | Some("\u{7f}"));
+    let delete = matches!(key, Key::Named(NamedKey::Delete));
+    let line_start = f.text[..f.caret].iter().rposition(|c| *c == '\n').map_or(0, |i| i + 1);
+    let line_end = f.text[f.caret..].iter().position(|c| *c == '\n').map_or(f.text.len(), |i| f.caret + i);
+    if m.cmd && matches!(key, Key::Character('a') | Key::Character('A')) {
+        f.anchor = Some(0);
+        f.caret = f.text.len();
+        return Edit::Moved;
+    }
+    if backspace || delete {
+        if f.delete_selection() {
+            return Edit::Changed;
+        }
+        let (a, b) = match (backspace, m.cmd, m.alt) {
+            (true, true, _) => (line_start, f.caret),
+            (true, _, true) => (f.word(false), f.caret),
+            (true, _, _) => (f.caret.saturating_sub(1), f.caret),
+            (false, _, true) => (f.caret, f.word(true)),
+            (false, _, _) => (f.caret, (f.caret + 1).min(f.text.len())),
+        };
+        if a == b {
+            return Edit::Moved;
+        }
+        f.text.drain(a..b);
+        f.caret = a;
+        return Edit::Changed;
+    }
+    match key {
+        Key::Named(NamedKey::ArrowLeft) => {
+            let to = match (f.selection(), m.shift, m.cmd, m.alt) {
+                (Some((a, _)), false, false, false) => a,
+                (_, _, true, _) => line_start,
+                (_, _, _, true) => f.word(false),
+                _ => f.caret.saturating_sub(1),
+            };
+            f.move_to(to, m.shift);
+            Edit::Moved
+        }
+        Key::Named(NamedKey::ArrowRight) => {
+            let to = match (f.selection(), m.shift, m.cmd, m.alt) {
+                (Some((_, b)), false, false, false) => b,
+                (_, _, true, _) => line_end,
+                (_, _, _, true) => f.word(true),
+                _ => f.caret + 1,
+            };
+            f.move_to(to, m.shift);
+            Edit::Moved
+        }
+        Key::Named(NamedKey::Home) => {
+            f.move_to(line_start, m.shift);
+            Edit::Moved
+        }
+        Key::Named(NamedKey::End) => {
+            f.move_to(line_end, m.shift);
+            Edit::Moved
+        }
+        Key::Named(NamedKey::Space) => {
+            f.insert(" ");
+            Edit::Changed
+        }
+        _ => match t {
+            Some(t) if !m.cmd && !t.is_empty() && !t.chars().any(char::is_control) => {
+                f.insert(t);
+                Edit::Changed
+            }
+            _ => Edit::Unhandled,
+        },
+    }
+}
+
 /// Visual rows of the editor text: (start, length) in chars, wrapped at
-/// `COLS`.
+/// spaces to the width of the text area.
 fn rows(text: &[char]) -> Vec<(usize, usize)> {
+    let max = EDIT_AREA[2] - 16.0;
     let mut out = vec![];
     let mut start = 0;
-    for (i, c) in text.iter().chain(std::iter::once(&'\n')).enumerate() {
-        if *c == '\n' {
-            let mut a = start;
-            loop {
-                let len = (i - a).min(COLS);
-                out.push((a, len));
-                a += len;
-                if a >= i {
+    for (end, c) in text.iter().chain(std::iter::once(&'\n')).enumerate() {
+        if *c != '\n' {
+            continue;
+        }
+        let mut a = start;
+        loop {
+            let (mut w, mut i, mut space) = (0.0, a, None);
+            while i < end {
+                let cw = ui().cw(text[i], CODE, true);
+                if w + cw > max && i > a {
                     break;
                 }
+                w += cw;
+                if text[i] == ' ' {
+                    space = Some(i);
+                }
+                i += 1;
             }
-            start = i + 1;
+            if i >= end {
+                out.push((a, end - a));
+                break;
+            }
+            let b = space.map_or(i, |sp| sp + 1);
+            out.push((a, b - a));
+            a = b;
         }
+        start = end + 1;
     }
     out
 }
@@ -184,6 +510,22 @@ fn caret_at(rows: &[(usize, usize)], caret: usize) -> (usize, usize) {
     (last, rows[last].1)
 }
 
+/// The first character shown in the autopilot box, so the caret is in view.
+fn input_first(f: &Field) -> usize {
+    let max = INPUT_BOX[2] - 24.0;
+    let mut first = f.caret;
+    let mut w = 0.0;
+    while first > 0 {
+        let cw = ui().cw(f.text[first - 1], INPUT, true);
+        if w + cw > max {
+            break;
+        }
+        w += cw;
+        first -= 1;
+    }
+    first
+}
+
 impl App {
     fn animating(&self, now: Instant) -> bool {
         self.started.is_some_and(|s| (now - s).as_secs_f64() < self.dur)
@@ -195,7 +537,7 @@ impl App {
 
     /// Ask Jev about the current input, in the background.
     fn ask(&mut self, complete: bool) {
-        let prefix = self.input.trim().to_string();
+        let prefix = self.input.string().trim().to_string();
         if prefix.is_empty() || (prefix == self.asked && !complete) {
             return;
         }
@@ -247,7 +589,7 @@ impl App {
                 complete: r.complete,
                 wall_ms: r.wall_ms,
                 decision: d,
-                colour: if next.is_some() { GREEN } else if gate.starts_with("waiting") { AMBER } else { MUTED },
+                colour: if next.is_some() { ui().th.ok } else if gate.starts_with("waiting") { accent() } else { muted() },
                 gate,
                 lines: vec![],
                 fold: String::new(),
@@ -272,7 +614,7 @@ impl App {
                 match (failed, package::state(&p.chart, &self.data)) {
                     (Some(e), _) | (None, Err(e)) => {
                         shown.gate = e.clone();
-                        shown.colour = RED;
+                        shown.colour = ui().th.error;
                         shown.fold = e;
                     }
                     (None, Ok(folded)) => {
@@ -289,9 +631,9 @@ impl App {
 
     fn open_editor(&mut self) {
         self.editing = true;
-        self.text = self.pipeline.join("\n! ").chars().collect();
-        self.caret = self.text.len();
-        self.edit_status = (String::new(), MUTED);
+        self.code.set(&self.pipeline.join("\n! "));
+        self.focused = true;
+        self.edit_status = (String::new(), muted());
     }
 
     fn apply_text(&mut self) {
@@ -299,8 +641,8 @@ impl App {
             return;
         }
         self.applying = true;
-        self.edit_status = ("applying…".into(), AMBER);
-        let text: String = self.text.iter().collect();
+        self.edit_status = ("applying…".into(), accent());
+        let text = self.code.string();
         let (base, out) = (self.base.clone(), self.edited.clone());
         self.rt.spawn(async move {
             let r = editor::apply(&text, &base).await;
@@ -313,7 +655,7 @@ impl App {
         self.applying = false;
         match r {
             Ok(a) => {
-                self.edit_status = (format!("applied in {:.0} ms · {}", a.ms, a.note), GREEN);
+                self.edit_status = (format!("applied in {:.0} ms · {}", a.ms, a.note), ui().th.ok);
                 self.data = Arc::new(a.data);
                 self.data_stages = a.data_stages;
                 self.changes.push(("editor".into(), "pipeline".into()));
@@ -325,49 +667,84 @@ impl App {
                 self.transition_to(a.state, now);
                 self.snapshot(&p);
             }
-            Err(e) => self.edit_status = (e, RED),
+            Err(e) => self.edit_status = (e, ui().th.error),
         }
     }
 
-    fn edit_key(&mut self, key: &Key, text: Option<&str>, cmd: bool) -> bool {
-        let r = rows(&self.text);
-        let (row, col) = caret_at(&r, self.caret);
-        match (key, text) {
-            (Key::Named(NamedKey::Enter), _) if cmd => self.apply_text(),
-            (Key::Named(NamedKey::Enter), _) => self.insert("\n"),
-            (Key::Named(NamedKey::Escape), _) => self.open_editor(),
-            (Key::Named(NamedKey::Backspace), _) if self.caret > 0 => {
-                self.caret -= 1;
-                self.text.remove(self.caret);
+    fn edit_key(&mut self, key: &Key, text: Option<&str>, m: Mods) -> bool {
+        let r = rows(&self.code.text);
+        let (row, col) = caret_at(&r, self.code.caret);
+        match key {
+            Key::Named(NamedKey::Enter) if m.cmd => self.apply_text(),
+            Key::Named(NamedKey::Enter) => self.code.insert("\n"),
+            Key::Named(NamedKey::Escape) => self.open_editor(),
+            Key::Named(NamedKey::ArrowUp) => {
+                let to = if row > 0 { r[row - 1].0 + col.min(r[row - 1].1) } else { 0 };
+                self.code.move_to(to, m.shift);
             }
-            (Key::Named(NamedKey::Delete), _) if self.caret < self.text.len() => {
-                self.text.remove(self.caret);
+            Key::Named(NamedKey::ArrowDown) => {
+                let to = if row + 1 < r.len() { r[row + 1].0 + col.min(r[row + 1].1) } else { self.code.text.len() };
+                self.code.move_to(to, m.shift);
             }
-            (Key::Named(NamedKey::ArrowLeft), _) => self.caret = self.caret.saturating_sub(1),
-            (Key::Named(NamedKey::ArrowRight), _) => self.caret = (self.caret + 1).min(self.text.len()),
-            (Key::Named(NamedKey::ArrowUp), _) if row > 0 => self.caret = r[row - 1].0 + col.min(r[row - 1].1),
-            (Key::Named(NamedKey::ArrowDown), _) if row + 1 < r.len() => self.caret = r[row + 1].0 + col.min(r[row + 1].1),
-            (Key::Named(NamedKey::Home), _) => self.caret = r[row].0,
-            (Key::Named(NamedKey::End), _) => self.caret = r[row].0 + r[row].1,
-            (Key::Named(NamedKey::Space), _) => self.insert(" "),
-            (_, Some(t)) if !cmd && !t.chars().any(char::is_control) => self.insert(t),
-            _ => return false,
+            _ => return edit(&mut self.code, key, text, m) != Edit::Unhandled,
         }
         true
     }
 
-    fn insert(&mut self, t: &str) {
-        for c in t.chars() {
-            self.text.insert(self.caret, c);
-            self.caret += 1;
+    /// A key in the autopilot box. Enter asks and clears the box.
+    fn input_key(&mut self, key: &Key, text: Option<&str>, m: Mods, now: Instant) -> bool {
+        match key {
+            Key::Named(NamedKey::Enter) => {
+                self.typed_at = None;
+                self.ask(true);
+                self.input.set("");
+            }
+            Key::Named(NamedKey::Escape) => {
+                self.input.set("");
+                self.typed_at = None;
+            }
+            Key::Named(NamedKey::ArrowUp) => self.input.move_to(0, m.shift),
+            Key::Named(NamedKey::ArrowDown) => {
+                let end = self.input.text.len();
+                self.input.move_to(end, m.shift)
+            }
+            _ => match edit(&mut self.input, key, text, m) {
+                Edit::Changed => {
+                    self.message.clear();
+                    self.typed_at = Some(now);
+                }
+                Edit::Moved => {}
+                Edit::Unhandled => return false,
+            },
         }
+        true
     }
 
-    fn click_editor(&mut self, p: [f32; 2]) {
-        let r = rows(&self.text);
+    fn click_editor(&mut self, p: [f32; 2], shift: bool) {
+        let r = rows(&self.code.text);
         let row = (self.scroll + ((p[1] - EDIT_AREA[1] - 8.0) / LH).max(0.0) as usize).min(r.len() - 1);
-        let col = (((p[0] - EDIT_AREA[0] - 8.0) / CW).round().max(0.0) as usize).min(r[row].1);
-        self.caret = r[row].0 + col;
+        let (a, len) = r[row];
+        let col = ui().index_at(&self.code.text[a..a + len], p[0] - EDIT_AREA[0] - 8.0, CODE, true);
+        // A click after a wrapped row's trailing space lands before it.
+        let col = if col == len && a + len < self.code.text.len() && self.code.text[a + len - 1.min(len)] == ' ' && r.get(row + 1).is_some_and(|n| n.0 == a + len) { len.saturating_sub(1) } else { col };
+        self.code.move_to(a + col, shift);
+    }
+
+    fn click_input(&mut self, p: [f32; 2], shift: bool) {
+        let first = input_first(&self.input);
+        let col = ui().index_at(&self.input.text[first..], p[0] - INPUT_BOX[0] - 12.0, INPUT, true);
+        self.input.move_to(first + col, shift);
+    }
+
+    /// Count clicks in a row; the second selects a word, the third a line.
+    fn multi_click(&mut self, p: [f32; 2]) -> u32 {
+        let now = std::time::Instant::now();
+        self.clicks = match self.last_click {
+            Some((t, q)) if now.duration_since(t).as_secs_f64() < MULTI_CLICK && (p[0] - q[0]).abs() < 5.0 && (p[1] - q[1]).abs() < 5.0 => self.clicks + 1,
+            _ => 1,
+        };
+        self.last_click = Some((now, p));
+        self.clicks
     }
 
     fn transition_to(&mut self, n: State, now: Instant) {
@@ -401,19 +778,69 @@ fn t(s: &str, x: f32, y: f32, size: f32, color: [f32; 4], bold: bool) -> SceneMa
     draw::text(s, x, y, size, color, TextAlign::Left, TextBaseline::Top, bold, 0.0)
 }
 
+/// The caret shows solid while typing, and blinks once typing pauses.
+fn caret_on(s: &App) -> bool {
+    let since = s.last_key.elapsed().as_secs_f64();
+    since < 0.6 || ((since - 0.6) * 1.8).fract() < 0.5
+}
+
+/// Pipeline text: in the code typeface (the text typeface when themed).
 fn mono(s: &str, x: f32, y: f32, color: [f32; 4]) -> SceneMark {
+    mono_sized(s, x, y, 11.0, color)
+}
+
+fn mono_sized(s: &str, x: f32, y: f32, size: f32, color: [f32; 4]) -> SceneMark {
     SceneTextMark {
         len: 1,
         text: s.to_string().into(),
         x: x.into(),
         y: y.into(),
-        font: "monospace".to_string().into(),
-        font_size: 11.0.into(),
+        font: ui().code.clone().into(),
+        font_size: size.into(),
         color: draw::c(color).into(),
         baseline: TextBaseline::Top.into(),
         ..Default::default()
     }
     .into()
+}
+
+/// Status text: grey italic in the calm theme, coloured in the neutral one.
+fn status(s: &str, x: f32, y: f32, size: f32, colour: [f32; 4], bold: bool, code: bool) -> SceneMark {
+    status_on(s, x, y, size, ui().th.muted, colour, bold, code)
+}
+
+/// Status text on a given grey (the dark overlay has its own).
+#[allow(clippy::too_many_arguments)]
+fn status_on(s: &str, x: f32, y: f32, size: f32, grey: [f32; 4], colour: [f32; 4], bold: bool, code: bool) -> SceneMark {
+    let th = &ui().th;
+    SceneTextMark {
+        len: 1,
+        text: s.to_string().into(),
+        x: x.into(),
+        y: y.into(),
+        font: if code { ui().code.clone() } else { ui().font.clone() }.into(),
+        font_size: size.into(),
+        font_style: if th.status_italic { FontStyle::Italic } else { FontStyle::Normal }.into(),
+        font_weight: FontWeight::Name(if bold { FontWeightNameSpec::Bold } else { FontWeightNameSpec::Normal }).into(),
+        color: draw::c(if th.status_italic { grey } else { colour }).into(),
+        baseline: TextBaseline::Top.into(),
+        ..Default::default()
+    }
+    .into()
+}
+
+/// A focused field has the accent border (and a glow, in the neutral look).
+fn field_frame(r: [f32; 4], focused: bool, marks: &mut Vec<SceneMark>) {
+    let [x, y, w, h] = r;
+    let th = &ui().th;
+    if focused && th.focus_glow {
+        marks.push(draw::rect(x - 2.0, y - 2.0, w + 4.0, h + 4.0, [th.accent[0], th.accent[1], th.accent[2], 0.25], None, 8.0));
+    }
+    marks.push(draw::rect(x, y, w, h, th.background, Some(if focused { th.accent } else { th.line }), ui().radius(6.0)));
+    if focused && !th.focus_glow {
+        // A 1.5 px border: a second outline half a pixel in.
+        marks.push(draw::rect(x + 0.5, y + 0.5, w - 1.0, h - 1.0, [0.0; 4], Some(th.accent), 0.0));
+    }
 }
 
 fn fit(s: &str, n: usize) -> String {
@@ -438,66 +865,100 @@ fn wrap(s: &str, n: usize) -> Vec<String> {
     rows
 }
 
-fn tail(s: &str, n: usize) -> String {
-    let c = s.chars().count();
-    if c <= n { s.to_string() } else { format!("…{}", s.chars().skip(c - n + 1).collect::<String>()) }
-}
-
 fn panel(s: &App, marks: &mut Vec<SceneMark>) {
-    marks.push(draw::rect(PX - 20.0, 0.0, W - PX + 20.0, H, [0.975, 0.978, 0.985, 1.0], None, 0.0));
+    let th = &ui().th;
+    match th.panel {
+        Some(fill) => marks.push(draw::rect(PX - 20.0, 0.0, W - PX + 20.0, H, fill, None, 0.0)),
+        None => {
+            marks.push(draw::rect(PX - 20.0, 0.0, W - PX + 20.0, H, th.background, None, 0.0));
+            marks.push(draw::rule(PX - 20.0, 0.0, PX - 20.0, H, th.line));
+        }
+    }
     for (label, r, on) in [
         ("autopilot", AUTOPILOT_BUTTON, !s.editing),
         ("editor", EDITOR_BUTTON, s.editing),
         ("stats for nerds", NERDS_BUTTON, s.nerds),
     ] {
         let [bx, by, bw, bh] = r;
-        marks.push(draw::rect(bx, by, bw, bh, if on { INK } else { [1.0; 4] }, Some([0.78, 0.80, 0.84, 1.0]), 5.0));
-        marks.push(t(label, bx + 10.0, by + 6.0, 12.0, if on { [1.0; 4] } else { INK }, on && r != NERDS_BUTTON));
+        if th.filled_buttons {
+            marks.push(draw::rect(bx, by, bw, bh, if on { th.text } else { [1.0; 4] }, Some(th.line), ui().radius(5.0)));
+            marks.push(t(label, bx + 10.0, by + 6.0, 12.0, if on { [1.0; 4] } else { th.text }, on && r != NERDS_BUTTON));
+        } else {
+            marks.push(draw::rect(bx, by, bw, bh, th.background, Some(if on { th.accent } else { th.line }), 0.0));
+            if on {
+                marks.push(draw::rect(bx + 0.5, by + 0.5, bw - 1.0, bh - 1.0, [0.0; 4], Some(th.accent), 0.0));
+            }
+            marks.push(t(label, bx + 10.0, by + 6.0, 12.0, if on { th.accent } else { th.text }, on));
+        }
     }
     if s.editing {
         editor_panel(s, marks);
         return;
     }
-    marks.push(t("Jev 1.13 via OpenRouter · asks 400 ms after typing, and on Enter", PX, 58.0, 12.0, MUTED, false));
-    marks.push(t("Tab: stats for nerds · ⌘E: editor · Esc: clear", PX, 74.0, 12.0, MUTED, false));
+    marks.push(t("Jev 1.13 via OpenRouter · asks 400 ms after typing, and on Enter", PX, 58.0, 12.0, muted(), false));
+    marks.push(t("Tab: stats for nerds · ⌘E: editor · Esc: clear", PX, 74.0, 12.0, muted(), false));
 
-    marks.push(draw::rect(PX, 102.0, 410.0, 36.0, [1.0; 4], Some([0.55, 0.62, 0.72, 1.0]), 6.0));
-    let caret = if (s.started_at.elapsed().as_secs_f64() * 2.0).fract() < 0.5 { "|" } else { " " };
-    if s.input.is_empty() {
-        marks.push(t(&format!("{caret}try: show this as a pie"), PX + 12.0, 112.0, 15.0, [0.7, 0.72, 0.76, 1.0], false));
+    let [bx, by, _, _] = INPUT_BOX;
+    field_frame(INPUT_BOX, s.focused, marks);
+    let f = &s.input;
+    let first = input_first(f);
+    let max = INPUT_BOX[2] - 24.0;
+    let mut end = first;
+    let mut w = 0.0;
+    while end < f.text.len() && w + ui().cw(f.text[end], INPUT, true) <= max {
+        w += ui().cw(f.text[end], INPUT, true);
+        end += 1;
+    }
+    let shown: String = f.text[first..end].iter().collect();
+    let (tx, ty) = (bx + 12.0, by + 9.0);
+    let x_of = |i: usize| tx + ui().width(&f.text[first..i.clamp(first, end)], INPUT, true);
+    if f.text.is_empty() {
+        let hint = if s.focused { "type an instruction, then Enter" } else { "click here to type an instruction" };
+        marks.push(mono_sized(hint, tx, ty, INPUT, ui().th.kicker));
     } else {
-        marks.push(t(&format!("{}{caret}", tail(&s.input, 44)), PX + 12.0, 112.0, 15.0, INK, false));
+        if let Some((a, b)) = f.selection() {
+            let (xa, xb) = (x_of(a), x_of(b));
+            if xb > xa {
+                marks.push(draw::rect(xa, ty - 2.0, xb - xa, 20.0, ui().th.selection, None, 0.0));
+            }
+        }
+        marks.push(mono_sized(&shown, tx, ty, INPUT, ink()));
+    }
+    if s.focused && caret_on(s) {
+        marks.push(draw::rect(x_of(f.caret) - 0.5, ty - 2.0, 1.6, 20.0, ink(), None, 0.0));
     }
     if s.in_flight > 0 {
-        marks.push(t("deciding…", PX + 330.0, 144.0, 12.0, AMBER, false));
+        marks.push(status("deciding…", PX + 330.0, 144.0, 12.0, accent(), false, false));
     }
 
     let mut y = 164.0;
     if let Some(a) = &s.shown {
-        marks.push(t(&format!("decision on \"{}\"{}", fit(&a.prefix, 34), if a.complete { " ⏎" } else { "" }), PX, y, 12.0, MUTED, false));
-        marks.push(t(&pilot::short(&a.decision.answers).replace('/', "  ·  ").replace('_', " "), PX, y + 18.0, 20.0, INK, true));
+        marks.push(t(&format!("decision on \"{}\"{}", fit(&a.prefix, 34), if a.complete { " ⏎" } else { "" }), PX, y, 12.0, muted(), false));
+        marks.push(t(&pilot::short(&a.decision.answers).replace('/', "  ·  ").replace('_', " "), PX, y + 18.0, 20.0, ink(), true));
         let latency = if a.decision.cached { format!("cache · {:.0} ms live", a.decision.ms) } else { format!("{:.0} ms", a.wall_ms) };
-        marks.push(draw::text(&latency, PX + 410.0, y + 22.0, 12.0, MUTED, TextAlign::Right, TextBaseline::Top, false, 0.0));
+        marks.push(draw::text(&latency, PX + 410.0, y + 22.0, 12.0, muted(), TextAlign::Right, TextBaseline::Top, false, 0.0));
         y += 56.0;
         for (k, (opt, p)) in a.decision.probs.iter().take(6).enumerate() {
             let yy = y + k as f32 * 24.0;
             let chosen = a.decision.answers.get("action").and_then(Value::as_str) == Some(opt);
-            marks.push(t(&opt.replace('_', " "), PX, yy + 2.0, 13.0, if chosen { INK } else { MUTED }, chosen));
-            marks.push(draw::rect(PX + 100.0, yy + 2.0, 240.0, 14.0, LIGHT, None, 3.0));
-            marks.push(draw::rect(PX + 100.0, yy + 2.0, (240.0 * *p as f32).max(1.0), 14.0, if chosen { BAR } else { [0.70, 0.74, 0.80, 1.0] }, None, 3.0));
-            marks.push(t(&format!("{p:.2}"), PX + 350.0, yy + 2.0, 12.0, MUTED, false));
+            marks.push(t(&opt.replace('_', " "), PX, yy + 2.0, 13.0, if chosen { ink() } else { muted() }, chosen));
+            let th = &ui().th;
+            marks.push(draw::rect(PX + 100.0, yy + 2.0, 240.0, 14.0, [1.0; 4], Some(th.line), ui().radius(3.0)));
+            marks.push(draw::rect(PX + 100.0, yy + 2.0, (240.0 * *p as f32).max(1.0), 14.0, if chosen { th.accent } else { th.line }, None, ui().radius(3.0)));
+            marks.push(t(&format!("{p:.2}"), PX + 350.0, yy + 2.0, 12.0, muted(), false));
         }
         y += 6.0 * 24.0 + 8.0;
-        marks.push(t(&fit(&a.gate, 60), PX, y, 14.0, a.colour, true));
+        marks.push(status(&fit(&a.gate, 60), PX, y, 14.0, a.colour, true, false));
     } else {
         y += 56.0 + 6.0 * 24.0 + 8.0;
-        marks.push(t("type an instruction", PX, y, 14.0, MUTED, false));
+        marks.push(t("type an instruction", PX, y, 14.0, muted(), false));
     }
     y += 40.0;
-    marks.push(draw::rule(PX, y - 12.0, PX + 410.0, y - 12.0, [0.85, 0.87, 0.90, 1.0]));
-    marks.push(t("changes", PX, y, 12.0, MUTED, false));
+    marks.push(draw::rule(PX, y - 12.0, PX + 410.0, y - 12.0, ui().th.line));
+    marks.push(t("changes", PX, y, 12.0, muted(), false));
     for (k, (prefix, short)) in s.changes.iter().rev().take(5).enumerate() {
-        let c = [INK[0], INK[1], INK[2], 1.0 - 0.15 * k as f32];
+        let i = ink();
+        let c = [i[0], i[1], i[2], 1.0 - 0.15 * k as f32];
         marks.push(t(&fit(prefix, 34), PX, y + 20.0 + k as f32 * 20.0, 12.0, c, false));
         marks.push(t(short, PX + 280.0, y + 20.0 + k as f32 * 20.0, 12.0, c, true));
     }
@@ -506,32 +967,49 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
     } else {
         s.message.clone()
     };
-    marks.push(t(&fit(&footer, 64), PX, H - 32.0, 12.0, if s.message.is_empty() { MUTED } else { RED }, false));
+    if s.message.is_empty() {
+        marks.push(t(&fit(&footer, 64), PX, H - 32.0, 12.0, muted(), false));
+    } else {
+        marks.push(status(&fit(&footer, 64), PX, H - 32.0, 12.0, ui().th.error, false, false));
+    }
 }
 
 /// Editor mode: the pipeline as text.
 fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
-    marks.push(t("the chart as a pipeline · ⌘↵ apply · Esc revert · ⌘E autopilot", PX, 64.0, 12.0, MUTED, false));
-    let [ex, ey, ew, eh] = EDIT_AREA;
-    marks.push(draw::rect(ex, ey, ew, eh, [1.0; 4], Some([0.55, 0.62, 0.72, 1.0]), 6.0));
-    let r = rows(&s.text);
-    let (row, col) = caret_at(&r, s.caret);
+    marks.push(t("the chart as a pipeline · ⌘↵ apply · Esc revert · ⌘E autopilot", PX, 64.0, 12.0, muted(), false));
+    let [ex, ey, _, eh] = EDIT_AREA;
+    field_frame(EDIT_AREA, s.focused, marks);
+    let text = &s.code.text;
+    let r = rows(text);
+    let (row, col) = caret_at(&r, s.code.caret);
+    let sel = s.code.selection();
     let visible = ((eh - 16.0) / LH) as usize;
+    let x_in = |a: usize, i: usize| ex + 8.0 + ui().width(&text[a..i], CODE, true);
     for (k, (a, len)) in r.iter().enumerate().skip(s.scroll).take(visible) {
-        let line: String = s.text[*a..a + len].iter().collect();
-        // Stage names stand out; continuation rows are plain.
-        let starts_stage = *a == 0 || s.text[a - 1] == '\n';
-        let colour = if starts_stage { INK } else { [0.25, 0.28, 0.33, 1.0] };
-        marks.push(mono(&line, ex + 8.0, ey + 8.0 + (k - s.scroll) as f32 * LH, colour));
+        let y = ey + 8.0 + (k - s.scroll) as f32 * LH;
+        if let Some((sa, sb)) = sel {
+            let (x0, x1) = (sa.max(*a), sb.min(a + len));
+            // A selected line break shows as a sliver at the end of its row.
+            let tail = if sb > a + len && x1 == a + len { 4.0 } else { 0.0 };
+            if x1 > x0 || (tail > 0.0 && x0 <= x1) {
+                let xa = x_in(*a, x0);
+                marks.push(draw::rect(xa, y - 1.0, x_in(*a, x1) - xa + tail, LH, ui().th.selection, None, 0.0));
+            }
+        }
+        let line: String = text[*a..a + len].iter().collect();
+        // Stage names stand out; continuation rows are quieter.
+        let starts_stage = *a == 0 || text[a - 1] == '\n';
+        marks.push(mono_sized(&line, ex + 8.0, y, CODE, if starts_stage { ink() } else { muted() }));
     }
-    if row >= s.scroll && row < s.scroll + visible && (s.started_at.elapsed().as_secs_f64() * 2.0).fract() < 0.6 {
-        let (cx, cy) = (ex + 8.0 + col as f32 * CW, ey + 8.0 + (row - s.scroll) as f32 * LH);
-        marks.push(draw::rect(cx - 0.5, cy - 1.0, 1.4, 14.0, INK, None, 0.0));
+    if s.focused && row >= s.scroll && row < s.scroll + visible && caret_on(s) {
+        let a = r[row].0;
+        let (cx, cy) = (x_in(a, a + col), ey + 8.0 + (row - s.scroll) as f32 * LH);
+        marks.push(draw::rect(cx - 0.5, cy - 1.0, 1.4, LH, ink(), None, 0.0));
     }
     let mut y = ey + eh + 10.0;
-    let (status, colour) = &s.edit_status;
-    for line in wrap(status, 62).iter().take(3) {
-        marks.push(t(line, PX, y, 12.0, *colour, false));
+    let (message, colour) = &s.edit_status;
+    for line in wrap(message, 62).iter().take(3) {
+        marks.push(status(line, PX, y, 12.0, *colour, false, false));
         y += 16.0;
     }
     let help = [
@@ -541,15 +1019,16 @@ fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
         "zoom x0..x1 y0..y1 · reset-zoom · data: read, filter, calc, sql",
     ];
     for (k, h) in help.iter().enumerate() {
-        marks.push(t(h, PX, H - 84.0 + k as f32 * 16.0, 11.0, MUTED, false));
+        marks.push(t(h, PX, H - 84.0 + k as f32 * 16.0, 11.0, muted(), false));
     }
 }
 
 /// Stats for nerds: an overlay on the chart.
 fn nerds(s: &App, now: Instant, marks: &mut Vec<SceneMark>) {
     let (x0, y0, w, h) = (16.0, 16.0, PX - 52.0, H - 32.0);
-    marks.push(draw::rect(x0, y0, w, h, [0.08, 0.09, 0.11, 0.93], None, 8.0));
-    let (head, text, dim) = ([0.55, 0.78, 1.0, 1.0], [0.92, 0.93, 0.95, 1.0], [0.62, 0.65, 0.70, 1.0]);
+    let th = &ui().th;
+    marks.push(draw::rect(x0, y0, w, h, th.dark_background, None, ui().radius(8.0)));
+    let (head, text, dim) = (th.dark_accent, th.dark_text, th.dark_muted);
     let x = x0 + 16.0;
     let mut y = y0 + 14.0;
     let line = |marks: &mut Vec<SceneMark>, label: &str, value: &str, colour: [f32; 4], y: &mut f32| {
@@ -557,6 +1036,13 @@ fn nerds(s: &App, now: Instant, marks: &mut Vec<SceneMark>) {
         marks.push(mono(&fit(value, 108), x + 76.0, *y, colour));
         *y += 15.0;
     };
+    let status_line = |marks: &mut Vec<SceneMark>, label: &str, value: &str, colour: [f32; 4], y: &mut f32| {
+        marks.push(mono(label, x, *y, dim));
+        marks.push(status_on(&fit(value, 108), x + 76.0, *y, 11.0, dim, colour, false, true));
+        *y += 15.0;
+    };
+    // What the last decision added: the accent in the calm theme.
+    let fresh = if th.status_italic { th.dark_accent } else { [0.62, 0.90, 0.62, 1.0] };
     marks.push(mono("stats for nerds", x, y, head));
     marks.push(mono(&format!("the whole pipeline behind this chart, runnable as it stands · also in {PIPELINE_FILE}"), x + 130.0, y, dim));
     y += 20.0;
@@ -564,7 +1050,7 @@ fn nerds(s: &App, now: Instant, marks: &mut Vec<SceneMark>) {
     // added are green.
     let added = |stage: &str| s.shown.as_ref().is_some_and(|a| a.lines.iter().any(|l| l.split(" ! ").any(|p| p == stage)));
     for (i, stage) in s.pipeline.iter().enumerate() {
-        let colour = if i > 0 && added(stage) { [0.62, 0.90, 0.62, 1.0] } else { text };
+        let colour = if i > 0 && added(stage) { fresh } else { text };
         for (k, row) in wrap(stage, 126).iter().enumerate() {
             let lead = match (i, k) {
                 (0, 0) => "  ",
@@ -583,7 +1069,9 @@ fn nerds(s: &App, now: Instant, marks: &mut Vec<SceneMark>) {
     let start = s.log.len().saturating_sub(4);
     for (i, (c, ms)) in s.log.iter().enumerate().skip(start) {
         let label = if i == start { "history" } else { "" };
-        line(marks, label, &format!("{:>3}  {:<92}{:>7.2} ms", i + 1, fit(c, 92), ms), dim, &mut y);
+        // The time in its own right-aligned column: text is not monospace.
+        marks.push(draw::text(&format!("{ms:.2} ms"), x0 + w - 24.0, y, 11.0, dim, TextAlign::Right, TextBaseline::Top, false, 0.0));
+        line(marks, label, &format!("{:>3}  {}", i + 1, fit(c, 100)), dim, &mut y);
     }
     y += 6.0;
     let json = &s.chart_json;
@@ -613,19 +1101,19 @@ fn nerds(s: &App, now: Instant, marks: &mut Vec<SceneMark>) {
             text,
             &mut y,
         );
-        line(marks, "gate", &a.gate, a.colour, &mut y);
+        status_line(marks, "gate", &a.gate, a.colour, &mut y);
         if a.lines.is_empty() {
             line(marks, "lines", "none", dim, &mut y);
         }
         for (i, l) in a.lines.iter().enumerate() {
-            line(marks, if i == 0 { "lines" } else { "" }, l, [0.62, 0.90, 0.62, 1.0], &mut y);
+            line(marks, if i == 0 { "lines" } else { "" }, l, fresh, &mut y);
         }
         if !a.fold.is_empty() {
-            line(marks, "fold", &a.fold, text, &mut y);
+            status_line(marks, "fold", &a.fold, text, &mut y);
         }
     } else if s.changes.last().is_some_and(|c| c.0 == "editor") {
         line(marks, "edited", "by hand in the editor, not by a decision", text, &mut y);
-        line(marks, "status", &s.edit_status.0, s.edit_status.1, &mut y);
+        status_line(marks, "status", &s.edit_status.0, s.edit_status.1, &mut y);
     } else {
         line(marks, "asked", "nothing yet", dim, &mut y);
     }
@@ -664,7 +1152,7 @@ fn build(s: &mut App) -> SceneBuild {
     }
     s.last_frame = Some(now);
     if s.editing {
-        let (row, _) = caret_at(&rows(&s.text), s.caret);
+        let (row, _) = caret_at(&rows(&s.code.text), s.code.caret);
         let visible = ((EDIT_AREA[3] - 16.0) / LH) as usize;
         if row < s.scroll {
             s.scroll = row;
@@ -689,7 +1177,7 @@ fn build(s: &mut App) -> SceneBuild {
     // flight, the caret, or a pending debounce.
     let mut commands = vec![];
     let deadline = match s.typed_at {
-        Some(at) if s.input.trim() != s.asked => (at + DEBOUNCE).min(now + FRAME * 30),
+        Some(at) if s.input.string().trim() != s.asked => (at + DEBOUNCE).min(now + FRAME * 30),
         _ if s.animating(now) || s.in_flight > 0 || s.applying => now + FRAME,
         _ => now + Duration::from_millis(500),
     };
@@ -723,6 +1211,12 @@ impl EventStreamHandler<App> for Input {
     async fn handle(&self, event: &Event, s: &mut App, _rtree: &SceneGraphRTree) -> UpdateStatus {
         let now = Instant::now();
         let rerender = UpdateStatus { rerender: true, ..Default::default() };
+        if std::env::var("AUTOPILOT_DEBUG").is_ok() && !matches!(event, Event::RuntimeWake(_)) {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("out/autopilot_live/events.log") {
+                let _ = writeln!(f, "{event:?}");
+            }
+        }
         match event {
             Event::RuntimeWake(w) if w.key.namespace == WAKE => {
                 if s.typed_at.is_some_and(|at| now - at >= DEBOUNCE) {
@@ -743,36 +1237,47 @@ impl EventStreamHandler<App> for Input {
                     s.nerds = !s.nerds;
                     return rerender;
                 }
-                if s.editing {
-                    return if s.edit_key(&e.key, e.text.as_deref(), cmd) { rerender } else { UpdateStatus::default() };
+                // Modifier keys alone do nothing.
+                if matches!(e.key, Key::Named(NamedKey::Super | NamedKey::Control | NamedKey::Shift | NamedKey::Alt | NamedKey::CapsLock)) {
+                    return UpdateStatus::default();
                 }
-                match (&e.key, e.text.as_deref()) {
-                    (Key::Named(NamedKey::Tab), _) => s.nerds = !s.nerds,
-                    (Key::Named(NamedKey::Escape), _) => {
-                        s.input.clear();
-                        s.typed_at = None;
+                // Typing into an unfocused window focuses the field.
+                s.focused = true;
+                s.last_key = std::time::Instant::now();
+                let m = Mods { cmd, shift: e.modifiers.shift, alt: e.modifiers.alt };
+                let handled = if s.editing {
+                    s.edit_key(&e.key, e.text.as_deref(), m)
+                } else {
+                    s.input_key(&e.key, e.text.as_deref(), m, now)
+                };
+                if handled { rerender } else { UpdateStatus::default() }
+            }
+            // ⌘X, ⌘C and ⌘V: the host reads the system clipboard for a
+            // paste, and writes what the app hands back for a copy.
+            Event::Clipboard(c) => {
+                s.focused = true;
+                s.last_key = std::time::Instant::now();
+                let f = if s.editing { &mut s.code } else { &mut s.input };
+                let mut status = rerender;
+                match c {
+                    ClipboardEvent::Copy | ClipboardEvent::Cut => {
+                        let Some((a, b)) = f.selection() else { return UpdateStatus::default() };
+                        let text: String = f.text[a..b].iter().collect();
+                        status.commands.push(RuntimeHostCommand::WriteClipboard { text });
+                        if matches!(c, ClipboardEvent::Cut) {
+                            f.delete_selection();
+                        }
                     }
-                    (Key::Named(NamedKey::Enter), _) => {
-                        s.typed_at = None;
-                        s.ask(true);
-                        s.input.clear();
+                    ClipboardEvent::Paste(text) => {
+                        // The autopilot box is one line.
+                        let text = if s.editing { text.to_string() } else { text.replace(['\n', '\r'], " ") };
+                        f.insert(&text);
                     }
-                    (Key::Named(NamedKey::Backspace), _) => {
-                        s.input.pop();
-                        s.typed_at = Some(now);
-                    }
-                    (Key::Named(NamedKey::Space), _) => {
-                        s.input.push(' ');
-                        s.typed_at = Some(now);
-                    }
-                    (_, Some(text)) if !text.chars().any(char::is_control) && !e.modifiers.meta && !e.modifiers.control => {
-                        s.input.push_str(text);
-                        s.message.clear();
-                        s.typed_at = Some(now);
-                    }
-                    _ => return UpdateStatus::default(),
                 }
-                rerender
+                if !s.editing && !matches!(c, ClipboardEvent::Copy) {
+                    s.typed_at = Some(now);
+                }
+                status
             }
             Event::MouseDown(e) if e.button == MouseButton::Left => {
                 let p = e.position;
@@ -783,9 +1288,26 @@ impl EventStreamHandler<App> for Input {
                 } else if inside(p, EDITOR_BUTTON) && !s.editing {
                     s.open_editor();
                 } else if s.editing && inside(p, EDIT_AREA) {
-                    s.click_editor(p);
+                    s.focused = true;
+                    s.last_key = std::time::Instant::now();
+                    s.click_editor(p, e.modifiers.shift);
+                    match s.multi_click(p) {
+                        2 => s.code.select_word(),
+                        n if n >= 3 => s.code.select_line(),
+                        _ => {}
+                    }
+                } else if !s.editing && inside(p, INPUT_BOX) {
+                    s.focused = true;
+                    s.last_key = std::time::Instant::now();
+                    s.click_input(p, e.modifiers.shift);
+                    match s.multi_click(p) {
+                        2 => s.input.select_word(),
+                        n if n >= 3 => s.input.select_line(),
+                        _ => {}
+                    }
                 } else {
-                    return UpdateStatus::default();
+                    // A click anywhere else takes the focus away.
+                    s.focused = false;
                 }
                 rerender
             }
@@ -795,6 +1317,21 @@ impl EventStreamHandler<App> for Input {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // The calm theme, or with `--neutral` the look of the recordings.
+    let neutral = std::env::args().any(|a| a == "--neutral");
+    let ui_ = Ui::new(if neutral { Theme::neutral() } else { Theme::calm() });
+    if !neutral {
+        let th = &ui_.th;
+        draw::set_style(draw::Style {
+            font: ui_.font.clone(),
+            ink: th.text,
+            muted: th.muted,
+            grid: [th.line[0], th.line[1], th.line[2], 0.45],
+            title: th.accent,
+            kicker: Some(("LiDAR tile 0657 6868".into(), th.kicker)),
+        });
+    }
+    let _ = UI.set(ui_);
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let data = Arc::new(runtime.block_on(data::load())?);
     let (mut pipe, taken) = runtime.block_on(layer_pipeline())?;
@@ -818,7 +1355,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         to: frame,
         started: None,
         dur: 1.0,
-        input: String::new(),
+        input: Field::default(),
+        focused: true,
+        last_key: std::time::Instant::now(),
         typed_at: None,
         asked: String::new(),
         returned: Arc::new(Mutex::new(vec![])),
@@ -843,12 +1382,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         last_frame: None,
         items: 0,
         wake_generation: 0,
-        started_at: std::time::Instant::now(),
+        last_click: None,
+        clicks: 0,
         editing: false,
-        text: vec![],
-        caret: 0,
+        code: Field::default(),
         scroll: 0,
-        edit_status: (String::new(), MUTED),
+        edit_status: (String::new(), muted()),
         applying: false,
         edited: Arc::new(Mutex::new(None)),
     };
@@ -868,8 +1407,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for (i, text) in args[3..].iter().enumerate() {
                 if let Some(path) = text.strip_prefix('@') {
                     app.open_editor();
-                    app.text = std::fs::read_to_string(path)?.trim_end().chars().collect();
-                    app.caret = app.text.len();
+                    app.code.set(std::fs::read_to_string(path)?.trim_end());
                     app.apply_text();
                     while app.edited.lock().unwrap().is_none() {
                         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -885,9 +1423,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.editing = false;
                     continue;
                 }
-                app.input = text.clone();
+                app.input.set(text);
                 app.ask(true);
-                app.input.clear();
+                app.input.set("");
                 while app.returned.lock().unwrap().is_empty() {
                     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                 }
@@ -916,7 +1454,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(Builder),
         vec![(
             EventStreamConfig {
-                types: vec![Type::KeyPress, Type::MouseDown, Type::RuntimeWake],
+                types: vec![Type::KeyPress, Type::TextInput, Type::Ime, Type::Clipboard, Type::MouseDown, Type::RuntimeWake],
                 ..Default::default()
             },
             Arc::new(Input) as Arc<dyn EventStreamHandler<App>>,
@@ -938,4 +1476,95 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(error.into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NO: Mods = Mods { cmd: false, shift: false, alt: false };
+    const SHIFT: Mods = Mods { cmd: false, shift: true, alt: false };
+    const CMD: Mods = Mods { cmd: true, shift: false, alt: false };
+    const ALT: Mods = Mods { cmd: false, shift: false, alt: true };
+
+    fn field(s: &str) -> Field {
+        let mut f = Field::default();
+        f.set(s);
+        f
+    }
+    fn named(k: NamedKey) -> Key {
+        Key::Named(k)
+    }
+    fn typed(f: &mut Field, s: &str) {
+        edit(f, &Key::Character(s.chars().next().unwrap()), Some(s), NO);
+    }
+
+    #[test]
+    fn arrows_move_and_edit_in_place() {
+        let mut f = field("show as pie");
+        for _ in 0..3 {
+            edit(&mut f, &named(NamedKey::ArrowLeft), None, NO);
+        }
+        typed(&mut f, "a ");
+        assert_eq!(f.string(), "show as a pie");
+        edit(&mut f, &named(NamedKey::Backspace), None, NO);
+        assert_eq!(f.string(), "show as apie");
+    }
+
+    #[test]
+    fn shift_arrows_select_and_backspace_deletes_the_selection() {
+        let mut f = field("make it red");
+        for _ in 0..3 {
+            edit(&mut f, &named(NamedKey::ArrowLeft), None, SHIFT);
+        }
+        assert_eq!(f.selection(), Some((8, 11)));
+        edit(&mut f, &named(NamedKey::Backspace), None, NO);
+        assert_eq!(f.string(), "make it ");
+        typed(&mut f, "g");
+        assert_eq!(f.string(), "make it g");
+    }
+
+    #[test]
+    fn typing_replaces_a_selection_and_arrows_collapse_it() {
+        let mut f = field("bars");
+        edit(&mut f, &Key::Character('a'), None, CMD);
+        assert_eq!(f.selection(), Some((0, 4)));
+        typed(&mut f, "p");
+        assert_eq!(f.string(), "p");
+        let mut g = field("abc");
+        edit(&mut g, &named(NamedKey::ArrowLeft), None, SHIFT);
+        edit(&mut g, &named(NamedKey::ArrowLeft), None, SHIFT);
+        edit(&mut g, &named(NamedKey::ArrowRight), None, NO);
+        assert_eq!((g.caret, g.selection()), (3, None));
+    }
+
+    #[test]
+    fn macos_backspace_as_a_control_character() {
+        let mut f = field("abc");
+        edit(&mut f, &Key::Character('\u{7f}'), Some("\u{7f}"), NO);
+        assert_eq!(f.string(), "ab");
+    }
+
+    #[test]
+    fn double_and_triple_click_select_a_word_and_a_line() {
+        let mut f = field("zoom 657200..657600\n! highlight \"datum.h >= 70\"");
+        f.caret = 7;
+        f.select_word();
+        assert_eq!(f.selection().map(|(a, b)| f.text[a..b].iter().collect::<String>()), Some("657200".into()));
+        f.caret = 25;
+        f.select_line();
+        assert_eq!(f.selection().map(|(a, b)| f.text[a..b].iter().collect::<String>()), Some("! highlight \"datum.h >= 70\"".into()));
+    }
+
+    #[test]
+    fn word_and_line_deletes() {
+        let mut f = field("zoom to the south-east");
+        edit(&mut f, &named(NamedKey::Backspace), None, ALT);
+        assert_eq!(f.string(), "zoom to the south-");
+        edit(&mut f, &named(NamedKey::Backspace), None, CMD);
+        assert_eq!(f.string(), "");
+        let mut g = field("line one\nline two");
+        edit(&mut g, &named(NamedKey::Backspace), None, CMD);
+        assert_eq!(g.string(), "line one\n");
+    }
 }
