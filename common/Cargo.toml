@@ -6,5 +6,10 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+avenger-format-number-d3.workspace = true
+avenger-guides.workspace = true
+avenger-scales.workspace = true
+avenger-scenegraph.workspace = true
+avenger-text.workspace = true
 datafusion.workspace = true
 sedona-pointcloud.workspace = true

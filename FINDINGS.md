@@ -4,8 +4,8 @@ What this repo has run into while building real charts on the Avenger stack,
 kept as a ledger so it can be rechecked when the stack moves. Every entry says
 how it was measured, so a recheck is a command rather than an opinion.
 
-- **Checked against:** `jonmmease/avenger` `602b99c` ([#130](https://github.com/jonmmease/avenger/pull/130), `codex/portable-dataflow-inputs`, the top of the stack), 25 Sep 2026.
-  Previous round: `5f31c58` (#124), 20 Sep 2026.
+- **Checked against:** `jonmmease/avenger` `3065e2a` ([#130](https://github.com/jonmmease/avenger/pull/130), `codex/portable-dataflow-inputs`, the top of the stack after the rebase of 25 Sep 2026, 19:17 CEST).
+  Previous rounds: `602b99c` (#130, before that rebase), 25 Sep 2026; `5f31c58` (#124), 20 Sep 2026.
 - **Machine:** Apple Silicon, macOS, wgpu/Metal, Rust 1.89
 - **Recheck:** `cargo run --release -p lidar-probes --bin probe_guides` and
   `cargo run --release -p lidar-probes --bin probe_render` print everything
@@ -28,6 +28,8 @@ how it was measured, so a recheck is a command rather than an opinion.
 | 11 | chart / chart-definition | No per-item key, so frames cannot be joined for transitions | open, suggestion |
 | 12 | chart-definition | The accepted vocabulary is not available as data | open, suggestion |
 | 13 | chart-definition | Unsupported properties should be errors with a path and a reason | not checked, suggestion |
+| 14 | text / guides | Number formatting must now be configured, and its absence fails at run time | open, adapted |
+| 15 | format | The format crates split into `avenger-format` and `*-d3`; two signatures changed | API change, adapted |
 
 Findings 1–7 were re-measured on `602b99c` with the two probes and are
 unchanged. The frame-rate numbers under [Live charts](#live-charts) were **not**
@@ -174,6 +176,41 @@ became `PreparedNumberFormat::new(spec, overrides, &locale)` somewhere in the
 formatting rework (`5d1518f` … `e86810b`). One call site in experiment 6
 (`experiments/06-pipelines/src/packages/vega_format.rs`), a one-line change.
 Recorded as drift, not as a defect: the new signature is simpler.
+
+## From the repin to `3065e2a`
+
+### 14. Number formatting fails at run time when not configured
+
+After #139 ("require explicit number formatter setup"), the workspace built
+with no warning about it, and then seven binaries failed when they drew an
+axis: `InvalidAxisLabelFormat("number formatting is not configured")`
+(probe_guides, cross_section, topviews, explorer, cqrs_check, stream_live;
+explorer and stream_live as panics). The short entry points
+`make_numeric_axis_marks`, `make_colorbar_marks` and `ChartOptions::default()`
+use `default_text_engine()`, which has no formatter. Upstream's own examples
+build one: a `NumberFormatRegistry` with `D3NumberFormatProvider`, and
+`default_text_engine().with_number_formatting(NumberFormatConfig::new("d3"), …)`.
+This repo now does the same once, in `lidar_common::text_engine()`, with
+wrappers of the same names.
+
+The suggestion: an entry point that compiles and cannot draw a number is a
+trap. Either `default_text_engine()` could come with D3 formatting, or the
+short entry points could take the engine, so the requirement shows at compile
+time. Measured by running every binary in the cycle.
+
+### 15. The format crates split
+
+`avenger-format-number` and `avenger-format-datetime` became `avenger-format`
+(the traits) plus `avenger-format-number-d3` and `avenger-format-datetime-d3`.
+For this repo: the crate names;
+`PreparedDateTimeFormat::format_zoned` now returns `Result<String, _>` instead
+of a value with `.text`; and `TextMeasurementConfig`'s five locale fields became
+`number_format` and `datetime_format`. Three small changes, found by the
+compiler.
+
+All other findings were re-measured on `3065e2a` and are unchanged: the index
+costs 392 ms for 300k symbols (`interactive: false` the same), gradients draw
+flat, and the guide pitfalls remain.
 
 ## From experiment 7: charts driven by typed decisions
 

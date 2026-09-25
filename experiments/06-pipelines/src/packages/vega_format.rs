@@ -9,10 +9,10 @@ use std::sync::Arc;
 
 use arrow::array::{Array, ArrayRef, AsArray, StringBuilder};
 use arrow::datatypes::{DataType, Float64Type, TimeUnit, TimestampMillisecondType};
-use avenger_format_datetime::{
+use avenger_format_datetime_d3::{
     DateTimeFormatContext, DateTimeLocaleRegistry, PreparedDateTimeFormat,
 };
-use avenger_format_number::{NumberLocaleRegistry, PreparedNumberFormat};
+use avenger_format_number_d3::{NumberLocaleRegistry, PreparedNumberFormat};
 use datafusion::common::{exec_err, Result, ScalarValue};
 use datafusion::logical_expr::{
     ColumnarValue, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature, Volatility,
@@ -123,7 +123,7 @@ impl ScalarUDFImpl for TimeFormat {
         };
         map_values(&value, args.number_rows, |a, i| {
             let ms = a.as_primitive::<TimestampMillisecondType>().value(i);
-            chrono::DateTime::from_timestamp_millis(ms).map(|t| fmt.format_zoned(t).text)
+            chrono::DateTime::from_timestamp_millis(ms).and_then(|t| fmt.format_zoned(t).ok())
         })
     }
 }

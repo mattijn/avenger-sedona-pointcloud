@@ -14,7 +14,7 @@ use avenger_color::ColorOrGradient;
 use avenger_common::canvas::CanvasDimensions;
 use avenger_common::types::SymbolShape;
 use avenger_common::value::ScalarOrArray;
-use avenger_guides::axis::numeric::make_numeric_axis_marks;
+use lidar_common::make_numeric_axis_marks;
 use avenger_guides::axis::opts::{AxisConfig, AxisOrientation};
 use avenger_guides::legend::symbol::{make_symbol_legend, SymbolLegendConfig};
 use avenger_scales::scales::linear::LinearScale;

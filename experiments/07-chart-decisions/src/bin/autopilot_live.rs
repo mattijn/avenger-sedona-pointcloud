@@ -125,11 +125,8 @@ fn measure(engine: &avenger_text::TextEngine, s: &str, font: &str, size: f32) ->
             font_style: FontStyle::Normal,
             syntax_mode: TextSyntaxMode::Plain,
             params: &params,
-            number_locale: None,
-            number_locale_specs: None,
-            datetime_locale: None,
-            datetime_timezone: None,
-            datetime_locale_specs: None,
+            number_format: None,
+            datetime_format: None,
         })
         .ok()
         .map(|b| b.width)

@@ -29,11 +29,9 @@ use avenger_eventstream::{
     window::{MouseButton, MouseScrollDelta},
 };
 use avenger_geometry::rtree::SceneGraphRTree;
+use lidar_common::make_numeric_axis_marks;
 use avenger_guides::{
-    axis::{
-        numeric::make_numeric_axis_marks,
-        opts::{AxisConfig, AxisOrientation},
-    },
+    axis::opts::{AxisConfig, AxisOrientation},
     legend::symbol::{make_symbol_legend, SymbolLegendConfig},
 };
 use avenger_scales::scales::{linear::LinearScale, ConfiguredScale};

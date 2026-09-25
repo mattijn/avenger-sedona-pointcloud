@@ -16,8 +16,8 @@ serde_json.workspace = true
 tokio.workspace = true
 
 avenger-transform.workspace = true
-avenger-format-number.workspace = true
-avenger-format-datetime.workspace = true
+avenger-format-number-d3.workspace = true
+avenger-format-datetime-d3.workspace = true
 chrono = "0.4.41"
 chrono-tz = "0.10.3"
 sedona-functions = { git = "https://github.com/apache/sedona-db", rev = "2f3e37815bd998a9b9e2accc51ce261ea69a5f0f" }

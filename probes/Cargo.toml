@@ -6,6 +6,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+lidar-common.workspace = true
 arrow.workspace = true
 image.workspace = true
 tokio.workspace = true

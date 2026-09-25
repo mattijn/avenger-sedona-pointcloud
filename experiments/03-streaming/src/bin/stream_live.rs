@@ -35,7 +35,7 @@ use avenger_eventstream::scene::{SceneGraphEvent, SceneGraphEventType};
 use avenger_eventstream::stream::{EventStreamConfig, UpdateStatus};
 use avenger_eventstream::window::{Key, NamedKey};
 use avenger_geometry::rtree::SceneGraphRTree;
-use avenger_guides::axis::numeric::make_numeric_axis_marks;
+use lidar_common::make_numeric_axis_marks;
 use avenger_guides::axis::opts::{AxisConfig, AxisOrientation};
 use avenger_resource::render_invalidation::{
     RenderInvalidationHub, RenderInvalidationReason, RenderInvalidationRequest,

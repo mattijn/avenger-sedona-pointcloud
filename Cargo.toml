@@ -17,30 +17,31 @@ edition = "2021"
 publish = false
 
 # One place to repin the Avenger stack. It currently points at the top of the
-# PR stack (jonmmease/avenger#130, branch codex/portable-dataflow-inputs),
+# PR stack (jonmmease/avenger#130, branch codex/portable-dataflow-inputs,
+# rebased 25 Sep 2026 19:17 CEST),
 # which pins Arrow 58.4 and DataFusion 54.1 — semver-compatible with SedonaDB
 # main, so Arrow arrays pass between them untouched.
 [workspace.dependencies]
-avenger-app = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-chart = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761", default-features = false, features = ["png"] }
-avenger-chart-definition = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-color = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-common = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-datafusion-aggregate-state = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-eventstream = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-format-datetime = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-format-number = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-geo = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-geometry = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-guides = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-resource = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-scales = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-scenegraph = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-text = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-transform = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-widgets = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
-avenger-winit-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "602b99cc0497d5fddda63c889037d1855e48c761" }
+avenger-app = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-chart = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256", default-features = false, features = ["png"] }
+avenger-chart-definition = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-color = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-common = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-datafusion-aggregate-state = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-eventstream = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-format-datetime-d3 = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-format-number-d3 = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-geo = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-geometry = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-guides = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-resource = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-scales = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-scenegraph = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-text = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-transform = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-widgets = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
+avenger-winit-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "3065e2ae6854b458ff8f944a3292c590a6f49256" }
 
 # SedonaDB's LAS/LAZ reader, a DataFusion file format. main is on DataFusion
 # 54.1 / Arrow 58.3; the 0.4.1 release is on DataFusion 52.5 / Arrow 57.
