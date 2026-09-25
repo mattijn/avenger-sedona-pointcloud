@@ -352,14 +352,13 @@ and debouncing.
 
 ## The tour: what the autopilot does now
 
-[video/autopilot_tour.mp4](video/autopilot_tour.mp4), 90 s, records the live
+[video/autopilot_tour.mp4](video/autopilot_tour.mp4), 68 s, records the live
 window with the writer on (`autopilot_live --tour <dir>`), on a virtual clock
 at 30 fps, with a subtitle band under it. Every decision and every written
 pipeline arrives after the time it took when it was first made, and all of
 them come from the cache, so the video rebuilds without a key (checked: a
-rebuild without `OPENROUTER_API_KEY` took all 12 decisions from the cache).
-The queries really run, so a rebuild can differ by a few frames (2693
-against 2691).
+rebuild without `OPENROUTER_API_KEY` took every decision from the cache).
+The queries really run, so a rebuild can differ by a few frames.
 
 ```sh
 cargo run --release -p lidar-decide --bin autopilot_live -- --tour out/autopilot_live/tour
@@ -369,20 +368,26 @@ ffmpeg -framerate 30 -i out/autopilot_live/tour/f%05d.png -c:v libx264 -preset s
 
 ![The tour, one frame per step](images/tour_sheet.png)
 
+The first cut spent its first 19 seconds on tables appearing after a pause.
+This one follows three rules: something moves within three seconds (the pie
+arrives mid-sentence), something visible changes about every five seconds,
+and the subtitles say what is remarkable rather than what is on screen.
+
 | Subtitle | Typed | What happens |
 |---|---|---|
-| One chart, driven by what you type. First: what data is there? | what data is there? | Jev: `render overview`; the overview of the five tables |
-| Five tables: the LiDAR tile, 17.3 million points, and four tables made from it. | | |
-| Some rows first, before any chart. | show head 5 as table | Haiku writes the data stages; a table of 5 rows |
-| Jev reads while you type: a pause is enough. | which share … does each class have? | the pie, decided at "which share" |
-| Something Jev's options cannot say: Claude Haiku writes the pipeline. | back to bars · exclude building | bars; then Haiku's filter, and Building leaves |
-| Changed your mind? Undo. | undo | Building comes back |
-| Scales and axes, the Vega-Lite way: set y.scale.type log. | put the points on a log scale | Haiku writes `set y.scale.type log` |
-| From bars to a map: the same chart object morphs, it is not redrawn. | where are the buildings? | the map |
-| Numbers of your own: a threshold, then a cell size, from the tile itself. | only emphasise buildings taller than 70 m · use 10 m cells instead of 5 m | Haiku writes `highlight "datum.h >= 70"`, then the `sql` stage at 10 m |
-| Stats for nerds: the whole pipeline behind the chart, see-through. | Tab | the pipeline, over the chart |
-| The same session by hand: the editor runs SQL over the named tables. | ⌘E, a `SELECT … FROM tile GROUP BY classification` | a table of 9 classes over all points |
-| And back to where it began. | start over | reset to the first bars |
+| Type. The chart listens. | which share … does each class have? | the bars curl into a pie at "which share", 3.5 s in |
+| It speaks Dutch too. | maak er een staafdiagram van | back to bars |
+| Bars split into a heatmap. One object, never redrawn. | how are the classes spread over height? | each bar splits into its height cells |
+| … or become four flight lines. | how many points did each flight line record over time? | the time series |
+| Zoom by asking. | zoom in on the start | the domain tweens to the north-west quarter |
+| Every step morphs. | where are the buildings? | the map |
+| Say something no button has: Claude Haiku writes the code. | only emphasise buildings taller than 70 m | `highlight "datum.h >= 70"`, with the banner while it writes |
+| Rebuilt from 17.3 million points. | use 10 m cells instead of 5 m | the `sql` stage at 10 m, run on the tile |
+| Every frame is a pipeline. See-through. | Tab | stats for nerds over the map |
+| Lost? Ask what's in the data. | what data is there? | the overview, briefly |
+| Filter it. Undo it. | start over · exclude building · undo | bars; Building leaves; it comes back |
+| Scales and axes, Vega-Lite style. | put the points on a log scale | `set y.scale.type log` |
+| Jev decides · Claude Haiku writes · DataFusion runs · Avenger draws | | |
 
 Making it found a bug: a log scale set on bars travelled with the chart to
 the map, which the fold then refused ("the layer draws a log scale on bars

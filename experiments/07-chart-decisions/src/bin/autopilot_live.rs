@@ -2118,8 +2118,6 @@ enum Act {
     Settle(f64),
     /// The subtitle under the window, in the tour.
     Caption(&'static str),
-    /// Select all text in the editor.
-    SelectAll,
 }
 
 /// The recording: the live window, driven by a script on a virtual clock.
@@ -2158,32 +2156,33 @@ fn tour() -> Vec<Act> {
     use Act::*;
     let enter = || Key(NamedKey::Enter);
     vec![
-        Caption("One chart, driven by what you type. First: what data is there?"), Wait(1.5),
-        Type("what data is there?"), Wait(0.3), enter(), Settle(2.0),
-        Caption("Five tables: the LiDAR tile, 17.3 million points, and four tables made from it."), Wait(4.0),
-        Key(NamedKey::Escape), Caption("Some rows first, before any chart."), Wait(1.0),
-        Type("show head 5 as table"), Wait(0.3), enter(), Settle(3.0),
-        Key(NamedKey::Escape), Caption("Jev reads while you type: a pause is enough."), Wait(0.8),
-        Type("which share"), Wait(1.4), Type(" does each class have?"), Wait(0.3), enter(), Settle(1.5),
-        Caption("Something Jev's options cannot say: Claude Haiku writes the pipeline."), Wait(0.5),
-        Type("back to bars"), enter(), Settle(1.0),
-        Type("exclude building"), Wait(0.3), enter(), Settle(2.0),
-        Caption("Changed your mind? Undo."), Wait(0.5),
-        Type("undo"), enter(), Settle(1.8),
-        Caption("Scales and axes, the Vega-Lite way: set y.scale.type log."), Wait(0.5),
-        Type("put the points on a log scale"), Wait(0.3), enter(), Settle(2.2),
-        Caption("From bars to a map: the same chart object morphs, it is not redrawn."), Wait(0.5),
-        Type("where are the buildings?"), enter(), Settle(1.8),
-        Caption("Numbers of your own: a threshold, then a cell size, from the tile itself."), Wait(0.5),
-        Type("only emphasise buildings taller than 70 m"), enter(), Settle(1.5),
-        Type("use 10 m cells instead of 5 m"), enter(), Settle(2.0),
-        Caption("Stats for nerds: the whole pipeline behind the chart, see-through."), Tab, Wait(5.5), Tab,
-        Caption("The same session by hand: the editor runs SQL over the named tables."), CmdE, Wait(2.0),
-        SelectAll, Type("SELECT classification, count(*) AS points, round(avg(z), 1) AS mean_z FROM tile GROUP BY classification ORDER BY points DESC"), Wait(0.5),
-        CmdEnter, Settle(3.5), CmdE, Wait(0.5),
-        Caption("And back to where it began."), Wait(0.3),
-        Type("start over"), enter(), Settle(2.0),
-        Caption("Jev 1.13 · Claude Haiku 4.5 · DataFusion · SedonaDB · Avenger"), Wait(3.0),
+        // Motion first: the pie arrives mid-sentence.
+        Caption("Type. The chart listens."), Wait(0.4),
+        Type("which share"), Wait(1.3), Type(" does each class have?"), enter(), Settle(1.0),
+        Caption("It speaks Dutch too."),
+        Type("maak er een staafdiagram van"), enter(), Settle(0.8),
+        Caption("Bars split into a heatmap. One object, never redrawn."),
+        Type("how are the classes spread over height?"), enter(), Settle(1.2),
+        Caption("… or become four flight lines."),
+        Type("how many points did each flight line record over time?"), enter(), Settle(1.0),
+        Caption("Zoom by asking."),
+        Type("zoom in on the start"), enter(), Settle(1.0),
+        Caption("Every step morphs."),
+        Type("where are the buildings?"), enter(), Settle(1.2),
+        Caption("Say something no button has: Claude Haiku writes the code."),
+        Type("only emphasise buildings taller than 70 m"), enter(), Settle(1.2),
+        Caption("Rebuilt from 17.3 million points."),
+        Type("use 10 m cells instead of 5 m"), enter(), Settle(1.2),
+        Caption("Every frame is a pipeline. See-through."), Tab, Wait(3.5), Tab,
+        Caption("Lost? Ask what's in the data."),
+        Type("what data is there?"), enter(), Settle(2.5), Key(NamedKey::Escape),
+        Caption("Filter it. Undo it."),
+        Type("start over"), enter(), Settle(0.6),
+        Type("exclude building"), enter(), Settle(1.0),
+        Type("undo"), enter(), Settle(1.0),
+        Caption("Scales and axes, Vega-Lite style."),
+        Type("put the points on a log scale"), enter(), Settle(1.8),
+        Caption("Jev decides · Claude Haiku writes · DataFusion runs · Avenger draws"), Wait(3.0),
     ]
 }
 
@@ -2232,7 +2231,7 @@ async fn record_script(mut app: App, dir: &str, script: Vec<Act>, captions: bool
                         wait = 0.03;
                     } else {
                         app.input_key(&key, Some(c), no, now);
-                        wait = 0.065;
+                        wait = if captions { 0.045 } else { 0.065 };
                     }
                 }
                 Act::Key(k) => {
@@ -2254,11 +2253,6 @@ async fn record_script(mut app: App, dir: &str, script: Vec<Act>, captions: bool
                 }
                 Act::Wait(d) => wait = *d,
                 Act::Caption(c) => caption = c.to_string(),
-                Act::SelectAll => {
-                    app.code.anchor = Some(0);
-                    app.code.caret = app.code.text.len();
-                    app.last_key = now;
-                }
                 Act::Settle(d) => {
                     if busy {
                         break;
@@ -2292,7 +2286,7 @@ async fn record_script(mut app: App, dir: &str, script: Vec<Act>, captions: bool
         if captions {
             sg.height = H + band;
             sg.marks.push(draw::rect(0.0, H, W, band, [0.0, 0x25 as f32 / 255.0, 0x32 as f32 / 255.0, 1.0], None, 0.0));
-            sg.marks.push(draw::text(&caption, W / 2.0, H + band / 2.0, 19.0, [1.0; 4], TextAlign::Center, TextBaseline::Middle, false, 0.0));
+            sg.marks.push(draw::text(&caption, W / 2.0, H + band / 2.0, 23.0, [1.0; 4], TextAlign::Center, TextBaseline::Middle, true, 0.0));
         }
         canvas.set_scene(&sg)?;
         canvas.render().await?.save(format!("{dir}/f{frame:05}.png"))?;
