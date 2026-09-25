@@ -29,6 +29,8 @@ pub struct Decision {
     pub probs: Vec<(String, f64)>,
     /// Confidence of every answer, by question (Jev only).
     pub confidences: Map<String, Value>,
+    /// The cache file that holds the raw response.
+    pub cache: String,
 }
 
 fn confidences(raw: &Value) -> Map<String, Value> {
@@ -99,6 +101,10 @@ pub fn used_cache() -> Vec<String> {
     v
 }
 
+fn cache_name(p: &std::path::Path) -> String {
+    p.file_name().and_then(|n| n.to_str()).map_or(String::new(), |n| format!("cache/{n}"))
+}
+
 fn from_cache(p: &PathBuf) -> Option<Decision> {
     mark_used(p);
     let v: Value = serde_json::from_str(&std::fs::read_to_string(p).ok()?).ok()?;
@@ -111,6 +117,7 @@ fn from_cache(p: &PathBuf) -> Option<Decision> {
         cached: true,
         probs: action_probs(&v["raw"]),
         confidences: confidences(&v["raw"]),
+        cache: cache_name(p),
     })
 }
 
@@ -175,6 +182,7 @@ impl Decider for Jev {
             cached: false,
             probs: action_probs(&raw),
             confidences: confidences(&raw),
+            cache: cache_name(&path),
         };
         to_cache(&path, &d, &raw);
         Ok(d)
@@ -240,6 +248,7 @@ impl Decider for Llm {
             cached: false,
             probs: vec![],
             confidences: Map::new(),
+            cache: cache_name(&path),
         };
         to_cache(&path, &d, &raw);
         Ok(d)
@@ -262,6 +271,7 @@ pub struct Written {
     pub cost: f64,
     pub input_tokens: u64,
     pub cached: bool,
+    pub cache: String,
 }
 
 impl Writer {
@@ -275,6 +285,7 @@ impl Writer {
                 cost: v["cost"].as_f64().unwrap_or(0.0),
                 input_tokens: v["input_tokens"].as_u64().unwrap_or(0),
                 cached: true,
+                cache: cache_name(&path),
             });
         }
         let body = json!({
@@ -304,6 +315,7 @@ impl Writer {
             cost: raw["usage"]["cost"].as_f64().unwrap_or(0.0),
             input_tokens: raw["usage"]["prompt_tokens"].as_u64().unwrap_or(0),
             cached: false,
+            cache: cache_name(&path),
         };
         let _ = std::fs::create_dir_all(cache_dir());
         let v = json!({"text": w.text, "ms": w.ms, "cost": w.cost, "input_tokens": w.input_tokens, "raw": raw});

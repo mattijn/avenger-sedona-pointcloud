@@ -867,9 +867,19 @@ panel showed only the action, while Jev had answered `render: table` at 0.77
 `render` itself, which Jev returns per question; the panel shows it
 ("mark · keep → table", and a line with render and specifics); and a number of
 rows in the instruction ("head 2", "5 rows", "10 rijen") sets the rows shown.
-The session now logs every decision, also while typing (…), with the text,
-Jev's answer and confidence, what the window did, and the lines it added. The
-copy button flashes and says "copied ✓".
+The copy button flashes and says "copied ✓". The session it copies has a
+header (time, commit, models, gates) and a block per decision, while typing
+and on Enter:
+- the chart when Jev was asked (mark, table, colour, zoom, emphasis, title);
+- every answer of Jev's with its confidence, and the action's probabilities;
+- the cache file that holds the raw response, and whether it came from it;
+- Jev's direction to the writer, each try with its cache file, and the text
+  of any refused try;
+- what the window did, with the pipeline lines added (+) and removed (-);
+
+and at the end the pipeline behind the chart, runnable as it stands. A
+session can then be read back from the cache files it names, and its Enter
+lines replayed.
 
 Not checked: other writer models; Dutch beyond two cases; instructions that
 change the data stages beyond the cell size (other filters, other

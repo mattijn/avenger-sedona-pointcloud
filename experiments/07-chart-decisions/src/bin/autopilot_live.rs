@@ -217,13 +217,18 @@ struct Shown {
     written: Option<WrittenInfo>,
     /// `table` or `export`: the data is shown or written, not drawn.
     render: Option<String>,
+    /// The chart when Jev was asked, for the session.
+    before: String,
+    removed: Vec<String>,
 }
 
 #[derive(Clone, Default)]
 struct WrittenInfo {
     direction: String,
     /// (ms, cost, from cache, why it was refused).
-    tries: Vec<(f64, f64, bool, Option<String>)>,
+    tries: Vec<(f64, f64, bool, Option<String>, String)>,
+    /// The pipeline text of every try, for the session.
+    texts: Vec<String>,
     removed: Vec<String>,
     wall_ms: f64,
     done: bool,
@@ -265,6 +270,9 @@ struct App {
     exports: usize,
     t0: Instant,
     copied_at: Option<Instant>,
+    logged: usize,
+    started_at: String,
+    commit: String,
     taken: Vec<(String, String)>,
     // The chart.
     state: State,
@@ -705,6 +713,8 @@ impl App {
                 fold: String::new(),
                 written: None,
                 render: None,
+                before: state_line(&self.state),
+                removed: vec![],
             };
             if shown.gate.starts_with("Enter:") {
                 shown.colour = accent();
@@ -773,40 +783,69 @@ impl App {
     /// the pipeline lines it added.
     fn log(&mut self, a: &Shown) {
         let d = &a.decision;
-        let get = |k: &str| d.answers.get(k).and_then(Value::as_str);
-        let mut jev = pilot::short(&d.answers);
-        if let Some(c) = d.confidence {
-            jev += &format!(" {c:.2}");
-        }
-        if let Some(r) = get("render").filter(|r| *r != "chart") {
-            jev += &format!(" · render {r}");
-        }
-        if get("specifics") == Some("text") {
-            jev += " · specifics";
-        }
         let t = (clock() - self.t0).as_secs_f64();
-        let how = if a.complete { "⏎" } else { "…" };
-        self.session.push(format!("{t:>6.1} s {how} \"{}\" → {jev} → {}", a.prefix, a.gate));
-        for l in &a.lines {
-            self.session.push(format!("           + {}", fit(l, 120)));
+        let how = if a.complete { "on Enter" } else { "while typing" };
+        self.logged += 1;
+        let mut v = vec![format!("{t:.1} s, {how}: \"{}\"", a.prefix)];
+        v.push(format!("  chart    {}", a.before));
+        // Every answer with its confidence, the chosen action first.
+        let mut answers: Vec<String> = d
+            .answers
+            .iter()
+            .map(|(k, x)| format!("{k} {}{}", x.as_str().unwrap_or("?"), d.confidence_of(k).map_or(String::new(), |c| format!(" {c:.2}"))))
+            .collect();
+        answers.sort_by_key(|x| !x.starts_with("action "));
+        v.push(format!("  jev      {}", answers.join(" · ")));
+        let probs: Vec<String> = d.probs.iter().take(5).map(|(k, p)| format!("{k} {p:.2}")).collect();
+        if !probs.is_empty() {
+            v.push(format!("  action p {}", probs.join(" · ")));
         }
+        let asked = if d.cached { format!("from cache ({:.0} ms when first asked)", d.ms) } else { format!("live, {:.0} ms", a.wall_ms) };
+        v.push(format!("  asked    {asked} · {}", d.cache));
+        if let Some(w) = &a.written {
+            v.push(format!("  writer   direction: {}", w.direction));
+            for (i, ((ms, cost, cached, refused, cache), text)) in w.tries.iter().zip(&w.texts).enumerate() {
+                let what = refused.as_ref().map_or("accepted".to_string(), |r| format!("refused: {}", fit(r, 140)));
+                v.push(format!("  try {}    {what} · {ms:.0} ms · ${cost:.4} · {} · {cache}", i + 1, if *cached { "from cache" } else { "live" }));
+                if refused.is_some() {
+                    v.extend(text.lines().map(|l| format!("           | {l}")));
+                }
+            }
+        }
+        v.push(format!("  window   {}", a.gate));
+        v.extend(a.lines.iter().map(|l| format!("           + {l}")));
+        v.extend(a.removed.iter().map(|l| format!("           - {l}")));
+        v.push(String::new());
+        self.session.extend(v);
     }
 
     /// The session as text, for the clipboard and `@@session.txt`: the
     /// instructions to replay, then the log and the pipeline as comments.
     fn session_text(&self) -> String {
-        let mut v = vec![format!("# autopilot session · {} sent with Enter · {} decisions", self.sent.len(), self.session.iter().filter(|l| !l.trim_start().starts_with('+')).count())];
+        let mut v = vec![
+            format!("# autopilot session · {} · commit {}", self.started_at, self.commit),
+            format!(
+                "# jev typesafe/jev-1.13 · writer {} · gates: confidence {GATE}, chart kind while typing {GATE_MARK_EARLY}",
+                if self.writer.is_some() { "anthropic/claude-haiku-4.5" } else { "off" }
+            ),
+            format!("# {} decisions, {} sent with Enter · {} changes · ${:.4} spent", self.logged, self.sent.len(), self.changes.len(), self.cost),
+            "#".into(),
+        ];
         if self.sent.is_empty() {
             v.push("# nothing sent with Enter yet, so nothing to replay".into());
         } else {
-            v.push(format!("# the lines without # replay with: cargo run --release -p lidar-decide --bin autopilot_live -- --snapshot out/replay @@{SESSION_FILE}"));
+            v.push(format!("# sent with Enter; the lines without # replay with: cargo run --release -p lidar-decide --bin autopilot_live -- --snapshot out/replay @@{SESSION_FILE}"));
             v.extend(self.sent.iter().cloned());
         }
         if !self.session.is_empty() {
             v.push("#".into());
-            v.push("# decisions, oldest first · … while typing, ⏎ on Enter · text → Jev (confidence) → what the window did".into());
-            v.extend(self.session.iter().map(|l| format!("# {l}")));
+            v.push("# every decision, oldest first: the chart when Jev was asked, all its answers with confidence, the cache file".into());
+            v.push("# that holds the raw response, what the writer wrote, and what the window did (+ added, - removed)".into());
+            v.push("#".into());
+            v.extend(self.session.iter().map(|l| if l.is_empty() { "#".to_string() } else { format!("# {l}") }));
         }
+        v.push("# the pipeline now, runnable as it stands:".into());
+        v.extend(self.pipeline.iter().enumerate().map(|(i, l)| format!("#   {}{l}", if i == 0 { "" } else { "! " })));
         v.join("\n") + "\n"
     }
 
@@ -875,7 +914,8 @@ impl App {
                     continue;
                 }
             };
-            info.tries = o.attempts.iter().map(|a| (a.written.ms, a.written.cost, a.written.cached, a.refused.clone())).collect();
+            info.tries = o.attempts.iter().map(|a| (a.written.ms, a.written.cost, a.written.cached, a.refused.clone(), a.written.cache.clone())).collect();
+            info.texts = o.attempts.iter().map(|a| a.text.clone()).collect();
             self.cost += o.attempts.iter().filter(|a| !a.written.cached).map(|a| a.written.cost).sum::<f64>();
             let n = info.tries.len();
             let tries = if n == 1 { "1 try".to_string() } else { format!("{n} tries") };
@@ -903,6 +943,7 @@ impl App {
                     self.snapshot(&p);
                     shown.lines = self.pipeline.iter().filter(|l| !before.contains(l)).cloned().collect();
                     info.removed = before.into_iter().filter(|l| !self.pipeline.contains(l)).collect();
+                    shown.removed = info.removed.clone();
                     shown.gate = format!("written by Haiku ({tries}), applied");
                     shown.colour = ui().th.ok;
                     shown.fold = "folds to a state the layer draws".into();
@@ -956,6 +997,7 @@ impl App {
                 self.transition_to(a.state, now);
                 self.snapshot(&p);
                 shown.lines = self.pipeline.iter().filter(|l| !before.contains(l)).cloned().collect();
+                shown.removed = before.iter().filter(|l| !self.pipeline.contains(l)).cloned().collect();
                 shown.gate = if reset { "reset to the first chart".into() } else { format!("undone ({} earlier left)", self.history.len()) };
                 shown.colour = ui().th.ok;
                 shown.fold = "folds to the earlier state".into();
@@ -1429,6 +1471,26 @@ fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
     }
 }
 
+/// The chart in one line: mark, table, colour, zoom, emphasis, title.
+fn state_line(s: &State) -> String {
+    let zoom = match (s.range, s.zoom) {
+        (Some(((a, b), (c, d))), _) => format!("zoom {a}..{b} {c}..{d}"),
+        (None, Some(q)) => format!("zoom {q:?}"),
+        (None, None) => "zoom all".into(),
+    };
+    let emphasis = match (s.highlight, s.threshold) {
+        (false, _) => "no emphasis".to_string(),
+        (true, None) => "emphasis top 10 %".into(),
+        (true, Some(t)) => format!("emphasis >= {t}"),
+    };
+    format!("{} of {} · colour {} · {zoom} · {emphasis} · title \"{}\"", s.mark.id(), s.dataset.id(), pilot::colour_name(s.color), s.title)
+}
+
+/// One line from a shell command, for the session header.
+fn shell(cmd: &str) -> String {
+    std::process::Command::new("sh").args(["-c", cmd]).output().ok().map_or(String::new(), |o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+}
+
 /// A number of rows in the instruction: "head 2", "5 rows", "10 rijen".
 fn rows_asked(s: &str) -> Option<usize> {
     let w: Vec<String> = s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(String::from).collect();
@@ -1586,7 +1648,7 @@ fn nerds(s: &App, now: Instant, marks: &mut Vec<SceneMark>) {
             if !w.done {
                 line(marks, "writer", "Claude Haiku 4.5 is writing the pipeline…", fresh, &mut y);
             }
-            for (i, (ms, cost, cached, refused)) in w.tries.iter().enumerate() {
+            for (i, (ms, cost, cached, refused, _)) in w.tries.iter().enumerate() {
                 let what = match refused {
                     None => "accepted".to_string(),
                     Some(r) => format!("refused: {r}"),
@@ -1779,7 +1841,7 @@ impl EventStreamHandler<App> for Input {
                     let _ = std::fs::create_dir_all("out/autopilot_live");
                     let _ = std::fs::write(SESSION_FILE, &text);
                     s.copied_at = Some(clock());
-                    s.notice = format!("copied: {} decisions, {} sent with Enter · also in {SESSION_FILE}", s.session.iter().filter(|l| !l.trim_start().starts_with('+')).count(), s.sent.len());
+                    s.notice = format!("copied: {} decisions, {} sent with Enter · also in {SESSION_FILE}", s.logged, s.sent.len());
                     let mut status = rerender;
                     status.commands.push(RuntimeHostCommand::WriteClipboard { text });
                     return status;
@@ -2019,6 +2081,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         exports: 0,
         t0: clock(),
         copied_at: None,
+        logged: 0,
+        started_at: shell("date '+%Y-%m-%d %H:%M'"),
+        commit: shell("git rev-parse --short HEAD"),
         taken,
         state,
         from: frame.clone(),
