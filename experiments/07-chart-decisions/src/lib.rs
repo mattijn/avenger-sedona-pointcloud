@@ -28,6 +28,14 @@ pub async fn pipeline() -> datafusion::error::Result<Pipeline> {
     Ok(p)
 }
 
+/// A pipeline for the chart layer: experiment 6's packages plus `layer`.
+/// Returns the step names `layer` took over (`bars`, from `chart`).
+pub async fn layer_pipeline() -> datafusion::error::Result<(Pipeline, Vec<(String, String)>)> {
+    let mut p = pipeline().await?;
+    let taken = p.install(layer::package::package());
+    Ok((p, taken))
+}
+
 /// Pipeline steps from a JSON array, with the tile path filled in.
 pub fn steps(v: &serde_json::Value) -> Vec<String> {
     v.as_array()

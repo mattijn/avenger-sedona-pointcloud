@@ -6,5 +6,7 @@
 pub mod anim;
 pub mod data;
 pub mod draw;
+pub mod editor;
 pub mod model;
+pub mod package;
 pub mod pilot;

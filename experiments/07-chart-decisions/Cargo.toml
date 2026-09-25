@@ -22,3 +22,8 @@ avenger-common = { git = "https://github.com/jonmmease/avenger", rev = "a2241265
 avenger-scenegraph = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
 avenger-text = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
 avenger-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
+avenger-app = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
+avenger-eventstream = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
+avenger-geometry = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
+avenger-winit-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
+winit.workspace = true

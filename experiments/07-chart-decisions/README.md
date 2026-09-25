@@ -158,6 +158,8 @@ set -a; source <folder with your .env>/.env; set +a    # OPENROUTER_API_KEY
 cargo run --release -p lidar-decide --bin decide_eval   # phases C, D, F
 cargo run --release -p lidar-decide --bin typing        # phase E
 cargo run --release -p lidar-decide --bin layer_eval    # the chart layer's vocabulary
+cargo run --release -p lidar-decide --bin autopilot_live     # the live window
+cargo run --release -p lidar-decide --bin layer_roundtrip    # decisions ↔ pipeline check
 cargo run --release -p lidar-decide --bin autopilot_video -- out/autopilot
 ffmpeg -framerate 30 -i out/autopilot/f%05d.png -c:v libx264 -preset slow \
     -pix_fmt yuv420p -crf 26 experiments/07-chart-decisions/video/autopilot.mp4
@@ -374,6 +376,8 @@ joined item by item.
 | `draw.rs` | Frames to marks, through experiment 5's `Bend` projection |
 | `data.rs` | Four tables aggregated from the tile by experiment 6 pipelines, cached as Parquet |
 | `pilot.rs` | The decider's observation and questions for this chart, and the answers applied to the state |
+| `package.rs` | The `layer` pipeline package, decisions → pipeline lines, and the fold from the pipeline back to the state |
+| `editor.rs` | Editor mode: a pipeline text run, drawn from its own result, cached tables recognised |
 
 `transition(a, b, t)` works like this:
 - items with the same key move, resize and recolour;
@@ -411,7 +415,7 @@ On 24 new instruction cases ([results/layer_decisions.md](results/layer_decision
 | Decider | Right | Latency p50 | Cost |
 |---|---|---|---|
 | rules | 16/24 | – | – |
-| Jev | **24/24** | 280 ms | $0.0011 |
+| Jev | **24/24** | 278 ms | $0.0011 |
 | Claude Haiku 4.5 | **24/24** | 1140 ms | $0.029 |
 
 The earlier vocabulary scored 18/19 for Jev (phase D). With the chart layer's
@@ -464,6 +468,10 @@ reason.
 
 The 66 decisions cost $0.0031.
 
+Jev is not fully deterministic. Asked the same question again, it gave the
+same choices, but some confidences moved by 0.01 (0.69 → 0.70, 0.97 → 0.96).
+The response cache is what makes the video and the scores reproducible.
+
 ### What changed on the way
 
 - **A pie keeps its class colours.** After "make the bars red", the pie was
@@ -475,19 +483,137 @@ The 66 decisions cost $0.0031.
   as well as recolouring them. A zoomed map scales its points with the zoom,
   so it has no gaps.
 
+### Decisions become pipeline lines
+
+A decision does not change the chart directly. `package.rs` adds a `layer`
+package to experiment 6's pipeline, alongside `vega_format`, `vega_compat`,
+`sedona` and `chart`. It has one command per mark:
+
+```
+bars n --by label · pie n --by label · line n --x t --series line
+heatmap n --x band --y label · map --x cx --y cy --value h · clear-highlight
+```
+
+Each mark command starts a fresh chart. `layer`'s `bars` takes over
+`chart`'s, keeping the same syntax, and `install` reports that. Colour, zoom and
+emphasis use experiment 6's `color`, `zoom`, `reset-zoom` and `highlight` as
+they are, Vega predicate included. A decision becomes the lines that take the
+chart from its current state to the decided one:
+
+```
+"where are the buildings?"   → read out/layer/cells.parquet ! map --x cx --y cy --value h
+"mark the tallest buildings" → highlight "datum.h >= 62.74"
+"zoom to the south-east"     → zoom 657500..658000 6867000..6867500
+```
+
+The pipeline validates each line against the data (fields, ranges, the
+predicate), and logs it. The chart that is drawn is the **fold of the
+pipeline's chart state**, not the decision. Anything the layer cannot draw
+faithfully is refused, not approximated:
+- an emphasis predicate other than `datum.<field> >= <number>`;
+- a zoom on one axis only.
+
+`layer_roundtrip` checks the translation. It takes the 44 states the
+autopilot can reach and every pair of them: 1936 transitions, run as 4094
+pipeline lines. Each one starts from scratch, runs the lines, and folds. Every
+fold equals its target, in 3.9 s. The full pipeline behind each of the 44
+states, run from the tile as one text, folds to that state too (66 s: each
+one reads the LAZ). For the zoomed map with emphasis, it is:
+
+```
+read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics
+! filter --vega "datum.classification == 6"
+! sql "SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5"
+! map --x cx --y cy --value h
+! highlight "datum.h >= 62.74"
+! zoom 657500..658000 6867000..6867500
+``` The check found one gap: `color` can set a
+colour but not unset it. A reset to the default colour now restarts the mark.
+
+### The live window
+
+`autopilot_live` is the same chart in a window (winit, `avenger-winit-wgpu`):
+- type an instruction, and Jev is asked 400 ms after you stop, and on Enter;
+- the gates are the video's; before Enter, a change of chart kind needs
+  confidence ≥ 0.9;
+- decisions run on the tokio runtime, and a frame wake-up picks up their
+  results, so the window never waits on the network;
+- decisions in `cache/` replay without a key, and new ones need
+  `OPENROUTER_API_KEY`.
+
+**Stats for nerds** (Tab, or the button) lays the plumbing over the chart:
+
+| Row | Shows |
+|---|---|
+| pipeline | the whole pipeline behind the chart, from `read <tile>` to the last command, one stage per line, never cut; the stages the last decision added are green. Runnable as it stands, and written to `out/autopilot_live/pipeline.txt` on every change |
+| packages | installed packages, and which step `layer` took over |
+| history | the last lines run in this session, with their times |
+| chart | the folded chart state as JSON |
+| asked / answers / action p | what Jev was asked (while typing or on Enter), its raw answers and the probabilities |
+| jev | confidence, latency here and at the first call, from cache or live, tokens, cost |
+| gate / lines / fold | what the gates made of it, the pipeline lines, and whether the fold equals the decided state |
+| render / session | items drawn, coordinate system, transition progress, build and frame time; decisions, cache hits, p50 latency, cost |
+
+![Stats for nerds over the map](images/autopilot_nerds.png)
+
+`autopilot_live --snapshot <dir> "instruction" …` runs the same path (Enter,
+gates, pipeline, fold) without a display, and writes each state as PNG with
+and without the overlay.
+
+### Editor mode
+
+The same chart, written by hand. ⌘E (or the "editor" button) swaps the
+autopilot panel for a text area that holds the pipeline behind the chart. You
+edit it, ⌘↵ applies it, and Esc reverts to what is running. Both modes work
+on one pipeline: the autopilot continues from an edit, and the editor opens
+on whatever the autopilot did last.
+
+![Editor mode: 10 m cells, a custom zoom and threshold](images/editor.png)
+
+[`editor.rs`](src/layer/editor.rs) runs the text through a fresh pipeline,
+the same as the autopilot's lines. If the text does not run, or folds to
+something the layer cannot draw, it is refused, and the chart stays as it
+is. Four things make hand-writing worth it:
+
+- **Edited data is drawn.** The drawn table is built from the pipeline's own
+  result, using the fields the mark command names. Changing `floor(x/5)*5`
+  to `floor(x/10)*10` gives 10 m cells (3489 instead of 11719). The point
+  size and the default title follow the cell size.
+- **Known data is read from its cache.** When the data stages are exactly
+  those of one of the four tables, the cached Parquet file is read instead of
+  the tile: 2 ms instead of about 1 s. The status line says which it was.
+- **Zoom and emphasis are no longer limited to what the autopilot can say.**
+  The state has an optional custom zoom range and emphasis threshold, so
+  `zoom 657200..657600 6867300..6867700` and `highlight "datum.h >= 70"` are
+  drawn. A quarter-shaped zoom and the top-10 % threshold fold back to what
+  the autopilot knows, so its observations, and the cache keys of every
+  earlier decision, are unchanged.
+- **Refusals name the problem.** For example `the layer draws
+  datum.h >= <number> only, not datum.h < 50`, or the pipeline's own
+  `map: no field cx in the data (fields: x, y, z, …)`.
+
+`layer_roundtrip` also runs each of the 44 full pipelines as editor text.
+Each one applies to its own state, from the cache, in 82 ms for all 44.
+`autopilot_live --snapshot <dir> @file.txt` applies a file as editor text,
+without a display.
+
+What the editor does not do yet:
+- word wrapping (it wraps at 60 characters);
+- selection, copy and paste;
+- syntax highlighting.
+
+Commands after a data stage are refused: data goes first, then the chart.
+
 ### Not built yet
 
-- The **live window**: winit, a `TextInput`, decisions as background tasks
-  with wake-ups. The video is a headless recording of the same timeline:
-  - keystrokes at 15 characters per second;
-  - decisions from the cache, arriving after their measured latency;
-  - transitions of 1.1 s, or 1.8 s through `Bend`.
-
-  It rebuilds without a key.
 - **Data events** (more rows, a new column, an outlier) and the narrow/free
   policy switch in the panel. Phases D and F measure these on the pipeline
   charts, but they are not wired to the chart layer.
-- An undo in the command log.
+- **Undo.** Experiment 6's `undo` refolds the log with the `chart`
+  package's `apply`, which does not know the layer's marks. It needs a
+  fold that includes `layer`'s commands before the window can offer it.
+- **Free text** (titles, custom zooms, other predicates): the pipeline accepts
+  them, but a classifier cannot produce them.
 
 ## Advanced: a training run as the data source
 

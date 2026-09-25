@@ -25,6 +25,10 @@ fn hex(h: &str) -> [f32; 4] {
     [v(1), v(3), v(5), 1.0]
 }
 
+pub fn colour_of(name: &str) -> Option<[f32; 4]> {
+    COLOURS.iter().find(|(n, _)| *n == name).map(|(_, h)| hex(h))
+}
+
 pub fn colour_name(c: Option<[f32; 4]>) -> &'static str {
     let Some(c) = c else { return "default" };
     COLOURS.iter().find(|(_, h)| hex(h) == c).map_or("custom", |(n, _)| n)
@@ -71,8 +75,12 @@ pub fn observation(s: &State, d: &Data, instruction: &str) -> Value {
             "rows": rows(s.dataset),
             "title": s.title,
             "colour": colour_name(s.color),
-            "zoom": quarter_id(s.zoom),
-            "highlight": if s.highlight { "top 10 %" } else { "none" },
+            "zoom": if s.range.is_some() { "custom" } else { quarter_id(s.zoom) },
+            "highlight": match (s.highlight, s.threshold) {
+                (false, _) => "none",
+                (true, None) => "top 10 %",
+                (true, Some(_)) => "custom threshold",
+            },
         },
         "other_charts": MARKS.iter().filter(|m| m.0 != s.mark).map(|m| m.1).collect::<Vec<_>>(),
         "instruction": instruction,
@@ -138,6 +146,8 @@ pub fn apply(s: &State, answers: &Map<String, Value>) -> Result<State, NotApplie
                 n.zoom = None;
             }
             n.highlight &= highlightable(n.mark);
+            n.range = None;
+            n.threshold = None;
             if !recolourable(n.mark) {
                 n.color = None;
             }
@@ -164,6 +174,7 @@ pub fn apply(s: &State, answers: &Map<String, Value>) -> Result<State, NotApplie
                 "all" => None,
                 _ => return unfit("zoom chosen but no region"),
             };
+            n.range = None;
         }
         "highlight" => {
             if !highlightable(s.mark) {
@@ -174,6 +185,7 @@ pub fn apply(s: &State, answers: &Map<String, Value>) -> Result<State, NotApplie
                 "none" => false,
                 _ => return unfit("emphasis chosen but no subset"),
             };
+            n.threshold = None;
         }
         other => return unfit(&format!("unknown action {other}")),
     }

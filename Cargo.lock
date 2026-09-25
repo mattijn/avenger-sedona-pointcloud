@@ -1330,6 +1330,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "avenger-winit-wgpu"
+version = "0.1.0"
+source = "git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257#a2241265e8b7c4be5079c5493e443b1ba42e9257"
+dependencies = [
+ "arboard",
+ "avenger-app 0.1.0 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
+ "avenger-common 0.0.8 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
+ "avenger-eventstream 0.1.0 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
+ "avenger-resource 0.0.1 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
+ "avenger-scenegraph 0.0.8 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
+ "avenger-wgpu 0.0.8 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
+ "cfg-if",
+ "futures",
+ "log",
+ "notify",
+ "tokio",
+ "tracing",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "avif-serialize"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4541,7 +4566,7 @@ dependencies = [
  "avenger-scenegraph 0.0.8 (git+https://github.com/jonmmease/avenger?rev=5f31c582c3e77dd3caa9c59707e142d24d53f178)",
  "avenger-text 0.0.8 (git+https://github.com/jonmmease/avenger?rev=5f31c582c3e77dd3caa9c59707e142d24d53f178)",
  "avenger-wgpu 0.0.8 (git+https://github.com/jonmmease/avenger?rev=5f31c582c3e77dd3caa9c59707e142d24d53f178)",
- "avenger-winit-wgpu",
+ "avenger-winit-wgpu 0.1.0 (git+https://github.com/jonmmease/avenger?rev=5f31c582c3e77dd3caa9c59707e142d24d53f178)",
  "copc-rs",
  "datafusion",
  "lidar-common",
@@ -4574,7 +4599,7 @@ dependencies = [
  "avenger-text 0.0.8 (git+https://github.com/jonmmease/avenger?rev=5f31c582c3e77dd3caa9c59707e142d24d53f178)",
  "avenger-wgpu 0.0.8 (git+https://github.com/jonmmease/avenger?rev=5f31c582c3e77dd3caa9c59707e142d24d53f178)",
  "avenger-widgets",
- "avenger-winit-wgpu",
+ "avenger-winit-wgpu 0.1.0 (git+https://github.com/jonmmease/avenger?rev=5f31c582c3e77dd3caa9c59707e142d24d53f178)",
  "datafusion",
  "geo-types",
  "lidar-common",
@@ -4589,11 +4614,15 @@ version = "0.1.0"
 dependencies = [
  "arrow",
  "async-trait",
+ "avenger-app 0.1.0 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
  "avenger-color 0.1.0 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
  "avenger-common 0.0.8 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
+ "avenger-eventstream 0.1.0 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
+ "avenger-geometry 0.0.8 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
  "avenger-scenegraph 0.0.8 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
  "avenger-text 0.0.8 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
  "avenger-wgpu 0.0.8 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
+ "avenger-winit-wgpu 0.1.0 (git+https://github.com/jonmmease/avenger?rev=a2241265e8b7c4be5079c5493e443b1ba42e9257)",
  "datafusion",
  "image",
  "lidar-common",
@@ -4602,6 +4631,7 @@ dependencies = [
  "reqwest",
  "serde_json",
  "tokio",
+ "winit",
 ]
 
 [[package]]
@@ -4672,7 +4702,7 @@ dependencies = [
  "avenger-scenegraph 0.0.8 (git+https://github.com/jonmmease/avenger?rev=5f31c582c3e77dd3caa9c59707e142d24d53f178)",
  "avenger-text 0.0.8 (git+https://github.com/jonmmease/avenger?rev=5f31c582c3e77dd3caa9c59707e142d24d53f178)",
  "avenger-wgpu 0.0.8 (git+https://github.com/jonmmease/avenger?rev=5f31c582c3e77dd3caa9c59707e142d24d53f178)",
- "avenger-winit-wgpu",
+ "avenger-winit-wgpu 0.1.0 (git+https://github.com/jonmmease/avenger?rev=5f31c582c3e77dd3caa9c59707e142d24d53f178)",
  "datafusion",
  "futures",
  "lidar-common",

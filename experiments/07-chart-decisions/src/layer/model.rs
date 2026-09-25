@@ -10,6 +10,7 @@
 use lidar_common::{CLASSES, OTHER};
 
 /// The tile's data, aggregated once into small tables.
+#[derive(Clone)]
 pub struct Data {
     /// (class label, colour, points), in class order.
     pub classes: Vec<(String, [f32; 4], f64)>,
@@ -100,13 +101,17 @@ pub struct State {
     pub mark: Mark,
     pub color: Option<[f32; 4]>,
     pub zoom: Option<Quarter>,
+    /// A zoom that is not a quarter (from the editor): x and y domains.
+    pub range: Option<((f64, f64), (f64, f64))>,
     pub highlight: bool,
+    /// An emphasis threshold other than the top 10 % (from the editor).
+    pub threshold: Option<f64>,
     pub title: String,
 }
 
 impl State {
     pub fn new(dataset: Dataset) -> Self {
-        let mut s = State { dataset, mark: Mark::default_for(dataset), color: None, zoom: None, highlight: false, title: String::new() };
+        let mut s = State { dataset, mark: Mark::default_for(dataset), color: None, zoom: None, range: None, highlight: false, threshold: None, title: String::new() };
         s.title = s.default_title();
         s
     }
@@ -220,7 +225,7 @@ fn zoomed(lo: f64, hi: f64, lower: bool) -> (f64, f64) {
     if lower { (lo, mid) } else { (mid, hi) }
 }
 
-fn quarter_domains(q: Option<Quarter>, x: (f64, f64), y: (f64, f64)) -> ((f64, f64), (f64, f64)) {
+pub fn quarter_domains(q: Option<Quarter>, x: (f64, f64), y: (f64, f64)) -> ((f64, f64), (f64, f64)) {
     match q {
         None => (x, y),
         Some(q) => {
@@ -229,6 +234,33 @@ fn quarter_domains(q: Option<Quarter>, x: (f64, f64), y: (f64, f64)) -> ((f64, f
             (zoomed(x.0, x.1, !east), zoomed(y.0, y.1, !north))
         }
     }
+}
+
+/// The unzoomed x and y domains of a mark with continuous axes.
+pub fn base_domains(m: Mark, d: &Data) -> Option<((f64, f64), (f64, f64))> {
+    match m {
+        Mark::Line => {
+            let xmax = d.flight.iter().map(|r| r.1).fold(0.0, f64::max);
+            let ymax = nice(0.0, d.flight.iter().map(|r| r.2).fold(0.0, f64::max)).1;
+            Some(((0.0, xmax.ceil()), (0.0, ymax)))
+        }
+        Mark::Map => Some(((657_000.0, 658_000.0), (6_867_000.0, 6_868_000.0))),
+        _ => None,
+    }
+}
+
+/// The emphasis a mark supports: the field and the threshold of its top
+/// 10 %.
+pub fn emphasis(m: Mark, d: &Data) -> Option<(&'static str, f64)> {
+    match m {
+        Mark::Bars | Mark::Pie => Some(("n", percentile(d.classes.iter().map(|c| c.2).collect(), 0.9))),
+        Mark::Map => Some(("h", percentile(d.cells.iter().map(|c| c.2).collect(), 0.9))),
+        _ => None,
+    }
+}
+
+fn fmt_m(v: f64) -> String {
+    if (v - v.round()).abs() < 1e-9 { format!("{v:.0}") } else { format!("{v}") }
 }
 
 /// Resolve a state into a frame of keyed items.
@@ -248,7 +280,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             let n = d.classes.len() as f64;
             let max = nice(0.0, d.classes.iter().map(|c| c.2).fold(0.0, f64::max)).1;
             let total: f64 = d.classes.iter().map(|c| c.2).sum();
-            let p90 = percentile(d.classes.iter().map(|c| c.2).collect(), 0.9);
+            let p90 = s.threshold.unwrap_or(emphasis(s.mark, d).unwrap().1);
             let mut acc = 0.0;
             for (i, (label, colour, v)) in d.classes.iter().enumerate() {
                 let geo = if s.mark == Mark::Bars {
@@ -278,9 +310,8 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             let mut lines: Vec<i64> = d.flight.iter().map(|r| r.0).collect();
             lines.sort();
             lines.dedup();
-            let xmax = d.flight.iter().map(|r| r.1).fold(0.0, f64::max);
-            let ymax = nice(0.0, d.flight.iter().map(|r| r.2).fold(0.0, f64::max)).1;
-            let ((x0, x1), (y0, y1)) = quarter_domains(s.zoom, (0.0, xmax.ceil()), (0.0, ymax));
+            let (bx, by) = base_domains(Mark::Line, d).unwrap();
+            let ((x0, x1), (y0, y1)) = s.range.unwrap_or_else(|| quarter_domains(s.zoom, bx, by));
             for (k, l) in lines.iter().enumerate() {
                 let pts: Vec<[f64; 2]> = d.flight.iter().filter(|r| r.0 == *l).map(|r| [r.1, r.2]).collect();
                 let fill = s.color.filter(|_| lines.len() == 1).unwrap_or(LINE_COLOURS[k % 4]);
@@ -317,11 +348,21 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             f.colorbar = Some((0.0, vmax));
         }
         Mark::Map => {
-            let p90 = percentile(d.cells.iter().map(|c| c.2).collect(), 0.9);
-            let ((x0, x1), (y0, y1)) = quarter_domains(s.zoom, (657_000.0, 658_000.0), (6_867_000.0, 6_868_000.0));
+            let p90 = s.threshold.unwrap_or(emphasis(Mark::Map, d).unwrap().1);
+            let (bx, by) = base_domains(Mark::Map, d).unwrap();
+            let ((x0, x1), (y0, y1)) = s.range.unwrap_or_else(|| quarter_domains(s.zoom, bx, by));
             let base = s.color.unwrap_or([0.30, 0.47, 0.66, 1.0]);
-            // Symbol area follows the zoom, so a magnified map has no gaps.
-            let k = (1000.0 / (x1 - x0)).powi(2);
+            // Symbol area follows the zoom and the cell size (the smallest
+            // step between cell origins), so the map has no gaps.
+            let mut xs: Vec<f64> = d.cells.iter().map(|c| c.0).collect();
+            xs.sort_by(f64::total_cmp);
+            let cell = xs.windows(2).map(|w| w[1] - w[0]).filter(|g| *g > 1e-9).fold(f64::INFINITY, f64::min);
+            let cell = if cell.is_finite() { cell } else { 5.0 };
+            let k = (1000.0 / (x1 - x0)).powi(2) * (cell / 5.0).powi(2);
+            // The default title names the cell size the data has.
+            if s.title == s.default_title() {
+                f.state.title = format!("Buildings, {} m cells", fmt_m(cell));
+            }
             for (cx, cy, h) in &d.cells {
                 let hot = s.highlight && *h >= p90;
                 f.items.push(Item {
