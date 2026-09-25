@@ -1,0 +1,112 @@
+{
+  "answers": {
+    "action": "transform",
+    "colour": "red",
+    "mark": "heatmap",
+    "region": "keep",
+    "render": "chart",
+    "specifics": "text",
+    "subset": "keep"
+  },
+  "confidence": 0.89,
+  "cost": 0.000060228,
+  "input_tokens": 1434,
+  "ms": 281.859042,
+  "raw": {
+    "answers": {
+      "action": {
+        "choice": "transform",
+        "confidence": 0.89,
+        "probabilities": {
+          "color": 0.01,
+          "highlight": 0.01,
+          "mark": 0.06,
+          "no_change": 0.01,
+          "reset": 0,
+          "title": 0,
+          "transform": 0.9,
+          "undo": 0,
+          "zoom": 0.01
+        },
+        "type": "choice"
+      },
+      "colour": {
+        "choice": "red",
+        "confidence": 0.59,
+        "probabilities": {
+          "blue": 0,
+          "green": 0,
+          "grey": 0,
+          "keep": 0.34,
+          "orange": 0,
+          "red": 0.66
+        },
+        "type": "choice"
+      },
+      "mark": {
+        "choice": "heatmap",
+        "confidence": 0.82,
+        "probabilities": {
+          "bars": 0.01,
+          "heatmap": 0.85,
+          "keep": 0.11,
+          "line": 0,
+          "map": 0.03,
+          "pie": 0
+        },
+        "type": "choice"
+      },
+      "region": {
+        "choice": "keep",
+        "confidence": 0.75,
+        "probabilities": {
+          "all": 0.2,
+          "keep": 0.8,
+          "north_east": 0,
+          "north_west": 0,
+          "south_east": 0,
+          "south_west": 0
+        },
+        "type": "choice"
+      },
+      "render": {
+        "choice": "chart",
+        "confidence": 0.97,
+        "probabilities": {
+          "chart": 0.99,
+          "export": 0,
+          "overview": 0,
+          "table": 0.01
+        },
+        "type": "choice"
+      },
+      "specifics": {
+        "choice": "text",
+        "confidence": 0.23,
+        "probabilities": {
+          "none": 0.39,
+          "text": 0.61
+        },
+        "type": "choice"
+      },
+      "subset": {
+        "choice": "keep",
+        "confidence": 0.08,
+        "probabilities": {
+          "keep": 0.39,
+          "none": 0.31,
+          "top_10": 0.3
+        },
+        "type": "choice"
+      }
+    },
+    "id": "gen-dec-1790349871-lvHJAkURsGXNvkmXMwst",
+    "model": "typesafe/jev-1.13-20260917",
+    "provider": "TypeSafe",
+    "usage": {
+      "cost": 0.000060228,
+      "input_tokens": 1434,
+      "output_tokens": 369
+    }
+  }
+}
