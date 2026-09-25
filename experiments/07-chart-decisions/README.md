@@ -157,12 +157,17 @@ video of a chart following typed text and data changes.
 set -a; source <folder with your .env>/.env; set +a    # OPENROUTER_API_KEY
 cargo run --release -p lidar-decide --bin decide_eval   # phases C, D, F
 cargo run --release -p lidar-decide --bin typing        # phase E
+cargo run --release -p lidar-decide --bin layer_eval    # the chart layer's vocabulary
+cargo run --release -p lidar-decide --bin autopilot_video -- out/autopilot
+ffmpeg -framerate 30 -i out/autopilot/f%05d.png -c:v libx264 -preset slow \
+    -pix_fmt yuv420p -crf 26 experiments/07-chart-decisions/video/autopilot.mp4
 ```
 
 Every response is cached in [cache/](cache/), keyed by a hash of the decider,
 the observation and the questions. Both binaries replay byte-identically
 from the cache **without** an API key; only a new or changed case calls the
-API. All 108 cached decisions together cost $0.069.
+API. All 108 cached decisions together cost $0.069. The chart layer's
+evaluation and the autopilot added about 110 more, for about $0.03.
 
 | File | What it holds |
 |---|---|
@@ -171,6 +176,8 @@ API. All 108 cached decisions together cost $0.069.
 | [src/deciders.rs](src/deciders.rs) | `Rules`, `Jev` (OpenRouter Decisions endpoint), `Llm` (OpenRouter chat), the cache |
 | [cases.json](cases.json) | 19 instructions and 4 data changes, with expected answers written before any decider ran |
 | [results/](results/) | Every decision (`decisions.json`) and the cache files each run used |
+| [src/layer/](src/layer/) | The chart layer: model, keyed transitions, drawing, data, and the decider's vocabulary for it (`pilot.rs`) |
+| [cases_layer.json](cases_layer.json) | 24 instructions on the chart layer, expected answers written before any decider ran |
 
 ## Results
 
@@ -337,108 +344,150 @@ and debouncing.
   LLMs, and larger or noisier instruction sets. With 19 + 8 cases, one case is
   5 % (instructions) or 12.5 % (data changes); the counts are indicative.
 
-## Next: a live autopilot on one chart that transitions
+## The autopilot on one chart that transitions
 
-Plan, not built. It follows from the results above.
+[video/autopilot.mp4](video/autopilot.mp4), 56 s. Twelve instructions are typed
+into the panel. Jev decides after every word, and **one chart object** moves
+from bars to a pie, back to bars, to a heatmap, a time series and, last, a
+map. Every change is a transition, as the marks were in experiment 5.
 
-### One chart object, not a new chart per command
+![The autopilot, sampled every 6 s](images/autopilot_sheet.png)
 
-Every accepted command now rebuilds the chart: a new definition, a new frame.
-The next step keeps **one chart object** that transitions from state to
-state, as the marks did in experiment 5. That needs:
-
-- **A keyed join between consecutive states.** Every mark item has a key from
-  the data (a height band, a class, a flight line, a cell). Between two states,
-  items with the same key interpolate their position, size and colour. New
-  items fade in, and items that are gone fade out. This is D3's object
-  constancy.
-- **Transitions per kind of change:**
-  - zoom tweens the scale domains, and axes and grid follow;
-  - colour interpolates;
-  - a highlight fades in, both colour and size;
-  - a change of coordinate system morphs through a family with a parameter
-    (`Bend` from experiment 5: a stacked bar into a pie).
-
-### Why not `avenger-chart` for this
+### The chart layer
 
 At the newest top of the stack (#130), `avenger-chart-definition` has two
-marks, rectangles and circle symbols, with a constant fill colour, and no
-colour scale. A time series (a line), a heatmap (fill by value) and a pie (an
-arc) cannot be described there. The renderer underneath, `avenger-scenegraph`,
-has arc, line, area and rect with per-item fill. So the live chart gets its
-own small chart layer on `avenger-scenegraph`. It uses experiment 5's
-`CoordinateSystem` (Cartesian, Polar, `Bend`), ported to the same Avenger
-revision as experiments 6 and 7, and is rendered by `avenger-wgpu` and hosted
-by `avenger-winit-wgpu`.
+marks, rectangles and circle symbols. Both have a constant fill colour, and
+there is no colour scale. A time series, a heatmap and a pie cannot be
+described there. So [src/layer/](src/layer/) is a small chart layer directly on
+`avenger-scenegraph`, rendered by `avenger-wgpu`. It borrows two ideas from the
+`facet-fresh-start` branch:
+- marks are separate from the coordinate system they are drawn in;
+- a line mark splits into series by a key.
 
-The pipeline, the chart state as a fold of the command log, the task
-validation and the deciders stay as they are.
+What it adds is a **key from the data on every item**, so two frames can be
+joined item by item.
 
-### Marks, common first, maps last
+| File | What it does |
+|---|---|
+| `model.rs` | The chart state (dataset, mark, colour, zoom, emphasis, title), and `resolve(state, data)`, which turns it into a frame of keyed items |
+| `anim.rs` | `transition(a, b, t)`: see the transitions below |
+| `draw.rs` | Frames to marks, through experiment 5's `Bend` projection |
+| `data.rs` | Four tables aggregated from the tile by experiment 6 pipelines, cached as Parquet |
+| `pilot.rs` | The decider's observation and questions for this chart, and the answers applied to the state |
 
-| Order | Chart | Data from the tile | Transition into it |
+`transition(a, b, t)` works like this:
+- items with the same key move, resize and recolour;
+- a heatmap cell grows out of its class bar (its parent), and collapses back
+  into it;
+- a change between Cartesian and polar goes through `Bend` in two phases:
+  first the layout, then the bend;
+- a shared linear axis tweens its domain;
+- guides, titles and legends that change fade in sequence, never on top of
+  each other.
+
+| Mark | Data from the tile | Transition into it |
+|---|---|---|
+| bars | points per LiDAR class | colour interpolates; emphasis recolours the top 10 % |
+| pie | the same, as shares | the bars become one stacked bar, which `Bend` curls into a donut |
+| heatmap | points per class and 4 m height band, viridis on a log scale | each class bar splits into its height cells |
+| time series | points per 0.5 s along each of the 4 flight lines | new data: the old chart fades out, then the lines fade in; zoom tweens the domain |
+| map | buildings in 5 m cells | new data as above; zoom tweens the domain, and the point size follows it |
+
+### The vocabulary grows: 24/24 for Jev
+
+`pilot.rs` asks one `mark` question, whose options are bars, pie, time series,
+heatmap and map. Each option names the data it shows, so no field has to be
+chosen. It also asks `colour`, `region` and `subset` (emphasis on or off). The
+observation holds the chart state and table sizes, never rows.
+
+Options that do not fit are refused, not drawn:
+- a zoom on a pie;
+- a colour on a heatmap, a time series or a pie, whose colours encode the
+  data;
+- a decision that would change nothing ("already so").
+
+On 24 new instruction cases ([results/layer_decisions.md](results/layer_decisions.md)):
+
+| Decider | Right | Latency p50 | Cost |
 |---|---|---|---|
-| 1 | bars | points per height band | start |
-| 2 | pie / donut | share per class | the bars become one stacked bar, which `Bend` curls into a pie |
-| 3 | time series | points per 10 s per flight line (`gps_time`, `point_source_id`: 4 lines) | new data, so a crossfade; within the series, zoom and highlight tween |
-| 4 | heatmap | class × height band, colour = number of points | each height bar splits into cells per class, and each (height, class) cell moves to its place |
-| 5 | map | buildings in 5 m cells | last: a scatter becomes a map, each cell moving to its coordinates |
+| rules | 16/24 | – | – |
+| Jev | **24/24** | 280 ms | $0.0011 |
+| Claude Haiku 4.5 | **24/24** | 1140 ms | $0.029 |
 
-The decider's options grow accordingly: `mark` offers bars, pie, line,
-heatmap and map. The data roles gain `time` (for `gps_time`) and
-`series` (for flight lines), so the fields for a line chart are derived as
-the others are. New instruction cases cover each mark, and the evaluation
-reruns with the larger vocabulary.
+The earlier vocabulary scored 18/19 for Jev (phase D). With the chart layer's
+vocabulary, Jev also gets the indirect questions right:
+- "which share does each class have?" → pie;
+- "how are the classes spread over height?" → heatmap;
+- "where are the buildings?" → map;
+- "which class has the most points?" → bars.
 
-### The live window
+Rules miss exactly those, and Dutch.
 
-- **Chart:** the chart layer's scene, transitioning.
-- **Input:** a text field (`avenger-widgets` `TextInput`), buttons for data
-  events (more rows, a new column, an outlier), and a narrow/free policy
-  switch.
-- **Autopilot panel:**
-  - the current decision, with a probability bar per option;
-  - which gate held it back, if any;
-  - the command log with undo;
-  - the running latency and cost.
-- **Gates, from phase E:**
-  - decide after a pause in typing (about 400 ms);
-  - act on confidence ≥ 0.5;
-  - act only on complete intents;
-  - never reapply the current state.
+### Deciding while typing: one gate had to be added
 
-  Decisions run as background tasks with the host's wake-ups, so the window
-  never waits on the network.
+The panel decides after every word (66 decisions in the video), against the
+state as it is at that moment. The planned gates were:
+- confidence ≥ 0.5;
+- a complete intent;
+- a change to the state.
 
-Before the video, three gaps from the gallery get fixed:
-1. The observation includes the current style (colour, zoom, highlight).
-2. A mark change refreshes the title.
-3. A highlight also enlarges the marks.
+In the first recording, the single word "make" gave `mark/pie` at confidence
+0.77. The chart bent into a pie and back before the sentence was finished.
+Early mark changes are the costly ones to undo, and the correct ones had
+confidence ≥ 0.93. So one gate was added:
 
-The evaluation is rerun, with the scores before and after reported side by
-side.
+- **a change of chart kind before the instruction is complete needs
+  confidence ≥ 0.9.**
 
-### The video is a recording of the live app
+This threshold was set after seeing this run, not beforehand. With it, all
+12 instructions give exactly one change each, and all 12 are right. Several
+land before the sentence is complete:
 
-The app runs from a script of timed events: keystrokes at typing speed and
-button presses. It renders headlessly, with decisions from the cache and the
-latency shown as measured on the original call. The video can therefore be
-rebuilt without a key.
+| Typed so far | Decision | Confidence |
+|---|---|---|
+| "which share" | mark/pie | 0.98 |
+| "emphasise" | highlight/top_10 | 0.98 |
+| "how many points did each flight line" | mark/line | 0.93 |
+| "zoom in on the start" | zoom/north_west | 1.00 |
+| "zoom back" | zoom/all | 1.00 |
+| "mark the tallest" | highlight/top_10 | 0.79 |
+| "show the whole" | zoom/all | 1.00 |
 
-Storyboard, about 90 s:
-1. Bars. Typing "maak de balken rood": early guesses held back, then the bars
-   turn red.
-2. "show the share per class as a pie": the bars bend into a pie.
-3. "how did the flight go over time": the time series crossfades in. Then
-   "zoom to the second flight line", and the domain tweens.
-4. "class against height": the heatmap assembles from the bars' cells.
-5. "can we look closer at the lower right part": the panel shows the
-   confident wrong guess (south-west after "lower") waiting for the pause, then
-   the right zoom.
-6. Map last. The policy goes from narrow to free, and "a geometry column
-   appears" makes the scatter move into a map.
-7. End card: decisions made and held back, the cost and the median latency,
-   from the run itself.
+"zoom in on the start" resolving to north-west (the start of a time axis,
+high values) is the decider reading the chart, not the words. The gate held
+back:
+- "how are the classes spread over" (heatmap, 0.49);
+- "how many points did each flight" (line, 0.74).
+
+In the video the panel shows each held-back decision in amber, with its
+reason.
+
+The 66 decisions cost $0.0031.
+
+### What changed on the way
+
+- **A pie keeps its class colours.** After "make the bars red", the pie was
+  solid red, with its slices told apart only by hairlines. A colour now
+  applies to bars and the map only, and a mark change resets it where it does
+  not apply. The colour does not come back with the bars. Remembering a
+  colour per mark would be the next step.
+- The title follows the mark (`default_title`). Emphasis enlarges map points
+  as well as recolouring them. A zoomed map scales its points with the zoom,
+  so it has no gaps.
+
+### Not built yet
+
+- The **live window**: winit, a `TextInput`, decisions as background tasks
+  with wake-ups. The video is a headless recording of the same timeline:
+  - keystrokes at 15 characters per second;
+  - decisions from the cache, arriving after their measured latency;
+  - transitions of 1.1 s, or 1.8 s through `Bend`.
+
+  It rebuilds without a key.
+- **Data events** (more rows, a new column, an outlier) and the narrow/free
+  policy switch in the panel. Phases D and F measure these on the pipeline
+  charts, but they are not wired to the chart layer.
+- An undo in the command log.
 
 ## Advanced: a training run as the data source
 

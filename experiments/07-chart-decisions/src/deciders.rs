@@ -25,6 +25,17 @@ pub struct Decision {
     pub cost: f64,
     pub input_tokens: u64,
     pub cached: bool,
+    /// Probability per option of the `action` answer (Jev only).
+    pub probs: Vec<(String, f64)>,
+}
+
+fn action_probs(raw: &Value) -> Vec<(String, f64)> {
+    let mut v: Vec<(String, f64)> = raw["answers"]["action"]["probabilities"]
+        .as_object()
+        .map(|m| m.iter().map(|(k, p)| (k.clone(), p.as_f64().unwrap_or(0.0))).collect())
+        .unwrap_or_default();
+    v.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    v
 }
 
 #[async_trait]
@@ -82,6 +93,7 @@ fn from_cache(p: &PathBuf) -> Option<Decision> {
         cost: v["cost"].as_f64().unwrap_or(0.0),
         input_tokens: v["input_tokens"].as_u64().unwrap_or(0),
         cached: true,
+        probs: action_probs(&v["raw"]),
     })
 }
 
@@ -144,6 +156,7 @@ impl Decider for Jev {
             cost: raw["usage"]["cost"].as_f64().unwrap_or(0.0),
             input_tokens: raw["usage"]["input_tokens"].as_u64().unwrap_or(0),
             cached: false,
+            probs: action_probs(&raw),
         };
         to_cache(&path, &d, &raw);
         Ok(d)
@@ -207,6 +220,7 @@ impl Decider for Llm {
             cost: raw["usage"]["cost"].as_f64().unwrap_or(0.0),
             input_tokens: raw["usage"]["prompt_tokens"].as_u64().unwrap_or(0),
             cached: false,
+            probs: vec![],
         };
         to_cache(&path, &d, &raw);
         Ok(d)
@@ -234,6 +248,8 @@ impl Decider for Rules {
             a.insert(k.into(), json!(v));
         };
         let free = questions.get("mark").is_some();
+        // The chart layer's marks (pilot.rs), only offered there.
+        let layer = questions["mark"]["criteria"].get("pie").is_some();
         if let Some(i) = o["instruction"].as_str() {
             let t = i.to_lowercase();
             let colour = ["red", "blue", "orange", "green", "grey", "gray"]
@@ -290,6 +306,15 @@ impl Decider for Rules {
                 set(&mut a, "subset", "top_10");
             } else if has(&t, &["title"]) {
                 set(&mut a, "action", "title");
+            } else if layer && has(&t, &["pie", "donut", "share"]) {
+                set(&mut a, "action", "mark");
+                set(&mut a, "mark", "pie");
+            } else if layer && has(&t, &["heatmap", "heat map"]) {
+                set(&mut a, "action", "mark");
+                set(&mut a, "mark", "heatmap");
+            } else if layer && has(&t, &["time series", "over time", "timeline"]) {
+                set(&mut a, "action", "mark");
+                set(&mut a, "mark", "line");
             } else if free && has(&t, &["map"]) {
                 set(&mut a, "action", "mark");
                 set(&mut a, "mark", "map");

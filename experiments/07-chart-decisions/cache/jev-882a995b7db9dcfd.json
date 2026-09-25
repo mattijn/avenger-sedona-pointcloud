@@ -1,0 +1,87 @@
+{
+  "answers": {
+    "action": "no_change",
+    "colour": "keep",
+    "mark": "keep",
+    "region": "south_east",
+    "subset": "top_10"
+  },
+  "confidence": 0.45,
+  "cost": 0.000046788,
+  "input_tokens": 1114,
+  "ms": 231.00875000000002,
+  "raw": {
+    "answers": {
+      "action": {
+        "choice": "no_change",
+        "confidence": 0.45,
+        "probabilities": {
+          "color": 0.01,
+          "highlight": 0.05,
+          "mark": 0.23,
+          "no_change": 0.54,
+          "title": 0.03,
+          "zoom": 0.14
+        },
+        "type": "choice"
+      },
+      "colour": {
+        "choice": "keep",
+        "confidence": 0.95,
+        "probabilities": {
+          "blue": 0,
+          "green": 0,
+          "grey": 0.01,
+          "keep": 0.96,
+          "orange": 0.01,
+          "red": 0.02
+        },
+        "type": "choice"
+      },
+      "mark": {
+        "choice": "keep",
+        "confidence": 0.6,
+        "probabilities": {
+          "bars": 0.03,
+          "heatmap": 0.14,
+          "keep": 0.67,
+          "line": 0.01,
+          "map": 0.14,
+          "pie": 0.01
+        },
+        "type": "choice"
+      },
+      "region": {
+        "choice": "south_east",
+        "confidence": 0.9,
+        "probabilities": {
+          "all": 0,
+          "keep": 0.08,
+          "north_east": 0,
+          "north_west": 0,
+          "south_east": 0.92,
+          "south_west": 0
+        },
+        "type": "choice"
+      },
+      "subset": {
+        "choice": "top_10",
+        "confidence": 0.32,
+        "probabilities": {
+          "keep": 0.26,
+          "none": 0.19,
+          "top_10": 0.55
+        },
+        "type": "choice"
+      }
+    },
+    "id": "gen-dec-1790315752-u495iNKr03Ke7Mf2hmM0",
+    "model": "typesafe/jev-1.13-20260917",
+    "provider": "TypeSafe",
+    "usage": {
+      "cost": 0.000046788,
+      "input_tokens": 1114,
+      "output_tokens": 281
+    }
+  }
+}

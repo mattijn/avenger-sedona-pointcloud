@@ -16,3 +16,9 @@ serde_json.workspace = true
 tokio.workspace = true
 image.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+lyon_path.workspace = true
+avenger-color = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
+avenger-common = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
+avenger-scenegraph = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
+avenger-text = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }
+avenger-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "a2241265e8b7c4be5079c5493e443b1ba42e9257" }

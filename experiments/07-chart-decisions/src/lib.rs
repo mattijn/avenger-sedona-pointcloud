@@ -1,6 +1,7 @@
 //! Experiment 7: charts driven by decisions.
 
 pub mod deciders;
+pub mod layer;
 pub mod observe;
 pub mod options;
 

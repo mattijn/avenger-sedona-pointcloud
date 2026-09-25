@@ -1,0 +1,29 @@
+{
+  "note": "Instruction cases for the chart layer (pilot.rs). A start state, a typed instruction, the expected answers. Expected values may be a list of acceptable answers. Written before any decider ran.",
+  "cases": [
+    {"id": "l01", "start": {"mark": "bars"}, "text": "make the bars red", "expect": {"action": "color", "colour": "red"}},
+    {"id": "l02", "start": {"mark": "bars"}, "text": "show this as a pie", "expect": {"action": "mark", "mark": "pie"}},
+    {"id": "l03", "start": {"mark": "bars"}, "text": "which share does each class have?", "expect": {"action": "mark", "mark": "pie"}},
+    {"id": "l04", "start": {"mark": "pie"}, "text": "back to bars please", "expect": {"action": "mark", "mark": "bars"}},
+    {"id": "l05", "start": {"mark": "pie"}, "text": "maak er een staafdiagram van", "expect": {"action": "mark", "mark": "bars"}},
+    {"id": "l06", "start": {"mark": "bars"}, "text": "emphasise the biggest classes", "expect": {"action": "highlight", "subset": "top_10"}},
+    {"id": "l07", "start": {"mark": "bars", "highlight": true}, "text": "drop the emphasis again", "expect": {"action": "highlight", "subset": "none"}},
+    {"id": "l08", "start": {"mark": "bars"}, "text": "how are the classes spread over height?", "expect": {"action": "mark", "mark": "heatmap"}},
+    {"id": "l09", "start": {"mark": "bars"}, "text": "show it as a heatmap by height", "expect": {"action": "mark", "mark": "heatmap"}},
+    {"id": "l10", "start": {"mark": "heatmap"}, "text": "how many points did each flight line record over time?", "expect": {"action": "mark", "mark": "line"}},
+    {"id": "l11", "start": {"mark": "bars"}, "text": "show a time series", "expect": {"action": "mark", "mark": "line"}},
+    {"id": "l12", "start": {"mark": "line"}, "text": "zoom in on the start of the lines, the top left", "expect": {"action": "zoom", "region": "north_west"}},
+    {"id": "l13", "start": {"mark": "line", "zoom": "north_west"}, "text": "zoom back out", "expect": {"action": "zoom", "region": "all"}},
+    {"id": "l14", "start": {"mark": "line"}, "text": "the peaks at the end, top right, closer please", "expect": {"action": "zoom", "region": "north_east"}},
+    {"id": "l15", "start": {"mark": "line"}, "text": "where are the buildings?", "expect": {"action": "mark", "mark": "map"}},
+    {"id": "l16", "start": {"mark": "heatmap"}, "text": "put it on a map", "expect": {"action": "mark", "mark": "map"}},
+    {"id": "l17", "start": {"mark": "map"}, "text": "mark the tallest buildings", "expect": {"action": "highlight", "subset": "top_10"}},
+    {"id": "l18", "start": {"mark": "map", "highlight": true}, "text": "zoom to the south-east", "expect": {"action": "zoom", "region": "south_east"}},
+    {"id": "l19", "start": {"mark": "map"}, "text": "kleur de gebouwen groen", "expect": {"action": "color", "colour": "green"}},
+    {"id": "l20", "start": {"mark": "map"}, "text": "call it Rooftops of the tile", "expect": {"action": "title"}},
+    {"id": "l21", "start": {"mark": "pie"}, "text": "nice, leave it like this", "expect": {"action": "no_change"}},
+    {"id": "l22", "start": {"mark": "heatmap"}, "text": "the colours are fine, don't touch anything", "expect": {"action": "no_change"}},
+    {"id": "l23", "start": {"mark": "line"}, "text": "which class has the most points?", "expect": {"action": "mark", "mark": ["bars", "pie"]}},
+    {"id": "l24", "start": {"mark": "map", "zoom": "south_east"}, "text": "show the whole tile again", "expect": {"action": "zoom", "region": "all"}}
+  ]
+}
