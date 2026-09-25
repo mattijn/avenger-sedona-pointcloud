@@ -202,8 +202,9 @@ fn p50(mut v: Vec<f64>) -> f64 {
 async fn main() -> Result<(), Error> {
     let root = env!("CARGO_MANIFEST_DIR");
     std::env::set_current_dir(format!("{root}/../.."))?;
-    let cases: Value = serde_json::from_str(&std::fs::read_to_string(format!("{root}/cases_writer.json"))?)?;
-    let cases = cases["cases"].as_array().unwrap().clone();
+    let all: Value = serde_json::from_str(&std::fs::read_to_string(format!("{root}/cases_writer.json"))?)?;
+    let cases = all["cases"].as_array().unwrap().clone();
+    let back = all["back"].as_array().cloned().unwrap_or_default();
     let d = data::load().await?;
 
     if std::env::args().any(|a| a == "--check") {
@@ -292,6 +293,27 @@ async fn main() -> Result<(), Error> {
             runs.iter().map(|r| r.1.cost).sum::<f64>(),
         );
     }
+    // Undo and reset: Jev's action only.
+    md += "\n| Case | Start | Expected | Jev | Confidence |\n|---|---|---|---|---|\n";
+    let mut right = 0;
+    for c in &back {
+        let s = start(&c["start"]);
+        let text = c["text"].as_str().unwrap();
+        let j = jev.decide(&pilot::observation(&s, &d, text), &writer::questions()).await?;
+        let got = j.answers.get("action").and_then(Value::as_str).unwrap_or("?");
+        let ok = Some(got) == c["expect"].as_str();
+        right += usize::from(ok);
+        md += &format!(
+            "| {} {text} | {} | {} | {}{} | {:.2} |\n",
+            c["id"].as_str().unwrap(),
+            s.mark.id(),
+            c["expect"].as_str().unwrap(),
+            if ok { "" } else { "**✗** " },
+            pilot::short(&j.answers),
+            j.confidence.unwrap_or(0.0)
+        );
+    }
+    md += &format!("\nUndo and reset: {right}/{} right.\n", back.len());
     println!("\n{md}");
     std::fs::write(format!("{root}/results/writer.md"), &md)?;
     std::fs::write(format!("{root}/results/writer_decisions.json"), serde_json::to_string_pretty(&log)?)?;

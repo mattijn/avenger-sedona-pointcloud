@@ -1,0 +1,1467 @@
+[
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label\n! color #c44e52",
+          "refused": null
+        }
+      ],
+      "cost": 0.003112,
+      "ms": 2239.361458,
+      "result": "bars red",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label\n! color #c44e52",
+          "refused": null
+        }
+      ],
+      "cost": 0.0032185340000000003,
+      "ms": 2306.121208,
+      "result": "bars red",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "v01",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000051534,
+      "ms": 498.049958,
+      "result": "bars red",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "color",
+        "colour": "red",
+        "mark": "keep",
+        "region": "keep",
+        "specifics": "none",
+        "subset": "keep"
+      },
+      "confidence": 1.0,
+      "direction": "change: color/red (confidence 1.00); specifics: none"
+    },
+    "routed": {
+      "attempts": [],
+      "cost": 0.000051534,
+      "ms": 498.049958,
+      "result": "bars red",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "text": "make the bars red"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! pie n --by label",
+          "refused": null
+        }
+      ],
+      "cost": 0.003075,
+      "ms": 1751.419542,
+      "result": "pie",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! pie n --by label",
+          "refused": null
+        }
+      ],
+      "cost": 0.00318166,
+      "ms": 2112.003416,
+      "result": "pie",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "v02",
+    "jev": {
+      "attempts": [],
+      "cost": 0.00005166,
+      "ms": 260.28837500000003,
+      "result": "pie",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "mark",
+        "colour": "keep",
+        "mark": "pie",
+        "region": "keep",
+        "specifics": "none",
+        "subset": "keep"
+      },
+      "confidence": 0.99,
+      "direction": "change: mark/pie (confidence 0.99); specifics: none"
+    },
+    "routed": {
+      "attempts": [],
+      "cost": 0.00005166,
+      "ms": 260.28837500000003,
+      "result": "pie",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "text": "which share does each class have?"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT point_source_id AS line, floor((gps_time - t0) * 2) / 2 AS t, CAST(count(*) AS DOUBLE) AS n FROM input JOIN (SELECT point_source_id AS l, min(gps_time) AS t0 FROM input GROUP BY point_source_id) m ON input.point_source_id = m.l GROUP BY point_source_id, floor((gps_time - t0) * 2) / 2 ORDER BY line, t\"\n! line n --x t --series line\n! zoom 0..13.5 100000..200000",
+          "refused": null
+        }
+      ],
+      "cost": 0.002673,
+      "ms": 2683.736083,
+      "result": "line zoom north_west",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT point_source_id AS line, floor((gps_time - t0) * 2) / 2 AS t, CAST(count(*) AS DOUBLE) AS n FROM input JOIN (SELECT point_source_id AS l, min(gps_time) AS t0 FROM input GROUP BY point_source_id) m ON input.point_source_id = m.l GROUP BY point_source_id, floor((gps_time - t0) * 2) / 2 ORDER BY line, t\"\n! line n --x t --series line\n! zoom 0..13.5 100000..200000",
+          "refused": null
+        }
+      ],
+      "cost": 0.0027820799999999997,
+      "ms": 1770.657084,
+      "result": "line zoom north_west",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "v03",
+    "jev": {
+      "attempts": [],
+      "cost": 0.00005208,
+      "ms": 256.530667,
+      "result": "line zoom north_west",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "zoom",
+        "colour": "keep",
+        "mark": "keep",
+        "region": "north_west",
+        "specifics": "none",
+        "subset": "keep"
+      },
+      "confidence": 1.0,
+      "direction": "change: zoom/north_west (confidence 1.00); specifics: none"
+    },
+    "routed": {
+      "attempts": [],
+      "cost": 0.00005208,
+      "ms": 256.530667,
+      "result": "line zoom north_west",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "text": "zoom in on the start of the lines, the top left"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! highlight \"datum.h >= 62.74\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.002426,
+      "ms": 1548.5185,
+      "result": "map top 10 %",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! highlight \"datum.h >= 62.74\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.002541828,
+      "ms": 1649.4932910000002,
+      "result": "map top 10 %",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "v04",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000051828,
+      "ms": 295.836833,
+      "result": "map top 10 %",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "highlight",
+        "colour": "keep",
+        "mark": "heatmap",
+        "region": "keep",
+        "specifics": "none",
+        "subset": "top_10"
+      },
+      "confidence": 0.86,
+      "direction": "change: highlight/top_10 (confidence 0.86); mark: heatmap; specifics: none"
+    },
+    "routed": {
+      "attempts": [],
+      "cost": 0.000051828,
+      "ms": 295.836833,
+      "result": "map top 10 %",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "text": "mark the tallest buildings"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! color #59a14f",
+          "refused": null
+        }
+      ],
+      "cost": 0.002404,
+      "ms": 1274.986333,
+      "result": "map green",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! color #59a14f",
+          "refused": null
+        }
+      ],
+      "cost": 0.0025109959999999997,
+      "ms": 1619.209458,
+      "result": "map green",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "v05",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000051996,
+      "ms": 306.692791,
+      "result": "map green",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "color",
+        "colour": "green",
+        "mark": "keep",
+        "region": "keep",
+        "specifics": "text",
+        "subset": "keep"
+      },
+      "confidence": 1.0,
+      "direction": "change: color/green (confidence 1.00); specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! color #59a14f",
+          "refused": null
+        }
+      ],
+      "cost": 0.0025109959999999997,
+      "ms": 1619.209458,
+      "result": "map green",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "kleur de gebouwen groen"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! pie n --by label",
+          "refused": null
+        }
+      ],
+      "cost": 0.003089,
+      "ms": 1818.404542,
+      "result": "unchanged",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! pie n --by label",
+          "refused": null
+        }
+      ],
+      "cost": 0.003195702,
+      "ms": 3349.6247919999996,
+      "result": "unchanged",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "v06",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000051702,
+      "ms": 246.535833,
+      "result": "unchanged",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "no_change",
+        "colour": "keep",
+        "mark": "keep",
+        "region": "keep",
+        "specifics": "none",
+        "subset": "keep"
+      },
+      "confidence": 0.99,
+      "direction": "change: no_change (confidence 0.99); specifics: none"
+    },
+    "routed": {
+      "attempts": [],
+      "cost": 0.000051702,
+      "ms": 246.535833,
+      "result": "unchanged",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "text": "nice, leave it like this"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! title \"Rooftops of the tile\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.002425,
+      "ms": 1219.773458,
+      "result": "map \"Rooftops of the tile\"",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! title \"Rooftops of the tile\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.002529996,
+      "ms": 1698.368876,
+      "result": "map \"Rooftops of the tile\"",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w01",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000051996,
+      "ms": 299.463667,
+      "result": "unchanged",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "title",
+        "colour": "keep",
+        "mark": "keep",
+        "region": "keep",
+        "specifics": "text",
+        "subset": "keep"
+      },
+      "confidence": 0.96,
+      "direction": "change: title (confidence 0.96); specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! title \"Rooftops of the tile\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.002529996,
+      "ms": 1698.368876,
+      "result": "map \"Rooftops of the tile\"",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "call it Rooftops of the tile"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label\n! title \"Punten per klasse\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.003134,
+      "ms": 1912.030542,
+      "result": "bars \"Punten per klasse\"",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label\n! title \"Punten per klasse\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.0032427439999999997,
+      "ms": 2238.822749,
+      "result": "bars \"Punten per klasse\"",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w02",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000051744,
+      "ms": 249.216708,
+      "result": "unchanged",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "title",
+        "colour": "keep",
+        "mark": "keep",
+        "region": "all",
+        "specifics": "text",
+        "subset": "keep"
+      },
+      "confidence": 0.81,
+      "direction": "change: title (confidence 0.81); region: all; specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label\n! title \"Punten per klasse\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.0032427439999999997,
+      "ms": 2238.822749,
+      "result": "bars \"Punten per klasse\"",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "noem de grafiek Punten per klasse"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! highlight \"datum.h >= 70\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.002422,
+      "ms": 1302.559083,
+      "result": "map >= 70",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! highlight \"datum.h >= 70\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.002532122,
+      "ms": 1675.384916,
+      "result": "map >= 70",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w03",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000052122,
+      "ms": 298.442083,
+      "result": "unchanged",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "highlight",
+        "colour": "keep",
+        "mark": "keep",
+        "region": "keep",
+        "specifics": "text",
+        "subset": "top_10"
+      },
+      "confidence": 0.45,
+      "direction": "change: highlight/top_10 (confidence 0.45); specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! highlight \"datum.h >= 70\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.002532122,
+      "ms": 1675.384916,
+      "result": "map >= 70",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "only emphasise buildings taller than 70 m"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/10)*10 AS cx, floor(y/10)*10 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/10)*10, floor(y/10)*10\"\n! map --x cx --y cy --value h",
+          "refused": null
+        }
+      ],
+      "cost": 0.002368,
+      "ms": 1161.679125,
+      "result": "map 3489 cells",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/10)*10 AS cx, floor(y/10)*10 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/10)*10, floor(y/10)*10\"\n! map --x cx --y cy --value h",
+          "refused": null
+        }
+      ],
+      "cost": 0.002473122,
+      "ms": 1551.724875,
+      "result": "map 3489 cells",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w04",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000052122,
+      "ms": 248.674416,
+      "result": "unchanged",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "other",
+        "colour": "keep",
+        "mark": "keep",
+        "region": "keep",
+        "specifics": "text",
+        "subset": "keep"
+      },
+      "confidence": 0.97,
+      "direction": "change: other (confidence 0.97); specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/10)*10 AS cx, floor(y/10)*10 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/10)*10, floor(y/10)*10\"\n! map --x cx --y cy --value h",
+          "refused": null
+        }
+      ],
+      "cost": 0.002473122,
+      "ms": 1551.724875,
+      "result": "map 3489 cells",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "use 10 m cells instead of 5 m"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! zoom 657200..657600 6867300..6867700",
+          "refused": null
+        }
+      ],
+      "cost": 0.002467,
+      "ms": 1949.914625,
+      "result": "map zoom custom",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! zoom 657200..657600 6867300..6867700",
+          "refused": null
+        }
+      ],
+      "cost": 0.002577382,
+      "ms": 2733.825375,
+      "result": "map zoom custom",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w05",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000053382,
+      "ms": 294.774292,
+      "result": "map zoom north_east",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "zoom",
+        "colour": "keep",
+        "mark": "keep",
+        "region": "north_east",
+        "specifics": "text",
+        "subset": "keep"
+      },
+      "confidence": 1.0,
+      "direction": "change: zoom/north_east (confidence 1.00); specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! zoom 657200..657600 6867300..6867700",
+          "refused": null
+        }
+      ],
+      "cost": 0.002577382,
+      "ms": 2733.825375,
+      "result": "map zoom custom",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "zoom to easting 657200 to 657600 and northing 6867300 to 6867700"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT point_source_id AS line, floor((gps_time - t0) * 2) / 2 AS t, CAST(count(*) AS DOUBLE) AS n FROM input JOIN (SELECT point_source_id AS l, min(gps_time) AS t0 FROM input GROUP BY point_source_id) m ON input.point_source_id = m.l GROUP BY point_source_id, floor((gps_time - t0) * 2) / 2 ORDER BY line, t\"\n! line n --x t --series line\n! zoom 0..5 0..200000",
+          "refused": null
+        }
+      ],
+      "cost": 0.002654,
+      "ms": 1470.655666,
+      "result": "line zoom custom",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT point_source_id AS line, floor((gps_time - t0) * 2) / 2 AS t, CAST(count(*) AS DOUBLE) AS n FROM input JOIN (SELECT point_source_id AS l, min(gps_time) AS t0 FROM input GROUP BY point_source_id) m ON input.point_source_id = m.l GROUP BY point_source_id, floor((gps_time - t0) * 2) / 2 ORDER BY line, t\"\n! line n --x t --series line\n! zoom 0..5 0..200000",
+          "refused": null
+        }
+      ],
+      "cost": 0.0027628699999999997,
+      "ms": 1754.2136249999999,
+      "result": "line zoom custom",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w06",
+    "jev": {
+      "attempts": [],
+      "cost": 0.00005187,
+      "ms": 276.3525,
+      "result": "line zoom north_west",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "zoom",
+        "colour": "keep",
+        "mark": "keep",
+        "region": "north_west",
+        "specifics": "text",
+        "subset": "keep"
+      },
+      "confidence": 1.0,
+      "direction": "change: zoom/north_west (confidence 1.00); specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT point_source_id AS line, floor((gps_time - t0) * 2) / 2 AS t, CAST(count(*) AS DOUBLE) AS n FROM input JOIN (SELECT point_source_id AS l, min(gps_time) AS t0 FROM input GROUP BY point_source_id) m ON input.point_source_id = m.l GROUP BY point_source_id, floor((gps_time - t0) * 2) / 2 ORDER BY line, t\"\n! line n --x t --series line\n! zoom 0..5 0..200000",
+          "refused": null
+        }
+      ],
+      "cost": 0.0027628699999999997,
+      "ms": 1754.2136249999999,
+      "result": "line zoom custom",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "zoom to the first 5 seconds"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label\n! title \"Point counts\"\n! color #f28e2b",
+          "refused": null
+        }
+      ],
+      "cost": 0.003156,
+      "ms": 1783.514416,
+      "result": "bars \"Point counts\" orange",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label\n! title \"Point counts\"\n! color #f28e2b",
+          "refused": null
+        }
+      ],
+      "cost": 0.0032627019999999997,
+      "ms": 2226.401625,
+      "result": "bars \"Point counts\" orange",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w07",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000051702,
+      "ms": 278.87591699999996,
+      "result": "bars orange",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "color",
+        "colour": "orange",
+        "mark": "keep",
+        "region": "keep",
+        "specifics": "text",
+        "subset": "keep"
+      },
+      "confidence": 0.85,
+      "direction": "change: color/orange (confidence 0.85); specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label\n! title \"Point counts\"\n! color #f28e2b",
+          "refused": null
+        }
+      ],
+      "cost": 0.0032627019999999997,
+      "ms": 2226.401625,
+      "result": "bars \"Point counts\" orange",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "make them orange and call it Point counts"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label\n! title \"Classes\"\n! color #c44e52",
+          "refused": null
+        }
+      ],
+      "cost": 0.003161,
+      "ms": 1981.838916,
+      "result": "bars \"Classes\" red",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label\n! title \"Classes\"\n! color #c44e52",
+          "refused": null
+        }
+      ],
+      "cost": 0.0032757859999999997,
+      "ms": 3713.255917,
+      "result": "bars \"Classes\" red",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w08",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000051786,
+      "ms": 248.68425,
+      "result": "bars",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "mark",
+        "colour": "red",
+        "mark": "bars",
+        "region": "keep",
+        "specifics": "text",
+        "subset": "none"
+      },
+      "confidence": 0.96,
+      "direction": "change: mark/bars (confidence 0.96); colour: red; subset: none; specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label\n! title \"Classes\"\n! color #c44e52",
+          "refused": null
+        }
+      ],
+      "cost": 0.0032757859999999997,
+      "ms": 3713.255917,
+      "result": "bars \"Classes\" red",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "back to bars in red, titled Classes"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! color #59a14f\n! highlight \"datum.h >= 60\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.002464,
+      "ms": 2166.892084,
+      "result": "map green >= 60",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! color #59a14f\n! highlight \"datum.h >= 60\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.002577248,
+      "ms": 1594.589667,
+      "result": "map green >= 60",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w09",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000052248,
+      "ms": 259.05091699999997,
+      "result": "map green",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "color",
+        "colour": "green",
+        "mark": "keep",
+        "region": "keep",
+        "specifics": "text",
+        "subset": "top_10"
+      },
+      "confidence": 0.52,
+      "direction": "change: color/green (confidence 0.52); subset: top_10; specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! color #59a14f\n! highlight \"datum.h >= 60\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.002577248,
+      "ms": 1594.589667,
+      "result": "map green >= 60",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "colour the map green and emphasise everything above 60 m"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/2)*2 AS cx, floor(y/2)*2 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/2)*2, floor(y/2)*2\"\n! map --x cx --y cy --value h",
+          "refused": null
+        }
+      ],
+      "cost": 0.002365,
+      "ms": 1505.0364169999998,
+      "result": "map 63231 cells",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/2)*2 AS cx, floor(y/2)*2 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/2)*2, floor(y/2)*2\"\n! map --x cx --y cy --value h",
+          "refused": null
+        }
+      ],
+      "cost": 0.002469996,
+      "ms": 1511.683876,
+      "result": "map 63231 cells",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w10",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000051996,
+      "ms": 338.114584,
+      "result": "unchanged",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "other",
+        "colour": "keep",
+        "mark": "keep",
+        "region": "keep",
+        "specifics": "text",
+        "subset": "keep"
+      },
+      "confidence": 0.96,
+      "direction": "change: other (confidence 0.96); specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/2)*2 AS cx, floor(y/2)*2 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/2)*2, floor(y/2)*2\"\n! map --x cx --y cy --value h",
+          "refused": null
+        }
+      ],
+      "cost": 0.002469996,
+      "ms": 1511.6838759999998,
+      "result": "map 63231 cells",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "show the buildings in 2 m cells"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! zoom 657500..658000 6867500..6868000\n! highlight \"datum.h >= 65\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.002511,
+      "ms": 1446.990459,
+      "result": "map zoom north_east >= 65",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! zoom 657500..658000 6867500..6868000\n! highlight \"datum.h >= 65\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.00262629,
+      "ms": 1816.5260839999999,
+      "result": "map zoom north_east >= 65",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w11",
+    "jev": {
+      "attempts": [],
+      "cost": 0.00005229,
+      "ms": 289.181959,
+      "result": "map zoom north_east",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "zoom",
+        "colour": "keep",
+        "mark": "keep",
+        "region": "north_east",
+        "specifics": "text",
+        "subset": "top_10"
+      },
+      "confidence": 0.61,
+      "direction": "change: zoom/north_east (confidence 0.61); subset: top_10; specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h\n! zoom 657500..658000 6867500..6868000\n! highlight \"datum.h >= 65\"",
+          "refused": null
+        }
+      ],
+      "cost": 0.00262629,
+      "ms": 1816.5260839999999,
+      "result": "map zoom north_east >= 65",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "zoom to the north-east and emphasise buildings over 65 m"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h",
+          "refused": null
+        }
+      ],
+      "cost": 0.002365,
+      "ms": 1169.24225,
+      "result": "unchanged",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h",
+          "refused": null
+        }
+      ],
+      "cost": 0.0024720379999999998,
+      "ms": 1368.816625,
+      "result": "unchanged",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w12",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000052038,
+      "ms": 241.682583,
+      "result": "unchanged",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "mark",
+        "colour": "keep",
+        "mark": "map",
+        "region": "keep",
+        "specifics": "text",
+        "subset": "keep"
+      },
+      "confidence": 0.65,
+      "direction": "change: mark/map (confidence 0.65); specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! map --x cx --y cy --value h",
+          "refused": null
+        }
+      ],
+      "cost": 0.0024720379999999998,
+      "ms": 1368.816625,
+      "result": "unchanged",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "draw the buildings as a 3D model"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, floor((z - 42) / 4) * 4 AS band, CAST(count(*) AS DOUBLE) AS n FROM input WHERE z >= 42 AND z < 78 GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END, floor((z - 42) / 4) * 4\"\n! heatmap n --x band --y label\n! highlight \"datum.band == 46\"",
+          "refused": "this mark has no emphasis"
+        },
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, floor((z - 42) / 4) * 4 AS band, CAST(count(*) AS DOUBLE) AS n FROM input WHERE z >= 42 AND z < 78 GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END, floor((z - 42) / 4) * 4\"\n! heatmap n --x band --y label",
+          "refused": null
+        }
+      ],
+      "cost": 0.006314,
+      "ms": 3342.713084,
+      "result": "unchanged",
+      "right": true,
+      "route": "writer",
+      "tries": 2
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, floor((z - 42) / 4) * 4 AS band, CAST(count(*) AS DOUBLE) AS n FROM input WHERE z >= 42 AND z < 78 GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END, floor((z - 42) / 4) * 4\"\n! heatmap n --x band --y label\n! highlight \"datum.n >= 100000\"",
+          "refused": "this mark has no emphasis"
+        },
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, floor((z - 42) / 4) * 4 AS band, CAST(count(*) AS DOUBLE) AS n FROM input WHERE z >= 42 AND z < 78 GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END, floor((z - 42) / 4) * 4\"\n! heatmap n --x band --y label",
+          "refused": null
+        }
+      ],
+      "cost": 0.00648187,
+      "ms": 3975.132667,
+      "result": "unchanged",
+      "right": true,
+      "route": "writer",
+      "tries": 2
+    },
+    "id": "w13",
+    "jev": {
+      "attempts": [],
+      "cost": 0.00005187,
+      "ms": 307.68479199999996,
+      "result": "unchanged",
+      "right": true,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "highlight",
+        "colour": "keep",
+        "mark": "keep",
+        "region": "keep",
+        "specifics": "none",
+        "subset": "none"
+      },
+      "confidence": 0.99,
+      "direction": "change: highlight/none (confidence 0.99); specifics: none"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, floor((z - 42) / 4) * 4 AS band, CAST(count(*) AS DOUBLE) AS n FROM input WHERE z >= 42 AND z < 78 GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END, floor((z - 42) / 4) * 4\"\n! heatmap n --x band --y label\n! highlight \"datum.n >= 100000\"",
+          "refused": "this mark has no emphasis"
+        },
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, floor((z - 42) / 4) * 4 AS band, CAST(count(*) AS DOUBLE) AS n FROM input WHERE z >= 42 AND z < 78 GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END, floor((z - 42) / 4) * 4\"\n! heatmap n --x band --y label",
+          "refused": null
+        }
+      ],
+      "cost": 0.00648187,
+      "ms": 3975.132667,
+      "result": "unchanged",
+      "right": true,
+      "route": "writer",
+      "tries": 2
+    },
+    "text": "emphasise the band with the most points"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 2\"\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! pie n --by label",
+          "refused": null
+        }
+      ],
+      "cost": 0.003155,
+      "ms": 1681.3585,
+      "result": "pie 1 cells",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! filter --vega \"datum.label == 'Ground'\"\n! bars n --by label",
+          "refused": null
+        }
+      ],
+      "cost": 0.003268534,
+      "ms": 2441.939458,
+      "result": "bars 1 cells",
+      "right": false,
+      "route": "writer",
+      "tries": 1
+    },
+    "id": "w14",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000051534,
+      "ms": 387.28687499999995,
+      "result": "unchanged",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "other",
+        "colour": "keep",
+        "mark": "bars",
+        "region": "keep",
+        "specifics": "none",
+        "subset": "keep"
+      },
+      "confidence": 0.96,
+      "direction": "change: other (confidence 0.96); mark: bars; specifics: none"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! filter --vega \"datum.label == 'Ground'\"\n! bars n --by label",
+          "refused": null
+        }
+      ],
+      "cost": 0.003268534,
+      "ms": 2441.939458,
+      "result": "bars 1 cells",
+      "right": false,
+      "route": "writer",
+      "tries": 1
+    },
+    "text": "filter ground"
+  },
+  {
+    "haiku": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 6 THEN 'Building' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 6 THEN 4 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input WHERE classification IN (2, 6) GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 6 THEN 'Building' END ORDER BY o\"\n! bars n --by label",
+          "refused": null
+        }
+      ],
+      "cost": 0.002523,
+      "ms": 1452.174333,
+      "result": "bars 2 cells",
+      "right": true,
+      "route": "writer",
+      "tries": 1
+    },
+    "haiku+jev": {
+      "attempts": [
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input WHERE classification IN (2, 6) GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 6 THEN 'Building' END ORDER BY o\"\n! bars n --by label",
+          "refused": "Error during planning: Column in SELECT must be in GROUP BY or an aggregate function: While expanding wildcard, column \"input.classification\" must appear in the GROUP BY clause or must be part of an aggregate function, currently only \"CASE input.classification WHEN Int64(2) THEN Utf8(\"Ground\") WHEN Int64(6) THEN Utf8(\"Building\") END, min(CASE input.classification WHEN Int64(2) THEN Int64(0) WHEN Int64(3) THEN Int64(1) WHEN Int64(4) THEN Int64(2) WHEN Int64(5) THEN Int64(3) WHEN Int64(6) THEN Int64(4) ELSE Int64(5) END), count(Int64(1))\" appears in the SELECT clause satisfies this requirement"
+        },
+        {
+          "cached": false,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input WHERE classification IN (2, 6) GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label",
+          "refused": null
+        }
+      ],
+      "cost": 0.0061245760000000005,
+      "ms": 3581.526209,
+      "result": "bars 2 cells",
+      "right": true,
+      "route": "writer",
+      "tries": 2
+    },
+    "id": "w15",
+    "jev": {
+      "attempts": [],
+      "cost": 0.000051576,
+      "ms": 254.31308400000003,
+      "result": "unchanged",
+      "right": false,
+      "route": "options",
+      "tries": 0
+    },
+    "reading": {
+      "answers": {
+        "action": "other",
+        "colour": "keep",
+        "mark": "keep",
+        "region": "keep",
+        "specifics": "text",
+        "subset": "none"
+      },
+      "confidence": 0.99,
+      "direction": "change: other (confidence 0.99); subset: none; specifics: text"
+    },
+    "routed": {
+      "attempts": [
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 3 THEN 'Low vegetation' WHEN 4 THEN 'Medium vegetation' WHEN 5 THEN 'High vegetation' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 3 THEN 1 WHEN 4 THEN 2 WHEN 5 THEN 3 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input WHERE classification IN (2, 6) GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 6 THEN 'Building' END ORDER BY o\"\n! bars n --by label",
+          "refused": "Error during planning: Column in SELECT must be in GROUP BY or an aggregate function: While expanding wildcard, column \"input.classification\" must appear in the GROUP BY clause or must be part of an aggregate function, currently only \"CASE input.classification WHEN Int64(2) THEN Utf8(\"Ground\") WHEN Int64(6) THEN Utf8(\"Building\") END, min(CASE input.classification WHEN Int64(2) THEN Int64(0) WHEN Int64(3) THEN Int64(1) WHEN Int64(4) THEN Int64(2) WHEN Int64(5) THEN Int64(3) WHEN Int64(6) THEN Int64(4) ELSE Int64(5) END), count(Int64(1))\" appears in the SELECT clause satisfies this requirement"
+        },
+        {
+          "cached": true,
+          "pipeline": "read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! sql \"SELECT CASE classification WHEN 2 THEN 'Ground' WHEN 6 THEN 'Building' ELSE 'Other' END AS label, min(CASE classification WHEN 2 THEN 0 WHEN 6 THEN 4 ELSE 5 END) AS o, CAST(count(*) AS DOUBLE) AS n FROM input WHERE classification IN (2, 6) GROUP BY CASE classification WHEN 2 THEN 'Ground' WHEN 6 THEN 'Building' ELSE 'Other' END ORDER BY o\"\n! bars n --by label",
+          "refused": null
+        }
+      ],
+      "cost": 0.0061245760000000005,
+      "ms": 3581.526209,
+      "result": "bars 2 cells",
+      "right": true,
+      "route": "writer",
+      "tries": 2
+    },
+    "text": "only show ground and buildings"
+  }
+]

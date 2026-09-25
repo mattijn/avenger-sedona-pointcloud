@@ -25,6 +25,12 @@ use crate::options::COLOURS;
 /// they are.
 pub fn questions() -> Value {
     let mut q = pilot::questions();
+    // A way out of the options. Without it, "filter ground" on a pie became
+    // `mark/bars` (0.61): the nearest option, applied on the fast path.
+    q["action"]["criteria"]["other"] = json!("something none of the options above do: filter the data, aggregate it differently, or any other change to the pipeline");
+    // Going back is a change of its own, not "no change".
+    q["action"]["criteria"]["undo"] = json!("undo the last change: go back one step to the chart as it was before it");
+    q["action"]["criteria"]["reset"] = json!("start over: the whole chart back to how it was at the start (not only the zoom or the emphasis)");
     q["specifics"] = json!({
         "type": "choice",
         "instructions": "Does the instruction give specifics of its own that none of the options above can hold?",
@@ -36,21 +42,17 @@ pub fn questions() -> Value {
     q
 }
 
-/// Jev's reading, as one line for the writer and the tables.
+/// Jev's reading, as one line for the writer and the tables: the change it
+/// chose, and whether it saw specifics. Its answers to the other questions
+/// are left out; "filter ground" came with `mark: bars` beside `other`, and
+/// the writer followed it.
 pub fn direction(d: &Decision) -> String {
     let get = |k: &str| d.answers.get(k).and_then(Value::as_str).unwrap_or("keep");
-    let mut parts = vec![format!("change: {}", pilot::short(&d.answers))];
+    let mut change = format!("change: {}", pilot::short(&d.answers));
     if let Some(c) = d.confidence {
-        parts[0] += &format!(" (confidence {c:.2})");
+        change += &format!(" (confidence {c:.2})");
     }
-    for k in ["mark", "colour", "region", "subset"] {
-        let v = get(k);
-        if v != "keep" && !parts[0].contains(&format!("/{v}")) {
-            parts.push(format!("{k}: {v}"));
-        }
-    }
-    parts.push(format!("specifics: {}", get("specifics")));
-    parts.join("; ")
+    format!("{change}; specifics: {}", get("specifics"))
 }
 
 /// The pipeline behind `s`, as the editor shows it.

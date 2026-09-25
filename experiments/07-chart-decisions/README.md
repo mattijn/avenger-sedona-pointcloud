@@ -655,14 +655,25 @@ What the editor does not do yet:
 
 Commands after a data stage are refused: data goes first, then the chart.
 
+**A text without a chart command is a query.** In the first live trial,
+`read <tile> --statistics ! head 2` was refused with "no chart command";
+a table was expected. Such a text now runs as a query (`editor::query`), and
+its rows are drawn over the chart: a trailing `head N` gives N rows, a text
+that ends in data gives the first 20, and queries such as `schema` or
+`explain` print their lines. Columns that do not fit are named below the
+table. The chart and its pipeline are not touched; the table goes when the
+chart changes, or on Esc or ⌘E. Headless, `head 2` on the tile took 10 ms, and
+a `GROUP BY classification` over all 17.3M points about 1 s.
+
 ### Not built yet
 
 - **Data events** (more rows, a new column, an outlier) and the narrow/free
   policy switch in the panel. Phases D and F measure these on the pipeline
   charts, but they are not wired to the chart layer.
-- **Undo.** Experiment 6's `undo` refolds the log with the `chart`
-  package's `apply`, which does not know the layer's marks. It needs a
-  fold that includes `layer`'s commands before the window can offer it.
+- **Undo** in the log itself. Experiment 6's `undo` refolds the log with
+  the `chart` package's `apply`, which does not know the layer's marks. The
+  window now undoes by applying the previous pipeline again (see
+  [Undo and reset](#undo-and-reset)), which does not need it.
 - **Free text** (titles, custom zooms, other predicates): the pipeline accepts
   them, but a classifier cannot produce them. Phase H (below) adds a
   writer for them, behind Enter in the live window.
@@ -703,7 +714,7 @@ with the existing steps, before any model runs.
 | haiku+jev | Haiku writes it with Jev's reading as direction |
 | routed | Jev's options when they say it all (confidence ≥ 0.5 and `specifics: none`), otherwise Haiku with Jev's direction |
 
-Results, second prompt ([results/writer.md](results/writer.md)):
+Results, second prompt, 19 cases ([results/writer_v2.md](results/writer_v2.md)):
 
 | Way | Right, vocabulary | Right, own text | Writer calls | Accepted first try | Latency p50 / max | Cost, 19 cases |
 |---|---|---|---|---|---|---|
@@ -749,6 +760,64 @@ first try, 25 tries in all, and v03 wrong for both writers.
 
 The second prompt was changed after seeing these results, on the same 19
 cases, so its scores are optimistic. New cases are the honest test.
+
+**The first live trial was that test, and it failed.** On a pie, "filter
+ground" came back from Jev as `mark/bars` (0.61, `specifics: none`): the
+nearest option, since none of them filters. It took the fast path, and the
+pie turned into bars with nothing filtered. Two changes, and two cases for
+it (w14 "filter ground", w15 "only show ground and buildings"), added
+afterwards and marked so in the case file:
+- Jev's `action` on Enter has a way out, `other`: "filter the data, aggregate
+  it differently, or any other change to the pipeline". It never applies on
+  the fast path, so such an instruction goes to the writer.
+- The writer now gets only the change Jev chose and `specifics`, not its
+  answers to the other questions. With `other` came `mark: bars` beside it,
+  and Haiku followed that stray answer and drew bars
+  ([results/writer_v3a.md](results/writer_v3a.md)).
+
+With both, on 21 cases ([results/writer.md](results/writer.md)):
+
+| Way | Right, vocabulary | Right, own text | Writer calls | Accepted first try | Latency p50 / max | Cost, 21 cases |
+|---|---|---|---|---|---|---|
+| jev | 6/6 | 2/15 | 0 | – | 296 / 677 ms | $0.0011 |
+| haiku | 6/6 | 15/15 | 21 | 20/21 | 1681 / 3343 ms | $0.060 |
+| haiku+jev | 6/6 | 15/15 | 21 | 20/21 | 1952 / 3971 ms | $0.063 |
+| routed | **6/6** | **15/15** | 16 | 15/16 | 1618 / 3971 ms | $0.048 |
+
+Without the side answers, Jev's direction no longer adds the "10 m cells"
+title either: haiku and haiku+jev now write the same pipelines. The direction
+still decides the route, but on these cases it does not change what the
+writer writes.
+
+### Undo and reset
+
+In the same trial, every way of saying "undo" gave `no_change`: there was no
+such option. On Enter, `action` now also offers `undo` ("go back one step")
+and `reset` ("start over, not only the zoom or the emphasis"). The pilot's
+own questions, used while typing, are unchanged.
+
+The window keeps the pipeline behind every earlier chart. Undo applies the
+previous one again through the editor's path; reset applies the first one
+and keeps the chart it leaves in the history, so an undo brings it back. The
+chart stays the fold of a pipeline either way.
+
+Thirteen cases, written after the trial, score Jev's action only (going
+back needs the history, which the eval does not keep). The last four are
+lookalikes that must not go back:
+
+| Instruction | Expected | Jev |
+|---|---|---|
+| undo · undo that · go back · that was wrong, revert it · maak dat ongedaan · terug naar hoe het was | undo | undo, 0.62–0.94 |
+| start over · reset everything · begin opnieuw | reset | reset, 0.89–0.96 |
+| reset the zoom | zoom | zoom/all, 0.80 |
+| remove the emphasis | highlight | highlight/none, 1.00 |
+| leave it as it was | no_change | no_change, 0.99 |
+| go back to the bar chart | mark | mark/bars, 0.87 |
+
+13/13. The two new options left the 21 cases above as they were. In the
+window, headless: map → title → "maak dat ongedaan" (the title goes) →
+"undo" (back to bars) → "undo" ("nothing to undo") → pie → "start over"
+(bars) → "undo" (the pie again).
 
 Not checked: other writer models; Dutch beyond two cases; instructions that
 change the data stages beyond the cell size (other filters, other

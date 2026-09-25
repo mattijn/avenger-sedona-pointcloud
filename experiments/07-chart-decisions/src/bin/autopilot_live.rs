@@ -248,6 +248,10 @@ struct App {
     enter_questions: Arc<Value>,
     written_back: Arc<Mutex<Vec<WrittenBack>>>,
     writing: usize,
+    /// The pipeline behind every earlier chart, newest last, and the first
+    /// one: undo and reset apply them again.
+    history: Vec<String>,
+    first: String,
     taken: Vec<(String, String)>,
     // The chart.
     state: State,
@@ -294,6 +298,10 @@ struct App {
     applying: bool,
     apply_started: Instant,
     edited: Arc<Mutex<Option<Result<editor::Applied, String>>>>,
+    /// A text without a chart command runs as a query; its rows are shown
+    /// over the chart until the chart changes or the editor is left.
+    queried: Arc<Mutex<Option<Result<editor::Table, String>>>>,
+    table: Option<Arc<editor::Table>>,
 }
 
 /// What a key did to a text field.
@@ -642,6 +650,7 @@ impl App {
                 && d.answers.get("specifics").and_then(Value::as_str) != Some("text")
                 && pilot::apply(&self.state, &d.answers).is_ok_and(|n| n != self.state || pilot::short(&d.answers) == "no_change");
             let to_writer = r.complete && self.writer.is_some() && !fast;
+            let back = d.answers.get("action").and_then(Value::as_str).filter(|a| matches!(*a, "undo" | "reset")).map(String::from);
             let mut shown = Shown {
                 prefix: r.prefix.clone(),
                 complete: r.complete,
@@ -653,6 +662,10 @@ impl App {
                 fold: String::new(),
                 written: None,
             };
+            if let Some(a) = back.filter(|_| r.complete && conf >= GATE) {
+                self.go_back(a == "reset", shown, now).await;
+                continue;
+            }
             if to_writer {
                 self.write(shown);
                 continue;
@@ -683,6 +696,7 @@ impl App {
                     (None, Ok(folded)) => {
                         shown.fold = if folded == n { "folds to the decided state".into() } else { format!("folds to {folded:?}") };
                         self.changes.push((r.prefix.clone(), pilot::short(&shown.decision.answers)));
+                        self.remember();
                         self.transition_to(folded, now);
                     }
                 }
@@ -744,6 +758,7 @@ impl App {
                 }
                 Some(a) => {
                     let before = self.pipeline.clone();
+                    self.remember();
                     self.data = Arc::new(a.data);
                     self.data_stages = a.data_stages;
                     let pipe = self.pipe.clone();
@@ -769,8 +784,57 @@ impl App {
         }
     }
 
+    /// Keep the pipeline behind the chart now, before it changes.
+    fn remember(&mut self) {
+        self.history.push(self.pipeline.join("\n! "));
+    }
+
+    /// Undo: apply the pipeline before the last change. Reset: apply the
+    /// first one, keeping the chart now in the history so an undo brings it
+    /// back. Both run through the editor's path, so the chart stays the fold
+    /// of its pipeline.
+    async fn go_back(&mut self, reset: bool, mut shown: Shown, now: Instant) {
+        let text = if reset {
+            Some(self.first.clone()).filter(|f| *f != self.pipeline.join("\n! "))
+        } else {
+            self.history.pop()
+        };
+        let Some(text) = text else {
+            shown.gate = if reset { "already the first chart".into() } else { "nothing to undo".into() };
+            shown.colour = muted();
+            self.shown = Some(shown);
+            return;
+        };
+        match editor::apply(&text, &self.base).await {
+            Ok(a) => {
+                let before = self.pipeline.clone();
+                if reset {
+                    self.remember();
+                }
+                self.data = Arc::new(a.data);
+                self.data_stages = a.data_stages;
+                let pipe = self.pipe.clone();
+                let mut p = pipe.lock().await;
+                *p = a.pipeline;
+                self.transition_to(a.state, now);
+                self.snapshot(&p);
+                shown.lines = self.pipeline.iter().filter(|l| !before.contains(l)).cloned().collect();
+                shown.gate = if reset { "reset to the first chart".into() } else { format!("undone ({} earlier left)", self.history.len()) };
+                shown.colour = ui().th.ok;
+                shown.fold = "folds to the earlier state".into();
+                self.changes.push((shown.prefix.clone(), if reset { "reset" } else { "undo" }.into()));
+            }
+            Err(e) => {
+                shown.gate = format!("could not go back: {e}");
+                shown.colour = ui().th.error;
+            }
+        }
+        self.shown = Some(shown);
+    }
+
     fn open_editor(&mut self) {
         self.editing = true;
+        self.table = None;
         self.code.set(&self.pipeline.join("\n! "));
         self.focused = true;
         self.edit_status = (String::new(), muted());
@@ -784,10 +848,12 @@ impl App {
         self.apply_started = clock();
         self.edit_status = ("applying…".into(), accent());
         let text = self.code.string();
-        let (base, out) = (self.base.clone(), self.edited.clone());
+        let (base, out, queried) = (self.base.clone(), self.edited.clone(), self.queried.clone());
         self.rt.spawn(async move {
-            let r = editor::apply(&text, &base).await;
-            *out.lock().unwrap() = Some(r);
+            match editor::apply(&text, &base).await {
+                Err(e) if e == editor::NO_CHART => *queried.lock().unwrap() = Some(editor::query(&text).await),
+                r => *out.lock().unwrap() = Some(r),
+            }
         });
     }
 
@@ -803,6 +869,18 @@ impl App {
                 return;
             }
         }
+        if let Some(q) = self.queried.lock().unwrap().take() {
+            self.applying = false;
+            match q {
+                Ok(t) => {
+                    let what = if t.columns.is_empty() { format!("{} lines", t.text.len()) } else { t.note.clone() };
+                    self.edit_status = (format!("query in {:.0} ms · {what} · the chart is unchanged", t.ms), ui().th.ok);
+                    self.table = Some(Arc::new(t));
+                }
+                Err(e) => self.edit_status = (e, ui().th.error),
+            }
+            return;
+        }
         let Some(r) = self.edited.lock().unwrap().take() else { return };
         self.applying = false;
         match r {
@@ -813,6 +891,7 @@ impl App {
                 self.changes.push(("editor".into(), "pipeline".into()));
                 // The chart changed by hand, not by a decision.
                 self.shown = None;
+                self.remember();
                 let pipe = self.pipe.clone();
                 let mut p = pipe.lock().await;
                 *p = a.pipeline;
@@ -900,6 +979,7 @@ impl App {
     }
 
     fn transition_to(&mut self, n: State, now: Instant) {
+        self.table = None;
         let next = resolve(&n, &self.data);
         // A change during a transition starts from where that one was going.
         self.from = self.to.clone();
@@ -1048,7 +1128,7 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
         return;
     }
     let about = if s.writer.is_some() {
-        "Jev 1.13 decides while you type; on Enter, Haiku writes what it cannot"
+        "Jev decides as you type · Enter also: undo, reset, or Haiku writes it"
     } else {
         "Jev 1.13 via OpenRouter · asks 400 ms after typing, and on Enter"
     };
@@ -1175,11 +1255,64 @@ fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
         "bars n --by label · pie n --by label · line n --x t --series line",
         "heatmap n --x band --y label · map --x cx --y cy --value h",
         "color #rrggbb · highlight \"datum.<f> >= <n>\" · clear-highlight",
-        "zoom x0..x1 y0..y1 · reset-zoom · data: read, filter, calc, sql",
+        "zoom x0..x1 y0..y1 · reset-zoom · data: read, filter, calc, sql · head N",
     ];
     for (k, h) in help.iter().enumerate() {
         marks.push(t(h, PX, H - 84.0 + k as f32 * 16.0, 11.0, muted(), false));
     }
+}
+
+/// The rows of an editor query, over the chart.
+fn table_view(tb: &editor::Table, marks: &mut Vec<SceneMark>) {
+    let th = &ui().th;
+    let (x0, y0, w, h) = (16.0, 16.0, PX - 52.0, H - 32.0);
+    marks.push(draw::rect(x0, y0, w, h, th.background, Some(th.line), 0.0));
+    let (x, mut y) = (x0 + 16.0, y0 + 14.0);
+    marks.push(t("query result", x, y, 13.0, accent(), true));
+    marks.push(t(&tb.note, x + 110.0, y + 1.0, 12.0, muted(), false));
+    y += 26.0;
+    const SIZE: f32 = 12.0;
+    const ROW: f32 = 17.0;
+    let room = ((y0 + h - 30.0 - y) / ROW) as usize;
+    if !tb.columns.is_empty() {
+        // Column widths from what they hold, capped; columns that do not fit
+        // are named below the table.
+        let cap = 24;
+        let width = |s: &str| ui().width(&fit(s, cap).chars().collect::<Vec<_>>(), SIZE, true);
+        let mut cols: Vec<(usize, f32)> = vec![];
+        let mut used = 0.0;
+        for (i, c) in tb.columns.iter().enumerate() {
+            let cw = tb.rows.iter().take(room).map(|r| width(&r[i])).fold(width(c), f32::max) + 18.0;
+            if used + cw > w - 32.0 {
+                break;
+            }
+            cols.push((i, used));
+            used += cw;
+        }
+        for (i, cx) in &cols {
+            marks.push(t(&fit(&tb.columns[*i], cap), x + cx, y, SIZE, ink(), true));
+        }
+        marks.push(draw::rule(x, y + ROW, x + used, y + ROW, th.line));
+        y += ROW + 5.0;
+        for r in tb.rows.iter().take(room.saturating_sub(1)) {
+            for (i, cx) in &cols {
+                marks.push(mono_sized(&fit(&r[*i], cap), x + cx, y, SIZE, ink()));
+            }
+            y += ROW;
+        }
+        let hidden: Vec<&str> = tb.columns.iter().skip(cols.len()).map(String::as_str).collect();
+        if !hidden.is_empty() {
+            y += 6.0;
+            marks.push(t(&fit(&format!("{} more columns: {}", hidden.len(), hidden.join(", ")), 150), x, y, 12.0, muted(), false));
+            y += ROW;
+        }
+        y += 8.0;
+    }
+    for l in tb.text.iter().take(room.saturating_sub(((y - y0) / ROW) as usize)) {
+        marks.push(mono_sized(&fit(l, 150), x, y, SIZE, ink()));
+        y += 15.0;
+    }
+    marks.push(t("the chart is unchanged · ⌘↵ with a chart command draws it · Esc or ⌘E closes this", x, y0 + h - 24.0, 11.0, muted(), false));
 }
 
 /// Stats for nerds: an overlay on the chart.
@@ -1343,6 +1476,9 @@ fn build(s: &mut App) -> SceneBuild {
     s.items = drawn.items.len();
     let mut marks = vec![draw::rect(0.0, 0.0, W, H, [1.0; 4], None, 0.0)];
     marks.extend(draw::chart_marks(&drawn, draw::ORIGIN));
+    if let Some(t) = &s.table {
+        table_view(t, &mut marks);
+    }
     if s.nerds {
         nerds(s, now, &mut marks);
     }
@@ -1407,7 +1543,7 @@ impl EventStreamHandler<App> for Input {
             Event::KeyPress(e) => {
                 let cmd = e.modifiers.meta || e.modifiers.control;
                 if matches!(e.key, Key::Character('e') | Key::Character('E')) && cmd {
-                    if s.editing { s.editing = false } else { s.open_editor() }
+                    if s.editing { s.editing = false; s.table = None } else { s.open_editor() }
                     return rerender;
                 }
                 if matches!(e.key, Key::Named(NamedKey::Tab)) {
@@ -1688,6 +1824,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         enter_questions: Arc::new(writer::questions()),
         written_back: Arc::new(Mutex::new(vec![])),
         writing: 0,
+        history: vec![],
+        first: String::new(),
         taken,
         state,
         from: frame.clone(),
@@ -1730,8 +1868,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         applying: false,
         apply_started: clock(),
         edited: Arc::new(Mutex::new(None)),
+        queried: Arc::new(Mutex::new(None)),
+        table: None,
     };
     app.snapshot(&pipe);
+    app.first = app.pipeline.join("\n! ");
     app.pipe = Arc::new(tokio::sync::Mutex::new(pipe));
 
     // `--snapshot <dir> "instruction" ...`: the same path as the window
@@ -1752,7 +1893,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.open_editor();
                     app.code.set(std::fs::read_to_string(path)?.trim_end());
                     app.apply_text();
-                    while app.edited.lock().unwrap().is_none() {
+                    while app.edited.lock().unwrap().is_none() && app.queried.lock().unwrap().is_none() {
                         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                     }
                     app.collect_edit(clock()).await;

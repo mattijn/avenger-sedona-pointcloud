@@ -39,6 +39,26 @@
     {"id": "w12", "start": {"mark": "map"}, "text": "draw the buildings as a 3D model",
      "expect": {"unchanged": true}, "reference": {"data": "cells", "commands": ["map --x cx --y cy --value h"]}},
     {"id": "w13", "start": {"mark": "heatmap"}, "text": "emphasise the band with the most points",
-     "expect": {"unchanged": true}, "reference": {"data": "class_height", "commands": ["heatmap n --x band --y label"]}}
+     "expect": {"unchanged": true}, "reference": {"data": "class_height", "commands": ["heatmap n --x band --y label"]}},
+    {"id": "w14", "added": "after the first live trial, where it failed", "start": {"mark": "pie"}, "text": "filter ground",
+     "expect": {"mark": "pie", "rows": 1}, "reference": {"data": "classes", "replace": [["--statistics ! sql", "--statistics ! filter --vega \"datum.classification == 2\" ! sql"]], "commands": ["pie n --by label"]}},
+    {"id": "w15", "added": "after the first live trial", "start": {"mark": "bars"}, "text": "only show ground and buildings",
+     "expect": {"mark": "bars", "rows": 2}, "reference": {"data": "classes", "replace": [["--statistics ! sql", "--statistics ! filter --vega \"datum.classification == 2 || datum.classification == 6\" ! sql"]], "commands": ["bars n --by label"]}}
+  ],
+  "back_note": "Undo and reset, added after the first live trial, where every way of saying undo gave no_change. Only Jev's action is scored: going back needs a history, which the window keeps. The last four are lookalikes that must not go back.",
+  "back": [
+    {"id": "b01", "start": {"mark": "bars"}, "text": "undo", "expect": "undo"},
+    {"id": "b02", "start": {"mark": "map"}, "text": "undo that", "expect": "undo"},
+    {"id": "b03", "start": {"mark": "pie"}, "text": "go back", "expect": "undo"},
+    {"id": "b04", "start": {"mark": "map"}, "text": "that was wrong, revert it", "expect": "undo"},
+    {"id": "b05", "start": {"mark": "bars"}, "text": "maak dat ongedaan", "expect": "undo"},
+    {"id": "b06", "start": {"mark": "line"}, "text": "terug naar hoe het was", "expect": "undo"},
+    {"id": "b07", "start": {"mark": "map"}, "text": "start over", "expect": "reset"},
+    {"id": "b08", "start": {"mark": "heatmap"}, "text": "reset everything", "expect": "reset"},
+    {"id": "b09", "start": {"mark": "pie"}, "text": "begin opnieuw", "expect": "reset"},
+    {"id": "b10", "start": {"mark": "map", "zoom": "south_east"}, "text": "reset the zoom", "expect": "zoom"},
+    {"id": "b11", "start": {"mark": "map", "highlight": true}, "text": "remove the emphasis", "expect": "highlight"},
+    {"id": "b12", "start": {"mark": "bars"}, "text": "leave it as it was", "expect": "no_change"},
+    {"id": "b13", "start": {"mark": "line"}, "text": "go back to the bar chart", "expect": "mark"}
   ]
 }

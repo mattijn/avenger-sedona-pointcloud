@@ -7,6 +7,7 @@
 //! cached Parquet file is read instead of the tile (the same result, in
 //! milliseconds instead of seconds).
 
+use arrow::util::display::{ArrayFormatter, FormatOptions};
 use lidar_pipeline::pipeline::{parse_pipeline, Call, Kind, Pipeline};
 
 use super::model::{Data, Dataset, State};
@@ -50,13 +51,76 @@ fn render(calls: &[Call]) -> Vec<String> {
         .collect()
 }
 
+/// What `apply` says of a text without a chart command: `query` runs it.
+pub const NO_CHART: &str = "no chart command (bars, pie, line, heatmap, map)";
+
+/// The rows a text without a chart command ends in, or what its queries
+/// printed.
+pub struct Table {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    /// Lines printed by queries and sinks (`schema`, `count`, `explain`).
+    pub text: Vec<String>,
+    pub note: String,
+    pub ms: f64,
+}
+
+/// Rows shown when the text ends in data without `head`.
+const ROWS: usize = 20;
+
+/// Run a text without a chart command, and keep what it shows. A trailing
+/// `head N` becomes a table rather than text, and so does a text that ends
+/// in data. The chart and its pipeline are not touched.
+pub async fn query(text: &str) -> Result<Table, String> {
+    let t = std::time::Instant::now();
+    let mut calls = parse_pipeline(text).map_err(|e| e.to_string())?;
+    let (mut p, _) = layer_pipeline().await.map_err(|e| e.to_string())?;
+    let head = match calls.last() {
+        Some(c) if c.name == "head" => {
+            let n = c.args.first().and_then(|v| v.parse().ok()).unwrap_or(5);
+            calls.pop();
+            Some(n)
+        }
+        _ => None,
+    };
+    let mut out = vec![];
+    for c in &calls {
+        if let Some(s) = p.run_call(c).await.map_err(|e| format!("{}: {e}", c.name))? {
+            out.extend(s.lines().map(String::from));
+        }
+    }
+    let kind = |c: &Call| p.steps.get(&c.name).map(|(_, s)| s.kind());
+    let ends_in_data = head.is_some() || calls.last().is_some_and(|c| matches!(kind(c), Some(Kind::Source | Kind::Transform)));
+    let (mut columns, mut rows, mut note) = (vec![], vec![], String::new());
+    if ends_in_data {
+        let n = head.unwrap_or(ROWS);
+        let batches = p.dataframe().map_err(|e| e.to_string())?.limit(0, Some(n)).map_err(|e| e.to_string())?.collect().await.map_err(|e| e.to_string())?;
+        if let Some(b) = batches.first() {
+            columns = b.schema().fields().iter().map(|f| f.name().to_string()).collect();
+        }
+        let opts = FormatOptions::default().with_null("null");
+        for b in &batches {
+            let fmts: Vec<ArrayFormatter> = b.columns().iter().map(|c| ArrayFormatter::try_new(c.as_ref(), &opts)).collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+            for i in 0..b.num_rows() {
+                rows.push(fmts.iter().map(|f| f.value(i).to_string()).collect());
+            }
+        }
+        note = match head {
+            Some(n) => format!("head {n}: {} rows", rows.len()),
+            None if rows.len() < ROWS => format!("all {} rows", rows.len()),
+            None => format!("the first {} rows; end with `head N` for another number", rows.len()),
+        };
+    }
+    Ok(Table { columns, rows, text: out, note, ms: t.elapsed().as_secs_f64() * 1e3 })
+}
+
 /// Run a pipeline text. Nothing changes unless all of it runs and folds.
 pub async fn apply(text: &str, base: &Data) -> Result<Applied, String> {
     let t = std::time::Instant::now();
     let calls = parse_pipeline(text).map_err(|e| e.to_string())?;
     let (mut p, _) = layer_pipeline().await.map_err(|e| e.to_string())?;
     let kind = |c: &Call| p.steps.get(&c.name).map(|(_, s)| s.kind());
-    let split = calls.iter().position(|c| kind(c) == Some(Kind::Command)).ok_or("no chart command (bars, pie, line, heatmap, map)")?;
+    let split = calls.iter().position(|c| kind(c) == Some(Kind::Command)).ok_or(NO_CHART)?;
     if let Some(c) = calls[split..].iter().find(|c| kind(c) != Some(Kind::Command)) {
         return Err(format!("`{}` comes after the chart commands; data stages go first", c.name));
     }
