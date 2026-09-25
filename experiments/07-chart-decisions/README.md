@@ -337,6 +337,109 @@ and debouncing.
   LLMs, and larger or noisier instruction sets. With 19 + 8 cases, one case is
   5 % (instructions) or 12.5 % (data changes); the counts are indicative.
 
+## Next: a live autopilot on one chart that transitions
+
+Plan, not built. It follows from the results above.
+
+### One chart object, not a new chart per command
+
+Every accepted command now rebuilds the chart: a new definition, a new frame.
+The next step keeps **one chart object** that transitions from state to
+state, as the marks did in experiment 5. That needs:
+
+- **A keyed join between consecutive states.** Every mark item has a key from
+  the data (a height band, a class, a flight line, a cell). Between two states,
+  items with the same key interpolate their position, size and colour. New
+  items fade in, and items that are gone fade out. This is D3's object
+  constancy.
+- **Transitions per kind of change:**
+  - zoom tweens the scale domains, and axes and grid follow;
+  - colour interpolates;
+  - a highlight fades in, both colour and size;
+  - a change of coordinate system morphs through a family with a parameter
+    (`Bend` from experiment 5: a stacked bar into a pie).
+
+### Why not `avenger-chart` for this
+
+At the newest top of the stack (#130), `avenger-chart-definition` has two
+marks, rectangles and circle symbols, with a constant fill colour, and no
+colour scale. A time series (a line), a heatmap (fill by value) and a pie (an
+arc) cannot be described there. The renderer underneath, `avenger-scenegraph`,
+has arc, line, area and rect with per-item fill. So the live chart gets its
+own small chart layer on `avenger-scenegraph`. It uses experiment 5's
+`CoordinateSystem` (Cartesian, Polar, `Bend`), ported to the same Avenger
+revision as experiments 6 and 7, and is rendered by `avenger-wgpu` and hosted
+by `avenger-winit-wgpu`.
+
+The pipeline, the chart state as a fold of the command log, the task
+validation and the deciders stay as they are.
+
+### Marks, common first, maps last
+
+| Order | Chart | Data from the tile | Transition into it |
+|---|---|---|---|
+| 1 | bars | points per height band | start |
+| 2 | pie / donut | share per class | the bars become one stacked bar, which `Bend` curls into a pie |
+| 3 | time series | points per 10 s per flight line (`gps_time`, `point_source_id`: 4 lines) | new data, so a crossfade; within the series, zoom and highlight tween |
+| 4 | heatmap | class × height band, colour = number of points | each height bar splits into cells per class, and each (height, class) cell moves to its place |
+| 5 | map | buildings in 5 m cells | last: a scatter becomes a map, each cell moving to its coordinates |
+
+The decider's options grow accordingly: `mark` offers bars, pie, line,
+heatmap and map. The data roles gain `time` (for `gps_time`) and
+`series` (for flight lines), so the fields for a line chart are derived as
+the others are. New instruction cases cover each mark, and the evaluation
+reruns with the larger vocabulary.
+
+### The live window
+
+- **Chart:** the chart layer's scene, transitioning.
+- **Input:** a text field (`avenger-widgets` `TextInput`), buttons for data
+  events (more rows, a new column, an outlier), and a narrow/free policy
+  switch.
+- **Autopilot panel:**
+  - the current decision, with a probability bar per option;
+  - which gate held it back, if any;
+  - the command log with undo;
+  - the running latency and cost.
+- **Gates, from phase E:**
+  - decide after a pause in typing (about 400 ms);
+  - act on confidence ≥ 0.5;
+  - act only on complete intents;
+  - never reapply the current state.
+
+  Decisions run as background tasks with the host's wake-ups, so the window
+  never waits on the network.
+
+Before the video, three gaps from the gallery get fixed:
+1. The observation includes the current style (colour, zoom, highlight).
+2. A mark change refreshes the title.
+3. A highlight also enlarges the marks.
+
+The evaluation is rerun, with the scores before and after reported side by
+side.
+
+### The video is a recording of the live app
+
+The app runs from a script of timed events: keystrokes at typing speed and
+button presses. It renders headlessly, with decisions from the cache and the
+latency shown as measured on the original call. The video can therefore be
+rebuilt without a key.
+
+Storyboard, about 90 s:
+1. Bars. Typing "maak de balken rood": early guesses held back, then the bars
+   turn red.
+2. "show the share per class as a pie": the bars bend into a pie.
+3. "how did the flight go over time": the time series crossfades in. Then
+   "zoom to the second flight line", and the domain tweens.
+4. "class against height": the heatmap assembles from the bars' cells.
+5. "can we look closer at the lower right part": the panel shows the
+   confident wrong guess (south-west after "lower") waiting for the pause, then
+   the right zoom.
+6. Map last. The policy goes from narrow to free, and "a geometry column
+   appears" makes the scatter move into a map.
+7. End card: decisions made and held back, the cost and the median latency,
+   from the run itself.
+
 ## Advanced: a training run as the data source
 
 Once phases A–F have measured the decisions on the LiDAR cases, the same
