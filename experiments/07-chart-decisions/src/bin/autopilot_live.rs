@@ -72,6 +72,17 @@ const LH: f32 = 16.0;
 /// Two clicks within this time, and this close, are a double click.
 const MULTI_CLICK: f64 = 0.4;
 
+/// The app's clock: real time, or the recorder's virtual time.
+static VIRTUAL: std::sync::OnceLock<Mutex<Instant>> = std::sync::OnceLock::new();
+
+fn clock() -> Instant {
+    VIRTUAL.get().map_or_else(Instant::now, |m| *m.lock().unwrap())
+}
+
+fn recording() -> bool {
+    VIRTUAL.get().is_some()
+}
+
 /// The theme, its typefaces, and text widths, set once at startup.
 struct Ui {
     th: Theme,
@@ -175,6 +186,7 @@ fn inside(p: [f32; 2], r: [f32; 4]) -> bool {
 
 /// A decision that came back from a background task.
 struct Returned {
+    asked_at: Instant,
     prefix: String,
     complete: bool,
     wall_ms: f64,
@@ -218,7 +230,7 @@ struct App {
     /// Whether the text field (the autopilot box, or the editor) has
     /// keyboard focus: a blue border and a blinking caret.
     focused: bool,
-    last_key: std::time::Instant,
+    last_key: Instant,
     typed_at: Option<Instant>,
     asked: String,
     // Decisions.
@@ -242,7 +254,7 @@ struct App {
     items: usize,
     wake_generation: u64,
     /// The last click in a text field, and how many came in a row.
-    last_click: Option<(std::time::Instant, [f32; 2])>,
+    last_click: Option<(Instant, [f32; 2])>,
     clicks: u32,
     // Editor mode.
     editing: bool,
@@ -250,6 +262,7 @@ struct App {
     scroll: usize,
     edit_status: (String, [f32; 4]),
     applying: bool,
+    apply_started: Instant,
     edited: Arc<Mutex<Option<Result<editor::Applied, String>>>>,
 }
 
@@ -545,18 +558,26 @@ impl App {
         self.in_flight += 1;
         let obs = pilot::observation(&self.state, &self.data, &prefix);
         let (jev, q, out) = (self.jev.clone(), self.questions.clone(), self.returned.clone());
+        let asked_at = clock();
         self.rt.spawn(async move {
             let t = std::time::Instant::now();
             let result = jev.decide(&obs, &q).await;
             let wall_ms = t.elapsed().as_secs_f64() * 1e3;
-            out.lock().unwrap().push(Returned { prefix, complete, wall_ms, result });
+            out.lock().unwrap().push(Returned { asked_at, prefix, complete, wall_ms, result });
         });
     }
 
     /// Gate the returned decisions and run the ones that pass through the
     /// pipeline.
     async fn collect(&mut self, now: Instant) {
-        let returned: Vec<Returned> = std::mem::take(&mut *self.returned.lock().unwrap());
+        // A recording lets each decision arrive after the latency measured
+        // when it was first made.
+        let all: Vec<Returned> = std::mem::take(&mut *self.returned.lock().unwrap());
+        let (returned, later): (Vec<Returned>, Vec<Returned>) = all.into_iter().partition(|r| {
+            let ms = r.result.as_ref().map_or(300.0, |d| d.ms).clamp(150.0, 1500.0);
+            !recording() || r.asked_at + Duration::from_secs_f64(ms / 1e3) <= now
+        });
+        self.returned.lock().unwrap().extend(later);
         for r in returned {
             self.in_flight -= 1;
             let d = match r.result {
@@ -641,6 +662,7 @@ impl App {
             return;
         }
         self.applying = true;
+        self.apply_started = clock();
         self.edit_status = ("applying…".into(), accent());
         let text = self.code.string();
         let (base, out) = (self.base.clone(), self.edited.clone());
@@ -651,6 +673,17 @@ impl App {
     }
 
     async fn collect_edit(&mut self, now: Instant) {
+        // A recording shows the apply taking as long as it did.
+        if recording() {
+            let due = match &*self.edited.lock().unwrap() {
+                Some(Ok(a)) => self.apply_started + Duration::from_secs_f64(a.ms / 1e3),
+                Some(Err(_)) => self.apply_started,
+                None => return,
+            };
+            if now < due {
+                return;
+            }
+        }
         let Some(r) = self.edited.lock().unwrap().take() else { return };
         self.applying = false;
         match r {
@@ -738,7 +771,7 @@ impl App {
 
     /// Count clicks in a row; the second selects a word, the third a line.
     fn multi_click(&mut self, p: [f32; 2]) -> u32 {
-        let now = std::time::Instant::now();
+        let now = clock();
         self.clicks = match self.last_click {
             Some((t, q)) if now.duration_since(t).as_secs_f64() < MULTI_CLICK && (p[0] - q[0]).abs() < 5.0 && (p[1] - q[1]).abs() < 5.0 => self.clicks + 1,
             _ => 1,
@@ -780,7 +813,7 @@ fn t(s: &str, x: f32, y: f32, size: f32, color: [f32; 4], bold: bool) -> SceneMa
 
 /// The caret shows solid while typing, and blinks once typing pauses.
 fn caret_on(s: &App) -> bool {
-    let since = s.last_key.elapsed().as_secs_f64();
+    let since = (clock() - s.last_key).as_secs_f64();
     since < 0.6 || ((since - 0.6) * 1.8).fract() < 0.5
 }
 
@@ -1145,7 +1178,7 @@ fn nerds(s: &App, now: Instant, marks: &mut Vec<SceneMark>) {
 }
 
 fn build(s: &mut App) -> SceneBuild {
-    let now = Instant::now();
+    let now = clock();
     let t0 = std::time::Instant::now();
     if let Some(last) = s.last_frame {
         s.frame_ms = 0.8 * s.frame_ms + 0.2 * (now - last).as_secs_f64() * 1e3;
@@ -1209,7 +1242,7 @@ struct Input;
 #[async_trait]
 impl EventStreamHandler<App> for Input {
     async fn handle(&self, event: &Event, s: &mut App, _rtree: &SceneGraphRTree) -> UpdateStatus {
-        let now = Instant::now();
+        let now = clock();
         let rerender = UpdateStatus { rerender: true, ..Default::default() };
         if std::env::var("AUTOPILOT_DEBUG").is_ok() && !matches!(event, Event::RuntimeWake(_)) {
             use std::io::Write;
@@ -1243,7 +1276,7 @@ impl EventStreamHandler<App> for Input {
                 }
                 // Typing into an unfocused window focuses the field.
                 s.focused = true;
-                s.last_key = std::time::Instant::now();
+                s.last_key = clock();
                 let m = Mods { cmd, shift: e.modifiers.shift, alt: e.modifiers.alt };
                 let handled = if s.editing {
                     s.edit_key(&e.key, e.text.as_deref(), m)
@@ -1256,7 +1289,7 @@ impl EventStreamHandler<App> for Input {
             // paste, and writes what the app hands back for a copy.
             Event::Clipboard(c) => {
                 s.focused = true;
-                s.last_key = std::time::Instant::now();
+                s.last_key = clock();
                 let f = if s.editing { &mut s.code } else { &mut s.input };
                 let mut status = rerender;
                 match c {
@@ -1289,7 +1322,7 @@ impl EventStreamHandler<App> for Input {
                     s.open_editor();
                 } else if s.editing && inside(p, EDIT_AREA) {
                     s.focused = true;
-                    s.last_key = std::time::Instant::now();
+                    s.last_key = clock();
                     s.click_editor(p, e.modifiers.shift);
                     match s.multi_click(p) {
                         2 => s.code.select_word(),
@@ -1298,7 +1331,7 @@ impl EventStreamHandler<App> for Input {
                     }
                 } else if !s.editing && inside(p, INPUT_BOX) {
                     s.focused = true;
-                    s.last_key = std::time::Instant::now();
+                    s.last_key = clock();
                     s.click_input(p, e.modifiers.shift);
                     match s.multi_click(p) {
                         2 => s.input.select_word(),
@@ -1316,7 +1349,160 @@ impl EventStreamHandler<App> for Input {
     }
 }
 
+/// One step of a recording script.
+enum Act {
+    /// Type text at typing speed into the focused field.
+    Type(&'static str),
+    Key(NamedKey),
+    /// Tab: stats for nerds.
+    Tab,
+    /// ⌘E: switch between autopilot and editor.
+    CmdE,
+    /// ⌘↵: apply the editor text.
+    CmdEnter,
+    /// Select the first occurrence of this text in the editor.
+    Select(&'static str),
+    Wait(f64),
+    /// Wait until nothing is pending or moving, then this long.
+    Settle(f64),
+}
+
+/// The recording: the live window, driven by a script on a virtual clock.
+fn script() -> Vec<Act> {
+    use Act::*;
+    vec![
+        Wait(1.5),
+        Type("make the bars red"), Wait(0.3), Key(NamedKey::Enter), Settle(1.2),
+        // A pause mid-sentence: the decider is asked after 400 ms.
+        Type("which share"), Wait(1.0), Type(" does each class have?"), Wait(0.3), Key(NamedKey::Enter), Settle(1.5),
+        Type("back to bars please"), Key(NamedKey::Enter), Settle(1.2),
+        Type("emphasise the biggest classes"), Key(NamedKey::Enter), Settle(1.2),
+        Type("how are the classes spread over height?"), Key(NamedKey::Enter), Settle(1.5),
+        Type("how many points did each flight line record over time?"), Key(NamedKey::Enter), Settle(1.5),
+        Type("zoom in on the start"), Wait(1.0), Type(" of the lines"), Key(NamedKey::Enter), Settle(1.2),
+        Tab, Wait(2.0), Type("zoom back out"), Key(NamedKey::Enter), Settle(2.5), Tab,
+        Type("where are the buildings?"), Key(NamedKey::Enter), Settle(1.5),
+        Type("mark the tallest buildings"), Key(NamedKey::Enter), Settle(1.2),
+        Tab, Wait(4.0), Tab, Wait(0.5),
+        // The same chart, by hand: 10 m cells and another threshold.
+        CmdE, Wait(2.0),
+        Select("floor(x/5)*5 AS cx, floor(y/5)*5 AS cy"), Wait(0.5), Type("floor(x/10)*10 AS cx, floor(y/10)*10 AS cy"), Wait(0.3),
+        Select("floor(x/5)*5, floor(y/5)*5"), Wait(0.5), Type("floor(x/10)*10, floor(y/10)*10"), Wait(0.3),
+        Select("62.74"), Wait(0.5), Type("70"), Wait(0.8),
+        CmdEnter, Settle(2.5),
+        CmdE, Wait(0.6),
+        Type("kleur de gebouwen groen"), Key(NamedKey::Enter), Settle(1.2),
+        Type("zoom to the south-east"), Key(NamedKey::Enter), Settle(1.5),
+        Tab, Wait(4.5),
+    ]
+}
+
+async fn record(mut app: App, dir: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use avenger_wgpu::canvas::{Canvas, PngCanvas};
+    const FPS: f64 = 30.0;
+    std::fs::create_dir_all(dir)?;
+    let mut canvas = PngCanvas::new(avenger_common::canvas::CanvasDimensions { size: [W, H], scale: 1.0 }, Default::default()).await?;
+    let base = clock();
+    let no = Mods { cmd: false, shift: false, alt: false };
+    // Typing splits into one key per character.
+    let mut acts: std::collections::VecDeque<Act> = Default::default();
+    for a in script() {
+        match a {
+            Act::Type(t) => acts.extend(t.split_inclusive(|_: char| true).map(Act::Type)),
+            a => acts.push_back(a),
+        }
+    }
+    let mut ready = base;
+    let mut frame = 0usize;
+    let mut tail = None;
+    loop {
+        let now = base + Duration::from_secs_f64(frame as f64 / FPS);
+        *VIRTUAL.get().unwrap().lock().unwrap() = now;
+        while let Some(a) = acts.front() {
+            if now < ready {
+                break;
+            }
+            let busy = app.in_flight > 0 || app.applying || app.animating(now) || app.typed_at.is_some();
+            let mut wait = 0.0;
+            match a {
+                Act::Type(c) => {
+                    let key = if *c == " " { Key::Named(NamedKey::Space) } else { Key::Character(c.chars().next().unwrap()) };
+                    app.last_key = now;
+                    if app.editing {
+                        app.edit_key(&key, Some(c), no);
+                        wait = 0.03;
+                    } else {
+                        app.input_key(&key, Some(c), no, now);
+                        wait = 0.065;
+                    }
+                }
+                Act::Key(k) => {
+                    app.last_key = now;
+                    if app.editing { app.edit_key(&Key::Named(*k), None, no); } else { app.input_key(&Key::Named(*k), None, no, now); }
+                }
+                Act::Tab => app.nerds = !app.nerds,
+                Act::CmdE => {
+                    if app.editing { app.editing = false } else { app.open_editor() }
+                }
+                Act::CmdEnter => app.apply_text(),
+                Act::Select(t) => {
+                    let text = app.code.string();
+                    let i = text.find(t).ok_or_else(|| format!("script: `{t}` is not in the editor"))?;
+                    let a = text[..i].chars().count();
+                    app.code.anchor = Some(a);
+                    app.code.caret = a + t.chars().count();
+                    app.last_key = now;
+                }
+                Act::Wait(d) => wait = *d,
+                Act::Settle(d) => {
+                    if busy {
+                        break;
+                    }
+                    wait = *d;
+                }
+            }
+            acts.pop_front();
+            ready = now + Duration::from_secs_f64(wait);
+        }
+        // Wait (in real time) for decisions and applies in flight, so they
+        // can arrive on the virtual clock.
+        if app.typed_at.is_some_and(|at| now - at >= DEBOUNCE) {
+            app.typed_at = None;
+            app.ask(false);
+        }
+        while app.returned.lock().unwrap().len() < app.in_flight {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        while app.applying && app.edited.lock().unwrap().is_none() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        app.collect(now).await;
+        app.collect_edit(now).await;
+        canvas.set_scene(&build(&mut app).scene_graph)?;
+        canvas.render().await?.save(format!("{dir}/f{frame:05}.png"))?;
+        frame += 1;
+        if acts.is_empty() {
+            let end = *tail.get_or_insert(frame + FPS as usize / 2);
+            if frame >= end {
+                break;
+            }
+        }
+    }
+    println!(
+        "wrote {frame} frames ({:.0} s) to {dir}: {} decisions, {} from cache, {} changes",
+        frame as f64 / FPS,
+        app.decisions,
+        app.cached,
+        app.changes.len()
+    );
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--record") {
+        let _ = VIRTUAL.set(Mutex::new(Instant::now()));
+    }
     // The calm theme, or with `--neutral` the look of the recordings.
     let neutral = std::env::args().any(|a| a == "--neutral");
     let ui_ = Ui::new(if neutral { Theme::neutral() } else { Theme::calm() });
@@ -1357,7 +1543,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         dur: 1.0,
         input: Field::default(),
         focused: true,
-        last_key: std::time::Instant::now(),
+        last_key: clock(),
         typed_at: None,
         asked: String::new(),
         returned: Arc::new(Mutex::new(vec![])),
@@ -1389,6 +1575,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         scroll: 0,
         edit_status: (String::new(), muted()),
         applying: false,
+        apply_started: clock(),
         edited: Arc::new(Mutex::new(None)),
     };
     app.snapshot(&pipe);
@@ -1397,7 +1584,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // `--snapshot <dir> "instruction" ...`: the same path as the window
     // (Enter, gates, pipeline, fold), rendered to PNG with and without stats
     // for nerds, for checking without a display.
-    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--record") {
+        let dir = args.get(2).cloned().unwrap_or("out/autopilot_live/frames".into());
+        return runtime.block_on(record(app, &dir));
+    }
     if args.get(1).map(String::as_str) == Some("--snapshot") {
         let dir = args.get(2).ok_or("--snapshot <dir> instructions...")?.clone();
         std::fs::create_dir_all(&dir)?;
@@ -1412,7 +1602,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     while app.edited.lock().unwrap().is_none() {
                         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                     }
-                    app.collect_edit(Instant::now()).await;
+                    app.collect_edit(clock()).await;
                     app.started = None;
                     for nerds in [false, true] {
                         app.nerds = nerds;
@@ -1431,7 +1621,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 app.shown = None;
                 app.message.clear();
-                app.collect(Instant::now()).await;
+                app.collect(clock()).await;
                 app.started = None;
                 if !app.message.is_empty() {
                     println!("{text:<45} error: {}", app.message);

@@ -160,9 +160,10 @@ cargo run --release -p lidar-decide --bin typing        # phase E
 cargo run --release -p lidar-decide --bin layer_eval    # the chart layer's vocabulary
 cargo run --release -p lidar-decide --bin autopilot_live     # the live window
 cargo run --release -p lidar-decide --bin layer_roundtrip    # decisions ↔ pipeline check
-cargo run --release -p lidar-decide --bin autopilot_video -- out/autopilot
-ffmpeg -framerate 30 -i out/autopilot/f%05d.png -c:v libx264 -preset slow \
-    -pix_fmt yuv420p -crf 26 experiments/07-chart-decisions/video/autopilot.mp4
+cargo run --release -p lidar-decide --bin autopilot_live -- --record out/autopilot_live/frames
+ffmpeg -framerate 30 -i out/autopilot_live/frames/f%05d.png -c:v libx264 -preset slow \
+    -pix_fmt yuv420p -crf 24 experiments/07-chart-decisions/video/autopilot.mp4
+cargo run --release -p lidar-decide --bin autopilot_video -- out/autopilot   # per-word run below
 ```
 
 Every response is cached in [cache/](cache/), keyed by a hash of the decider,
@@ -348,12 +349,27 @@ and debouncing.
 
 ## The autopilot on one chart that transitions
 
-[video/autopilot.mp4](video/autopilot.mp4), 56 s. Twelve instructions are typed
-into the panel. Jev decides after every word, and **one chart object** moves
-from bars to a pie, back to bars, to a heatmap, a time series and, last, a
-map. Every change is a transition, as the marks were in experiment 5.
+[video/autopilot.mp4](video/autopilot.mp4), 79 s, is a recording of the live
+window ([below](#the-live-window)). Twelve instructions are typed into the
+autopilot box, and **one chart object** moves from bars to a pie, back to
+bars, to a heatmap, a time series and, last, a map. Every change is a
+transition, as the marks were in experiment 5. On the way the recording:
+- pauses twice mid-sentence, so Jev decides before Enter: "which share" gives
+  the pie, and "zoom in on the start" the zoom;
+- opens stats for nerds, which shows the pipeline behind the chart;
+- switches to the editor, changes the SQL to 10 m cells and the threshold to
+  70 by hand, and applies it;
+- goes back to the autopilot, which continues on the edited pipeline ("kleur de
+  gebouwen groen", "zoom to the south-east").
 
-![The autopilot, sampled every 6 s](images/autopilot_sheet.png)
+![The recording, sampled every 6.6 s](images/autopilot_sheet.png)
+
+`autopilot_live --record <dir>` plays the script in `script()` against the
+window's own code: keystrokes, pauses, Enter, Tab, ⌘E, selections and ⌘↵, on
+a virtual clock at 30 fps. Decisions arrive after the latency measured when
+they were first made, and come from the cache, so the recording rebuilds
+without a key. The editor's apply really runs the pipeline from the tile
+(about 1 s), so the length can differ between rebuilds by a few frames.
 
 ### The chart layer
 
@@ -429,8 +445,9 @@ Rules miss exactly those, and Dutch.
 
 ### Deciding while typing: one gate had to be added
 
-The panel decides after every word (66 decisions in the video), against the
-state as it is at that moment. The planned gates were:
+This section uses `autopilot_video`, an earlier recording that decides after
+**every word** (66 decisions), against the state as it is at that moment. The
+live window instead asks 400 ms after typing stops, and on Enter. The planned gates were:
 - confidence ≥ 0.5;
 - a complete intent;
 - a change to the state.
