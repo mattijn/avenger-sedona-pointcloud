@@ -85,16 +85,19 @@ This repo is a snapshot of work in progress on both sides.
   - The `sedona-pointcloud` 0.4.1 release uses Arrow 57 and DataFusion 52.5.
   - Avenger `main` has `arrow = "*"`.
   - This repo therefore pins SedonaDB `main` (DataFusion 54.1, Arrow 58.3)
-    together with the Avenger core PR stack (DataFusion 54, Arrow 58.3).
+    together with the Avenger core PR stack (DataFusion 54.1, Arrow 58.4, which
+    resolve to one Arrow and one DataFusion in the lockfile).
 - **The Avenger stack is a set of open PRs.** This repo pins the top of that
-  stack, `5f31c58` ([#124](https://github.com/jonmmease/avenger/pull/124),
-  `codex/selection`). A pinned commit may disappear if the branch is rebased;
+  stack, `602b99c` ([#130](https://github.com/jonmmease/avenger/pull/130),
+  `codex/portable-dataflow-inputs`), for every experiment. A pinned commit may
+  disappear if the branch is rebased;
   if it does, update the revision in the workspace `Cargo.toml`. Moving from
-  #120 to #124 needed no code changes here.
+  #120 to #124 needed no code changes here; moving #124 to #130, after the
+  stack was rebased, needed one line.
 - **Minimum Rust version.** With Rust 1.89, generate the lockfile with
   `CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo update`, because
   the newest `ordered-float` needs Rust 1.90.
-- **Workarounds the charts still carry**, all re-tested against #124 and all
+- **Workarounds the charts still carry**, all re-tested against #130 and all
   still needed — see [FINDINGS.md](FINDINGS.md) for the evidence:
   - `make_colorbar_marks` draws at (0, 0) whatever `origin` says, and its
     gradient renders as one flat colour, so `topviews` draws its own colorbar

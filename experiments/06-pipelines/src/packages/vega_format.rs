@@ -12,7 +12,7 @@ use arrow::datatypes::{DataType, Float64Type, TimeUnit, TimestampMillisecondType
 use avenger_format_datetime::{
     DateTimeFormatContext, DateTimeLocaleRegistry, PreparedDateTimeFormat,
 };
-use avenger_format_number::{NumberFormatContext, NumberLocaleRegistry, PreparedNumberFormat};
+use avenger_format_number::{NumberLocaleRegistry, PreparedNumberFormat};
 use datafusion::common::{exec_err, Result, ScalarValue};
 use datafusion::logical_expr::{
     ColumnarValue, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature, Volatility,
@@ -73,11 +73,7 @@ impl ScalarUDFImpl for Format {
         let locale = NumberLocaleRegistry::with_builtins()
             .resolve("en-US")
             .map_err(|e| datafusion::error::DataFusionError::Execution(e.to_string()))?;
-        let fmt = PreparedNumberFormat::new(
-            Some(&spec),
-            Default::default(),
-            NumberFormatContext::new(&locale),
-        )
+        let fmt = PreparedNumberFormat::new(Some(&spec), Default::default(), &locale)
         .map_err(|e| datafusion::error::DataFusionError::Execution(format!("format: {e}")))?;
         let value = args.args[0].cast_to(&DataType::Float64, None)?;
         map_values(&value, args.number_rows, |a, i| {

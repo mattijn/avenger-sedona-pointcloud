@@ -133,7 +133,7 @@ is accepted. A decider never writes the chart state directly.
 
 A crate `lidar-decide` in `experiments/07-chart-decisions`. It builds on
 experiment 6's pipeline and chart package, at the same Avenger revision
-(#129, `a2241265`).
+(#129, `a2241265`; since 25 Sep 2026 the workspace pin, `602b99c`, #130).
 
 | Phase | Builds | Measures |
 |---|---|---|

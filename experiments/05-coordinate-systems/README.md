@@ -473,5 +473,6 @@ useful when coordinate systems land in the chart layer.
    `Circle` and `Path`, so square cells need a path.
 
 Checked against `jonmmease/avenger` `5f31c58`, the revision pinned for this
-repo. The newer top of the stack (#129, `codex/dataflow-incremental`) was not
-rechecked.
+repo at the time. Rerun on `602b99c` (#130) on 25 Sep 2026 with no code
+changes: the same table, and the same images except `maps.png`, which is not
+pixel-stable between two runs on one revision (overlapping symbols).

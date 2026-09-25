@@ -4,7 +4,8 @@ What this repo has run into while building real charts on the Avenger stack,
 kept as a ledger so it can be rechecked when the stack moves. Every entry says
 how it was measured, so a recheck is a command rather than an opinion.
 
-- **Checked against:** `jonmmease/avenger` `5f31c58` ([#124](https://github.com/jonmmease/avenger/pull/124), `codex/selection`), 20 Sep 2026
+- **Checked against:** `jonmmease/avenger` `602b99c` ([#130](https://github.com/jonmmease/avenger/pull/130), `codex/portable-dataflow-inputs`, the top of the stack), 25 Sep 2026.
+  Previous round: `5f31c58` (#124), 20 Sep 2026.
 - **Machine:** Apple Silicon, macOS, wgpu/Metal, Rust 1.89
 - **Recheck:** `cargo run --release -p lidar-probes --bin probe_guides` and
   `cargo run --release -p lidar-probes --bin probe_render` print everything
@@ -22,6 +23,11 @@ how it was measured, so a recheck is a command rather than an opinion.
 | 6 | guides | Symbol legend title is placed inside the plot | open |
 | 7 | scales | Linear domains must have exactly two stops | open |
 | 8 | guides | Axis always set a `band` option | fixed in the stack |
+| 9 | format | `NumberFormatContext` removed from `avenger-format-number` | API change, adapted |
+
+Findings 1–7 were re-measured on `602b99c` with the two probes and are
+unchanged. The frame-rate numbers under [Live charts](#live-charts) were **not**
+re-measured this round, because they need the live window.
 
 ## Live charts
 
@@ -48,6 +54,9 @@ separately. Best of three, canvas 900 × 900, scale 1.0:
 | 150,000 | 3.6 ms | 13.9 ms | 181.3 ms |
 | 300,000 | 6.7 ms | 21.3 ms | 387.2 ms |
 
+On `602b99c` (25 Sep 2026, single run): 9.5, 57.1, 198.3 and 413.6 ms for the
+index, `render` 4.6–20.1 ms. Same shape, within 10 %.
+
 Drawing 300k symbols costs 28 ms; indexing them costs 387 ms, about 1.2 µs per
 instance. That matches the live viewer exactly: ~156k cells, ~235 ms per frame.
 
@@ -63,6 +72,8 @@ The same scene with the enclosing group marked non-interactive:
 | 150,000 | 181.3 ms | 177.0 ms |
 | 300,000 | 387.2 ms | 365.5 ms |
 
+Unchanged on `602b99c`: 198.3 vs 200.8 ms and 413.6 vs 416.8 ms.
+
 The flag appears to affect what a query returns rather than what gets built, so
 a mark that can never be hit still pays for its geometry. (`avenger-geometry`'s
 own test is named `noninteractive_marks_are_excluded_from_scene_graph_rtree_but_not_bounds`,
@@ -73,7 +84,16 @@ which fits what we measure.)
 `avenger-winit-wgpu/src/render_invalidation.rs` calls
 `rebuild_scene_graph(true)` for an `EvaluationChanged` invalidation, so every
 push from a data thread pays finding 1, even when only colours or positions
-changed and nothing will be hit-tested before the next push.
+changed and nothing will be hit-tested before the next push. Still the case on
+`602b99c` (read in the source, lines 121 and 163).
+
+**New upstream, not yet measured by us:** `avenger-chart` now has *retained
+symbols*. When both positions bind fields through unclamped linear scales, a
+domain change (pan, zoom) reuses the base position arrays and, in wgpu, the
+instance buffers; `frame.geometry_report()` records builds and reuses. Its
+README says a *source snapshot* change still rebuilds positions, so a stream
+of new data would not benefit, and it does not say whether the hit-test index
+is rebuilt. Measuring that is the next thing to do for findings 1–3.
 
 Questions rather than prescriptions, since the design intent may be deliberate:
 
@@ -105,13 +125,16 @@ Two symptoms, both reproducible:
   bar is a single colour, `#ECF8B1`, which is the last stop of the range.
   `probe_guides`, then sample the bar's pixels in `out/probe_guides.png`.
 
+Both still present on `602b99c`: every probe case is flat, and the colorbar in
+`out/probe_guides.png` is still one colour, `#ECF8B1`.
+
 Both look like the gradient atlas or its texture coordinates in
 `avenger-wgpu/src/marks/gradient.rs`, but we have not chased it further. Our
 charts draw colorbars as stacked solid rects instead.
 
 ## Guides and scales
 
-Re-verified on #124 with `probe_guides`; all three are still present, and all
+Re-verified on #124 and again on `602b99c` (#130) with `probe_guides`; all three are still present, and all
 three still need a workaround in this repo's charts.
 
 ### 5. Colorbar ignores its `origin`
@@ -140,12 +163,27 @@ be expressed; ranges have to be resampled to evenly spaced stops first.
 `LinearScale` rejected. It now sets it only when the scale has one. Kept here
 so the ledger records the fix.
 
+### 9. `NumberFormatContext` removed
+
+`PreparedNumberFormat::new(spec, overrides, NumberFormatContext::new(&locale))`
+became `PreparedNumberFormat::new(spec, overrides, &locale)` somewhere in the
+formatting rework (`5d1518f` … `e86810b`). One call site in experiment 6
+(`experiments/06-pipelines/src/packages/vega_format.rs`), a one-line change.
+Recorded as drift, not as a defect: the new signature is simpler.
+
 ## What worked well
 
 Worth saying, because it is the part that does not generate issues:
 
 - **Repinning #120 → #124 needed no code changes.** Nine crates, no API drift
   that reached us.
+- **Repinning #124 → #130 across a rewritten stack needed one line.** The stack
+  was rebased on 24 Sep 2026 (neither old pin is on any branch now), 180
+  commits moved, and 20 crates came along with a single signature change
+  (finding 9). Every experiment's binaries ran; the renders of experiments 1
+  and 5 match, except `maps.png`, which differs by scattered pixels between
+  two runs on the *same* revision (overlapping symbols drawn in a
+  non-deterministic row order), so it is not an Avenger change.
 - **`RenderInvalidationHub` is a good fit for live data.** A data thread calls
   `request_render` and the window rebuilds; invalidations coalesce sensibly
   (1022 batches over 25 s produced 140 rebuilds).
@@ -173,6 +211,18 @@ From an earlier round, **not re-verified on the current branch**:
   local `../../typst` checkout, so the branch does not build as cloned.
 - `avenger-chart`'s README describes transforms as stubs, which the code has
   moved past.
+
+## What this round did not check
+
+- The live frame rates (`stream_live` without `--snapshots`); the headless
+  snapshots ran and look the same.
+- The chart-language branch (`jonmmease/facet-fresh-start`). It still exists,
+  but the stack now has its own `avenger-chart`, `avenger-chart-definition` and
+  `avenger-vegalite-compiler`, which may make it moot.
+- Experiment 7 calls to Jev and the LLM: every decision was replayed from the
+  cache, without an API key, so the tables match by construction. What was
+  checked is that the chart layer and pipelines still build and fold
+  correctly on the new stack (`layer_roundtrip`: 44 states, 1936 transitions).
 
 ## Next round
 

@@ -1,6 +1,6 @@
 # Experiment 6 — Vega expressions, SQL and chained pipelines
 
-Status: all six phases run, 23 Sep 2026. The data side uses the workspace tile; the chart side uses the top of the stack (#129, `a2241265`).
+Status: all six phases run, 23 Sep 2026. The data side uses the workspace tile; the chart side used the top of the stack (#129, `a2241265`). Since 25 Sep 2026 the whole repo, this experiment included, is on one workspace pin, `602b99c` (#130); `pipeline_bench` and `cqrs_check` give the same results there.
 
 Two questions, one on each side of the same design:
 
