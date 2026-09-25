@@ -1,0 +1,52 @@
+{
+  "cost": 0.003187,
+  "input_tokens": 2402,
+  "ms": 1295.2404589999999,
+  "raw": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "logprobs": null,
+        "message": {
+          "content": "```pipeline\nread data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! chart point --x cx:Q --y cy:Q --color h:Q\n! highlight \"datum.h >= 70\"\n```",
+          "reasoning": null,
+          "refusal": null,
+          "role": "assistant"
+        },
+        "native_finish_reason": "end_turn"
+      }
+    ],
+    "created": 1790369201,
+    "id": "gen-1790369201-z3Y2NuWjPHUNmi1HAsWJ",
+    "model": "anthropic/claude-haiku-4.5",
+    "object": "chat.completion",
+    "provider": "Amazon Bedrock",
+    "service_tier": "default",
+    "system_fingerprint": null,
+    "usage": {
+      "completion_tokens": 157,
+      "completion_tokens_details": {
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "cost": 0.003187,
+      "cost_details": {
+        "upstream_inference_completions_cost": 0.000785,
+        "upstream_inference_cost": 0.003187,
+        "upstream_inference_prompt_cost": 0.002402
+      },
+      "is_byok": false,
+      "prompt_tokens": 2402,
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "video_tokens": 0
+      },
+      "total_tokens": 2559
+    }
+  },
+  "text": "```pipeline\nread data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics\n! filter --vega \"datum.classification == 6\"\n! sql \"SELECT floor(x/5)*5 AS cx, floor(y/5)*5 AS cy, max(z) AS h FROM input WHERE x < 658000 AND y < 6868000 GROUP BY floor(x/5)*5, floor(y/5)*5\"\n! chart point --x cx:Q --y cy:Q --color h:Q\n! highlight \"datum.h >= 70\"\n```"
+}

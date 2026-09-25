@@ -253,6 +253,31 @@ angular brush needs parallel coordinates, which the layer does not have.
 
 ![A line brush crossing flight line 31, and a timebox no line stays inside](images/series.png)
 
+## Interactions: smooth brushing
+
+The second, after Doleisch & Hauser (2002): `--soft w` on an interval, a
+line brush or a timebox turns the selection from yes or no into a degree of
+interest in [0, 1]. Outside a brush the degree falls off linearly with the
+distance to it, over `w` of the plot's unit square; for a line brush it is
+the distance from the polyline to the segment, and for a soft timebox the
+share of a line's points in the box's x-range that lie inside it. Fade
+multiplies opacity by 0.15 + 0.85·degree; filter keeps what reaches 0.5,
+which is also what the count of selected items reports. `select --soft 0.15`
+on its own softens the brush already there; keys stay binary.
+
+| Command | Map, 11,719 cells |
+|---|---|
+| `select interval --x 657600..657800 --y 6867350..6867550` | 292 selected |
+| the same with `--soft 0.15` | 1,953 at a degree of 0.5 or more, the rest fading out |
+
+![A hard brush on the map, the same brush with --soft 0.15, and a soft line brush on the flight lines](images/soft.png)
+
+The degree is a float per item, so it would be a column in SQL and it
+animates through the keyed transitions like any other fill. Measured by
+`cargo run --release -p lidar-decide --bin layer_roundtrip` (the "soft"
+cases). No mouse gesture sets softness yet; it is written in the editor or
+asked for in words.
+
 A refusal that names the way that works is what let Haiku fix a try:
 "emphasise the band with the most points" on the heatmap was refused as
 emphasis three times until the refusal said "to single out cells, select
@@ -321,12 +346,16 @@ thresholds, ranges, cell sizes, filters).
 | Way | Covered by options | Own text | Writer calls | Accepted first try | Latency p50 | Cost |
 |---|---|---|---|---|---|---|
 | Jev's options only | 6 / 6 | 2 / 16 | 0 | – | 302 ms | $0.0013 |
-| Haiku writes alone | 5 / 6 | 15 / 16 | 22 | 21 / 22 | 1,639 ms | $0.071 |
-| routed (the window) | **6 / 6** | **16 / 16** | 18 | 17 / 18 | 1,651 ms | $0.060 |
+| Haiku writes alone | 5 / 6 | 16 / 16 | 22 | 21 / 22 | 1,709 ms | $0.082 |
+| routed (the window) | **6 / 6** | **16 / 16** | 18 | 17 / 18 | 1,788 ms | $0.074 |
 
-- Haiku alone drew "which share does each class have?" as bars, and "draw
-  the buildings as a 3D model" as a map of the raw tile; with Jev's reading
-  neither happened.
+- Haiku alone drew "which share does each class have?" as bars; with Jev's
+  reading it did not. The prompt is longer now that it holds views and
+  selections, and a run costs about 15% more.
+- A grammar with two ways to filter is read both ways: once `select … --effect
+  filter` existed, Haiku alone wrote "filter ground" as a selection, which
+  leaves the rows as they are. One line in the prompt ("rows named in words
+  change the data with SQL WHERE, not with select") put it back.
 - Jev's `render` answer was right in 21 of 21 cases; its action missed three
   of those (a table asked as `mark/keep`), which the route does not need.
 - The prompt matters as much as the model: a palette written as

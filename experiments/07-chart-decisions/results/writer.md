@@ -1,7 +1,7 @@
 | Case | jev | haiku | haiku+jev | routed |
 |---|---|---|---|---|
 | v01 make the bars red | bars red | bars red | bars red | bars red |
-| v02 which share does each class have? | pie | pie | pie | pie |
+| v02 which share does each class have? | pie | **✗** bars "Share of points per LiDAR class (%)" (mark) | pie | pie |
 | v03 zoom in on the start of the lines, the top left | line zoom north_west | line zoom north_west | line zoom north_west | line zoom north_west |
 | v04 mark the tallest buildings | map top 10 % | map top 10 % | map top 10 % | map top 10 % |
 | v05 kleur de gebouwen groen | map green | map green | map green | map green |
@@ -26,9 +26,9 @@
 | Arm | Right, vocabulary (v) | Right, own text (w) | Writer used | Accepted on the first try | Tries | Latency p50 / max | Cost |
 |---|---|---|---|---|---|---|---|
 | jev | 6/6 | 1/16 | 0 | – | 0 | 336 / 562 ms | $0.0016 |
-| haiku | 6/6 | 16/16 | 22 | 21/22 | 23 | 1777 / 5805 ms | $0.0796 |
-| haiku+jev | 6/6 | 16/16 | 22 | 21/22 | 24 | 1895 / 7400 ms | $0.0867 |
-| routed | 6/6 | 16/16 | 18 | 17/18 | 20 | 1767 / 7400 ms | $0.0717 |
+| haiku | 5/6 | 16/16 | 22 | 21/22 | 23 | 1709 / 4251 ms | $0.0822 |
+| haiku+jev | 6/6 | 16/16 | 22 | 21/22 | 24 | 1914 / 6233 ms | $0.0889 |
+| routed | 6/6 | 16/16 | 18 | 17/18 | 20 | 1788 / 6233 ms | $0.0735 |
 
 | Case | Start | Expected | Jev | Render | Confidence |
 |---|---|---|---|---|---|

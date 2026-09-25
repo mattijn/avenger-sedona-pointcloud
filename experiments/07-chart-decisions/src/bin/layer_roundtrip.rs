@@ -133,12 +133,17 @@ async fn main() -> Result<(), Error> {
         ("only the selection, axes kept", format!("{bars}\n! select point --keys \"Ground;Building\" --effect filter")),
         ("a brush on the map", format!("{base}\n! select interval --x 657200..657600 --y 6867300..6867700")),
         ("a brush on bars", format!("{bars}\n! select interval --x 0..3")),
+        ("a soft brush on the map", format!("{base}\n! select interval --x 657600..657800 --y 6867350..6867550 --soft 0.15")),
+        ("softness added afterwards", format!("{base}\n! select interval --x 657600..657800 --y 6867350..6867550\n! select --soft 0.15")),
+        ("a soft line brush", format!("{line}\n! select segment --from 18.9,185000 --to 21.6,145000 --soft 0.2")),
+        ("a soft timebox", format!("{line}\n! select timebox --x 14..18 --y 120000..200000 --soft 0.1")),
+        ("softness wider than the plot", format!("{base}\n! select interval --x 657600..657800 --soft 2")),
     ] {
         match editor::apply(&text, &d).await {
             Ok(a) => println!(
-                "{what}: {:?} · x title {:?} · y title {:?} · log {} · zoom {:?} · colour {} · selection {:?} {:?} · {} items",
-                a.state.mark, a.state.x_title, a.state.y_title, a.state.y_log, a.state.range, a.state.color.is_some(), a.state.selection, a.state.effect,
-                lidar_decide::layer::model::resolve(&a.state, &a.data).items.len()
+                "{what}: {:?} · x title {:?} · y title {:?} · log {} · zoom {:?} · colour {} · selection {:?} {:?} soft {:?} · {} items, {:?} selected",
+                a.state.mark, a.state.x_title, a.state.y_title, a.state.y_log, a.state.range, a.state.color.is_some(), a.state.selection, a.state.effect, a.state.soft,
+                lidar_decide::layer::model::resolve(&a.state, &a.data).items.len(), lidar_decide::layer::model::resolve(&a.state, &a.data).selected
             ),
             Err(e) => println!("{what}: refused: {e}"),
         }

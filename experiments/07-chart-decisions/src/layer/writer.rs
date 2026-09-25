@@ -204,9 +204,12 @@ Aggregate in a `sql` stage before the mark, not in a channel. The layer draws th
   select interval --x a..b [--y c..d] [--effect fade|filter]   a brush in data units, on the time series and the map
   select segment --from x,y --to x,y   a line brush: the flight lines that cross the segment (data units)
   select timebox --x a..b --y c..d     the flight lines that stay inside the box over its x-range
+  --soft w on interval, segment and timebox: smooth brushing, interest falls off over w (0..1 of the plot) outside the brush
   select clear
   A pipeline has at most one `select` line, after the mark. Its effect is fade unless the instruction asks to show only the
   selection (filter, axes kept). To change only the effect, keep the keys or interval of the current select line.
+  Filtering, excluding or keeping rows named in words (filter ground, only buildings, without water) changes the \
+  data with SQL WHERE, not with select; select points things out, or keeps what was selected on the chart.
   color <hex>                            bars and map only; write the hex, not the name: {palette}
   highlight \"datum.<field> >= <number>\"  bars, pie and map; this is the only predicate form
   clear-highlight

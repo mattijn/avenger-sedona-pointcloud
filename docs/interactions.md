@@ -152,12 +152,12 @@ clouds; the parameters come from pointing, map and touch studies.
 
 ## For Avenger, most promising
 
-1. **Series predicates:** line brush, crossing, angular brush, timebox. All
+1. **Series predicates** (built in experiment 7, without the angular brush): line brush, crossing, angular brush, timebox. All
    compile to window functions over `PARTITION BY series ORDER BY t` and a
    `GROUP BY series HAVING …`. Vega-Lite has row-level selections only; one
    series-level selection type would cover #9833 and twenty years of prior
    work.
-2. **Fuzzy selections** (smooth brushing): a float column rather than a
+2. **Fuzzy selections** (smooth brushing; built in experiment 7 as `--soft w`): a float column rather than a
    boolean, so interest animates through keyed transitions. It also settles
    the filter-or-fade question from #3394: the degree drives either.
 3. **Lenses as a transform plus a local pipeline:** sampling, regression,

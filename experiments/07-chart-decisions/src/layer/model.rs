@@ -117,6 +117,9 @@ pub struct State {
     /// What is selected, and what that does to the rest.
     pub selection: Selection,
     pub effect: Effect,
+    /// Smooth brushing (Doleisch & Hauser 2002): interest falls off over
+    /// this width (unit square) outside a brush, instead of yes or no.
+    pub soft: Option<f64>,
 }
 
 /// A selection, as data: item keys (a click, a legend entry, a brush over
@@ -292,7 +295,7 @@ impl View {
 
 impl State {
     pub fn new(dataset: Dataset) -> Self {
-        let mut s = State { dataset, mark: Mark::default_for(dataset), color: None, zoom: None, range: None, highlight: false, threshold: None, title: String::new(), x_title: None, y_title: None, y_log: false, view: View::Flat, selection: Selection::None, effect: Effect::Fade };
+        let mut s = State { dataset, mark: Mark::default_for(dataset), color: None, zoom: None, range: None, highlight: false, threshold: None, title: String::new(), x_title: None, y_title: None, y_log: false, view: View::Flat, selection: Selection::None, effect: Effect::Fade, soft: None };
         s.title = s.default_title();
         s
     }
@@ -610,34 +613,70 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             f.square = true;
         }
     }
-    // A selection fades or removes what it leaves out.
+    // A selection fades or removes what it leaves out: by a degree of
+    // interest in [0, 1], which is yes or no unless the selection is soft.
     if s.selection != Selection::None {
-        let chosen = |it: &Item| match &s.selection {
-            Selection::None => true,
-            Selection::Keys(keys) => keys.contains(&bare_key(&it.key)),
-            Selection::Interval { x, y } => {
-                let inside = |p: [f64; 2]| p[0] >= x.0 && p[0] <= x.1 && y.is_none_or(|y| p[1] >= y.0 && p[1] <= y.1);
-                match &it.geo {
-                    Geo::Point { x, y } => inside([*x, *y]),
-                    Geo::Line { pts } => pts.iter().any(|p| inside(*p)),
-                    Geo::Rect { .. } => true,
-                }
-            }
-            Selection::Segment { .. } | Selection::Timebox { .. } => match &it.geo {
-                Geo::Line { pts } => series_selected(&s.selection, pts),
-                _ => true,
-            },
+        let dom = |a: &Axis| match a {
+            Axis::Linear { lo, hi, .. } => Some((*lo, *hi)),
+            _ => None,
         };
-        f.selected = Some(f.items.iter().filter(|it| chosen(it)).count());
-        match s.effect {
-            Effect::Fade => {
-                for it in &mut f.items {
-                    if !chosen(it) {
-                        it.fill[3] *= 0.15;
+        let (dx, dy) = (dom(&f.x), dom(&f.y));
+        let unit = |p: [f64; 2]| [dx.map_or(p[0], |(lo, hi)| (p[0] - lo) / (hi - lo)), dy.map_or(p[1], |(lo, hi)| (p[1] - lo) / (hi - lo))];
+        let fall = |d: f64| s.soft.map_or(if d <= 0.0 { 1.0 } else { 0.0 }, |w| (1.0 - d / w.max(1e-9)).clamp(0.0, 1.0));
+        let degree = |it: &Item| -> f64 {
+            match &s.selection {
+                Selection::None => 1.0,
+                Selection::Keys(keys) => if keys.contains(&bare_key(&it.key)) { 1.0 } else { 0.0 },
+                Selection::Interval { x, y } => {
+                    let (a, b) = (unit([x.0, y.map_or(f64::MIN, |y| y.0)]), unit([x.1, y.map_or(f64::MAX, |y| y.1)]));
+                    let dist = |p: [f64; 2]| {
+                        let q = unit(p);
+                        let ddx = (a[0] - q[0]).max(q[0] - b[0]).max(0.0);
+                        let ddy = if y.is_some() { (a[1] - q[1]).max(q[1] - b[1]).max(0.0) } else { 0.0 };
+                        ddx.hypot(ddy)
+                    };
+                    match &it.geo {
+                        Geo::Point { x, y } => fall(dist([*x, *y])),
+                        Geo::Line { pts } => fall(pts.iter().map(|p| dist(*p)).fold(f64::MAX, f64::min)),
+                        Geo::Rect { .. } => 1.0,
                     }
                 }
+                Selection::Segment { a, b } => match &it.geo {
+                    Geo::Line { pts } if series_selected(&s.selection, pts) => 1.0,
+                    Geo::Line { pts } if s.soft.is_some() => {
+                        let (ua, ub) = (unit(*a), unit(*b));
+                        let seg = |p: [f64; 2]| {
+                            let (vx, vy) = (ub[0] - ua[0], ub[1] - ua[1]);
+                            let t = (((p[0] - ua[0]) * vx + (p[1] - ua[1]) * vy) / (vx * vx + vy * vy).max(1e-12)).clamp(0.0, 1.0);
+                            (p[0] - (ua[0] + t * vx)).hypot(p[1] - (ua[1] + t * vy))
+                        };
+                        fall(pts.iter().map(|p| seg(unit(*p))).fold(f64::MAX, f64::min))
+                    }
+                    Geo::Line { .. } => 0.0,
+                    _ => 1.0,
+                },
+                Selection::Timebox { x, y } => match &it.geo {
+                    Geo::Line { pts } if s.soft.is_some() => {
+                        let within: Vec<&[f64; 2]> = pts.iter().filter(|p| p[0] >= x.0 && p[0] <= x.1).collect();
+                        if within.is_empty() { 0.0 } else { within.iter().filter(|p| p[1] >= y.0 && p[1] <= y.1).count() as f64 / within.len() as f64 }
+                    }
+                    Geo::Line { pts } => if series_selected(&s.selection, pts) { 1.0 } else { 0.0 },
+                    _ => 1.0,
+                },
             }
-            Effect::Filter => f.items.retain(|it| chosen(it)),
+        };
+        let degrees: Vec<f64> = f.items.iter().map(degree).collect();
+        f.selected = Some(degrees.iter().filter(|d| **d >= 0.5).count());
+        match s.effect {
+            Effect::Fade => {
+                for (it, d) in f.items.iter_mut().zip(&degrees) {
+                    it.fill[3] *= (0.15 + 0.85 * d) as f32;
+                }
+            }
+            Effect::Filter => {
+                let mut k = degrees.iter();
+                f.items.retain(|_| *k.next().unwrap() >= 0.5);
+            }
         }
     }
     // An offset magnifier's callout goes where it covers the least data.

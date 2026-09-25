@@ -307,11 +307,18 @@ impl Step for SelectStep {
                 }
             }
             Some(other) => return Err(err(format!("select: point, interval, segment, timebox or clear, not {other}"))),
-            None if effect.is_none() => return Err(err("select: point, interval or clear")),
+            None if effect.is_none() && c.flag("soft").is_none() => return Err(err("select: point, interval, segment, timebox or clear")),
             None => {}
         }
         if let Some(e) = effect {
             p.chart["select_effect"] = json!(e);
+        }
+        if let Some(w) = c.flag("soft") {
+            let w: f64 = w.parse().map_err(|_| err(format!("select: --soft {w} is not a number")))?;
+            if !(0.0..=1.0).contains(&w) {
+                return Err(err("select: --soft is a width in the plot's unit square, 0..1"));
+            }
+            p.chart["select"]["soft"] = json!(w);
         }
         Ok(None)
     }
@@ -388,11 +395,12 @@ fn props(n: &State) -> Vec<String> {
 
 /// The `select` command for a state's selection and effect, if any.
 pub fn select_line(n: &State) -> Option<String> {
-    let effect = if n.effect == Effect::Filter { " --effect filter" } else { "" };
+    let soft = n.soft.map_or(String::new(), |w| format!(" --soft {}", short_num(w)));
+    let effect = format!("{soft}{}", if n.effect == Effect::Filter { " --effect filter" } else { "" });
     match &n.selection {
         Selection::None if n.effect == Effect::Filter => Some("select --effect filter".into()),
         Selection::None => None,
-        Selection::Keys(k) => Some(format!("select point --keys \"{}\"{effect}", k.join(";"))),
+        Selection::Keys(k) => Some(format!("select point --keys \"{}\"{}", k.join(";"), if n.effect == Effect::Filter { " --effect filter" } else { "" })),
         Selection::Interval { x, y } => Some(format!(
             "select interval --x {}..{}{}{effect}",
             short_num(x.0),
@@ -481,7 +489,7 @@ pub fn lines(s: &State, n: &State, d: &Data) -> Vec<String> {
     if n.view != s.view {
         out.push(view_line(&n.view));
     }
-    if (&n.selection, n.effect) != (&s.selection, s.effect) {
+    if (&n.selection, n.effect, n.soft) != (&s.selection, s.effect, s.soft) {
         out.push(select_line(n).unwrap_or_else(|| "select clear".into()));
         if n.selection == Selection::None && n.effect != s.effect {
             out.push(format!("select --effect {}", if n.effect == Effect::Filter { "filter" } else { "fade" }));
@@ -615,6 +623,7 @@ pub fn state(chart: &Value, d: &Data) -> std::result::Result<State, String> {
         }
     };
     s.effect = if chart["select_effect"].as_str() == Some("filter") { Effect::Filter } else { Effect::Fade };
+    s.soft = chart["select"]["soft"].as_f64().filter(|_| !matches!(s.selection, Selection::None | Selection::Keys(_)));
     if mark == Mark::Pie && matches!(s.view, View::Magnifier { .. }) {
         return Err("the magnifier works on flat charts, not on a pie (a fisheye does)".into());
     }
