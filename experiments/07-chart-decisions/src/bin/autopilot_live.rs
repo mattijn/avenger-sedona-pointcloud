@@ -264,6 +264,7 @@ struct App {
     notice: String,
     exports: usize,
     t0: Instant,
+    copied_at: Option<Instant>,
     taken: Vec<(String, String)>,
     // The chart.
     state: State,
@@ -659,13 +660,19 @@ impl App {
                 }
             };
             let action = d.answers.get("action").and_then(Value::as_str).unwrap_or("").to_string();
+            // Table and export go by how sure Jev is of `render` itself, not
+            // of the action: "view as table head 2" was mark/keep at 0.26–0.56,
+            // with table at 0.77.
             let render = d.answers.get("render").and_then(Value::as_str).unwrap_or("chart").to_string();
+            let render_conf = d.confidence_of("render").unwrap_or(conf);
             let specifics = d.answers.get("specifics").and_then(Value::as_str) == Some("text");
             // While typing, what only Enter can do is held, and said.
-            let held = if r.complete || self.writer.is_none() || conf < GATE {
+            let held = if r.complete || self.writer.is_none() {
                 None
-            } else if render != "chart" {
+            } else if render != "chart" && render_conf >= GATE {
                 Some(format!("Enter: the data as {}", if render == "table" { "a table" } else { "a Parquet file" }))
+            } else if conf < GATE {
+                None
             } else {
                 match action.as_str() {
                     "transform" => Some("Enter: Haiku writes the change to the data".to_string()),
@@ -706,7 +713,7 @@ impl App {
                 self.go_back(a == "reset", shown, now).await;
                 continue;
             }
-            if r.complete && self.writer.is_some() && conf >= GATE && render != "chart" {
+            if r.complete && self.writer.is_some() && render_conf >= GATE && render != "chart" {
                 shown.render = Some(render.clone());
                 // Unless Jev is sure nothing else changes, Haiku writes the
                 // data stages; they are shown or written, not drawn. Jev's
@@ -756,33 +763,50 @@ impl App {
                 }
                 self.snapshot(&p);
             }
-            if r.complete {
-                self.log(&shown);
-            }
+            self.log(&shown);
             self.shown = Some(shown);
         }
     }
 
-    /// One line of the session per outcome.
+    /// One line of the session per decision, while typing (…) or on Enter
+    /// (⏎): the text, Jev's answer, and what the window did with it; then
+    /// the pipeline lines it added.
     fn log(&mut self, a: &Shown) {
-        let t = format!("{:>6.1} s", (clock() - self.t0).as_secs_f64());
-        self.session.push(format!("{t} ⏎ \"{}\" → {} · {}", a.prefix, pilot::short(&a.decision.answers), a.gate));
+        let d = &a.decision;
+        let get = |k: &str| d.answers.get(k).and_then(Value::as_str);
+        let mut jev = pilot::short(&d.answers);
+        if let Some(c) = d.confidence {
+            jev += &format!(" {c:.2}");
+        }
+        if let Some(r) = get("render").filter(|r| *r != "chart") {
+            jev += &format!(" · render {r}");
+        }
+        if get("specifics") == Some("text") {
+            jev += " · specifics";
+        }
+        let t = (clock() - self.t0).as_secs_f64();
+        let how = if a.complete { "⏎" } else { "…" };
+        self.session.push(format!("{t:>6.1} s {how} \"{}\" → {jev} → {}", a.prefix, a.gate));
+        for l in &a.lines {
+            self.session.push(format!("           + {}", fit(l, 120)));
+        }
     }
 
     /// The session as text, for the clipboard and `@@session.txt`: the
     /// instructions to replay, then the log and the pipeline as comments.
     fn session_text(&self) -> String {
-        let mut v = vec![
-            "# autopilot session: the instructions sent with Enter, one per line.".to_string(),
-            format!("# replay: cargo run --release -p lidar-decide --bin autopilot_live -- --snapshot out/replay @@{SESSION_FILE}"),
-        ];
-        v.extend(self.sent.iter().cloned());
-        v.push("#".into());
-        v.push("# what became of them:".into());
-        v.extend(self.session.iter().map(|l| format!("# {l}")));
-        v.push("#".into());
-        v.push("# the pipeline now:".into());
-        v.extend(self.pipeline.iter().enumerate().map(|(i, l)| format!("# {}{l}", if i == 0 { "" } else { "! " })));
+        let mut v = vec![format!("# autopilot session · {} sent with Enter · {} decisions", self.sent.len(), self.session.iter().filter(|l| !l.trim_start().starts_with('+')).count())];
+        if self.sent.is_empty() {
+            v.push("# nothing sent with Enter yet, so nothing to replay".into());
+        } else {
+            v.push(format!("# the lines without # replay with: cargo run --release -p lidar-decide --bin autopilot_live -- --snapshot out/replay @@{SESSION_FILE}"));
+            v.extend(self.sent.iter().cloned());
+        }
+        if !self.session.is_empty() {
+            v.push("#".into());
+            v.push("# decisions, oldest first · … while typing, ⏎ on Enter · text → Jev (confidence) → what the window did".into());
+            v.extend(self.session.iter().map(|l| format!("# {l}")));
+        }
         v.join("\n") + "\n"
     }
 
@@ -795,7 +819,7 @@ impl App {
             let _ = std::fs::create_dir_all("out/autopilot_live");
             format!("write out/autopilot_live/export-{}.parquet", self.exports)
         } else {
-            "head 20".into()
+            format!("head {}", rows_asked(&shown.prefix).unwrap_or(20))
         };
         let text = format!("{} ! {sink}", stages.join(" ! "));
         shown.lines = vec![sink.clone()];
@@ -1229,11 +1253,15 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
             marks.push(draw::rule(PX - 20.0, 0.0, PX - 20.0, H, th.line));
         }
     }
+    // The copy button flashes when clicked, and says so for a moment.
+    let since = s.copied_at.map(|t| (clock() - t).as_secs_f64());
+    let copy_on = since.is_some_and(|t| t < 0.25);
+    let copy_label = if since.is_some_and(|t| t < 1.5) { "copied ✓" } else { "copy session" };
     for (label, r, on) in [
         ("autopilot", AUTOPILOT_BUTTON, !s.editing),
         ("editor", EDITOR_BUTTON, s.editing),
         ("stats for nerds", NERDS_BUTTON, s.nerds),
-        ("copy session", COPY_BUTTON, false),
+        (copy_label, COPY_BUTTON, copy_on),
     ] {
         let [bx, by, bw, bh] = r;
         if th.filled_buttons {
@@ -1297,10 +1325,22 @@ fn panel(s: &App, marks: &mut Vec<SceneMark>) {
     let mut y = 164.0;
     if let Some(a) = &s.shown {
         marks.push(t(&format!("decision on \"{}\"{}", fit(&a.prefix, 34), if a.complete { " ⏎" } else { "" }), PX, y, 12.0, muted(), false));
-        marks.push(t(&pilot::short(&a.decision.answers).replace('/', "  ·  ").replace('_', " "), PX, y + 18.0, 20.0, ink(), true));
+        let render = a.decision.answers.get("render").and_then(Value::as_str).filter(|r| *r != "chart");
+        let head = pilot::short(&a.decision.answers).replace('/', "  ·  ").replace('_', " ") + &render.map_or(String::new(), |r| format!("  →  {r}"));
+        marks.push(t(&head, PX, y + 18.0, 20.0, ink(), true));
+        let mut side = vec![];
+        if let Some(r) = a.decision.answers.get("render").and_then(Value::as_str) {
+            side.push(format!("render {r} {:.2}", a.decision.confidence_of("render").unwrap_or(0.0)));
+        }
+        if let Some(sp) = a.decision.answers.get("specifics").and_then(Value::as_str) {
+            side.push(format!("specifics {sp} {:.2}", a.decision.confidence_of("specifics").unwrap_or(0.0)));
+        }
+        if !side.is_empty() {
+            marks.push(t(&side.join(" · "), PX, y + 44.0, 11.0, muted(), false));
+        }
         let latency = if a.decision.cached { format!("cache · {:.0} ms live", a.decision.ms) } else { format!("{:.0} ms", a.wall_ms) };
         marks.push(draw::text(&latency, PX + 410.0, y + 22.0, 12.0, muted(), TextAlign::Right, TextBaseline::Top, false, 0.0));
-        y += 56.0;
+        y += 64.0;
         for (k, (opt, p)) in a.decision.probs.iter().take(6).enumerate() {
             let yy = y + k as f32 * 24.0;
             let chosen = a.decision.answers.get("action").and_then(Value::as_str) == Some(opt);
@@ -1387,6 +1427,17 @@ fn editor_panel(s: &App, marks: &mut Vec<SceneMark>) {
     for (k, h) in help.iter().enumerate() {
         marks.push(t(h, PX, H - 84.0 + k as f32 * 16.0, 11.0, muted(), false));
     }
+}
+
+/// A number of rows in the instruction: "head 2", "5 rows", "10 rijen".
+fn rows_asked(s: &str) -> Option<usize> {
+    let w: Vec<String> = s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(String::from).collect();
+    w.iter().enumerate().find_map(|(i, x)| {
+        let n = x.parse::<usize>().ok()?;
+        let before = i > 0 && matches!(w[i - 1].as_str(), "head" | "first" | "eerste" | "top");
+        let after = w.get(i + 1).is_some_and(|y| matches!(y.as_str(), "rows" | "row" | "rijen" | "rij" | "lines"));
+        (before || after).then_some(n.clamp(1, 200))
+    })
 }
 
 /// The rows of an editor query, over the chart.
@@ -1617,7 +1668,7 @@ fn build(s: &mut App) -> SceneBuild {
     let mut commands = vec![];
     let deadline = match s.typed_at {
         Some(at) if s.input.string().trim() != s.asked => (at + DEBOUNCE).min(now + FRAME * 30),
-        _ if s.animating(now) || s.in_flight > 0 || s.applying => now + FRAME,
+        _ if s.animating(now) || s.in_flight > 0 || s.applying || s.copied_at.is_some_and(|t| (now - t).as_secs_f64() < 1.6) => now + FRAME,
         _ => now + Duration::from_millis(500),
     };
     s.wake_generation += 1;
@@ -1727,7 +1778,8 @@ impl EventStreamHandler<App> for Input {
                     let text = s.session_text();
                     let _ = std::fs::create_dir_all("out/autopilot_live");
                     let _ = std::fs::write(SESSION_FILE, &text);
-                    s.notice = format!("copied: {} instructions, {} outcomes · also in {SESSION_FILE}", s.sent.len(), s.session.len());
+                    s.copied_at = Some(clock());
+                    s.notice = format!("copied: {} decisions, {} sent with Enter · also in {SESSION_FILE}", s.session.iter().filter(|l| !l.trim_start().starts_with('+')).count(), s.sent.len());
                     let mut status = rerender;
                     status.commands.push(RuntimeHostCommand::WriteClipboard { text });
                     return status;
@@ -1966,6 +2018,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         notice: String::new(),
         exports: 0,
         t0: clock(),
+        copied_at: None,
         taken,
         state,
         from: frame.clone(),

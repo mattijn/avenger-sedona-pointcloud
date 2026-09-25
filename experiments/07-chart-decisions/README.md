@@ -861,6 +861,16 @@ line, then as comments what became of each and the pipeline now.
 `autopilot_live --snapshot <dir> @@session.txt` plays the instructions again,
 from the cache without a key once they have been asked.
 
+From the third trial: "view as table head 2" showed `mark · keep`, because the
+panel showed only the action, while Jev had answered `render: table` at 0.77
+(the action was at 0.26–0.56). Table and export now go by the confidence of
+`render` itself, which Jev returns per question; the panel shows it
+("mark · keep → table", and a line with render and specifics); and a number of
+rows in the instruction ("head 2", "5 rows", "10 rijen") sets the rows shown.
+The session now logs every decision, also while typing (…), with the text,
+Jev's answer and confidence, what the window did, and the lines it added. The
+copy button flashes and says "copied ✓".
+
 Not checked: other writer models; Dutch beyond two cases; instructions that
 change the data stages beyond the cell size (other filters, other
 aggregates).

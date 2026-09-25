@@ -27,6 +27,22 @@ pub struct Decision {
     pub cached: bool,
     /// Probability per option of the `action` answer (Jev only).
     pub probs: Vec<(String, f64)>,
+    /// Confidence of every answer, by question (Jev only).
+    pub confidences: Map<String, Value>,
+}
+
+fn confidences(raw: &Value) -> Map<String, Value> {
+    raw["answers"]
+        .as_object()
+        .map(|m| m.iter().filter_map(|(k, a)| Some((k.clone(), json!(a["confidence"].as_f64()?)))).collect())
+        .unwrap_or_default()
+}
+
+impl Decision {
+    /// The confidence of one answer, where the decider gives it.
+    pub fn confidence_of(&self, question: &str) -> Option<f64> {
+        self.confidences.get(question).and_then(Value::as_f64)
+    }
 }
 
 fn action_probs(raw: &Value) -> Vec<(String, f64)> {
@@ -94,6 +110,7 @@ fn from_cache(p: &PathBuf) -> Option<Decision> {
         input_tokens: v["input_tokens"].as_u64().unwrap_or(0),
         cached: true,
         probs: action_probs(&v["raw"]),
+        confidences: confidences(&v["raw"]),
     })
 }
 
@@ -157,6 +174,7 @@ impl Decider for Jev {
             input_tokens: raw["usage"]["input_tokens"].as_u64().unwrap_or(0),
             cached: false,
             probs: action_probs(&raw),
+            confidences: confidences(&raw),
         };
         to_cache(&path, &d, &raw);
         Ok(d)
@@ -221,6 +239,7 @@ impl Decider for Llm {
             input_tokens: raw["usage"]["prompt_tokens"].as_u64().unwrap_or(0),
             cached: false,
             probs: vec![],
+            confidences: Map::new(),
         };
         to_cache(&path, &d, &raw);
         Ok(d)
