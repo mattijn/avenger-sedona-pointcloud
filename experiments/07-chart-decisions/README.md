@@ -324,6 +324,36 @@ shows lower buildings, not the ground under trees; the raw tile would.
 Measured by `layer_roundtrip` (the "lens" cases) and by `autopilot_live
 --snapshot out/lens` with `!hover x,y` and `!click x,y` steps.
 
+## Interactions: a structure-aware lasso
+
+The fourth: on the map in 3D a rectangle on the screen means little, so a
+drag there draws a lasso. `select lasso --poly "u,v;…" [--yaw a --elevation
+e] [--structure d]` holds the polygon on the screen (the plot's unit square,
+y up) and the view it was drawn in. Without `--structure` it takes every cell
+whose projection falls inside, which in 3D includes whatever lies behind or in
+front. With it, CloudLasso (Yu, Efstathiou, Isenberg & Isenberg, TVCG 2012):
+the cells inside are counted in voxels of 1/40 of the plot across and 1/10 of
+the height range up, voxels reaching `d` times the densest are joined across
+faces, edges and corners, and only the largest region is kept. The drag
+writes `--structure 0.3`; dropping it in the editor gives the plain lasso.
+
+| Command, zoomed quarter in 3D | Cells taken |
+|---|---|
+| `select lasso --poly "0.42,0.52;0.75,0.55;0.78,0.32;0.45,0.28" --yaw 30 --elevation 35` | 1,701 |
+| the same with `--structure 0.3` | 667, the largest of 10 dense regions: one block |
+
+![A plain lasso in 3D, and the same lasso as CloudLasso](images/cloudlasso.png)
+
+The outline is shown only in the view it was drawn in, since it lives on the
+screen. The test runs in Rust on the drawn cells, not in SQL: SedonaDB's
+`st_contains` is in `sedona-geo`, which cannot be linked next to Avenger's
+`geo` 0.29 ([FINDINGS.md](../../FINDINGS.md), 16). On the raw tile (17.3M
+points) the same selection would be SQL: the projection as arithmetic, the
+voxel density as `GROUP BY … HAVING`; that is not built. The map has one cell
+per 5 m, so densities are of roofs, not of points. Measured by
+`layer_roundtrip` (the "lasso" cases) and `--snapshot` with a `!lasso x,y x,y
+…` step, which gives the same 667 cells as the pipeline line.
+
 ## Results
 
 The cases were written before any decider ran on them, with the expected
@@ -378,11 +408,13 @@ thresholds, ranges, cell sizes, filters, lenses).
 | Way | Covered by options | Own text | Writer calls | Accepted first try | Latency p50 | Cost |
 |---|---|---|---|---|---|---|
 | Jev's options only | 6 / 6 | 4 / 19 | 0 | – | 291 ms | $0.0020 |
-| Haiku writes alone | 5 / 6 | 18 / 19 | 25 | 23 / 25 | 1,840 ms | $0.106 |
-| routed (the window) | **6 / 6** | **19 / 19** | 20 | 19 / 20 | 1,867 ms | $0.085 |
+| Haiku writes alone | 5 / 6 | 17 / 19 | 25 | 22 / 25 | 1,878 ms | $0.112 |
+| routed (the window) | **6 / 6** | **19 / 19** | 20 | 19 / 20 | 1,790 ms | $0.087 |
 
 - Haiku alone drew "which share does each class have?" as bars; with Jev's
-  reading it did not. The prompt is longer now that it holds views and
+  reading it did not. Haiku alone also varies from run to run on w13 and w18
+  (18/19 one run, 17/19 the next); with Jev's reading both were right in
+  every run. The prompt is longer now that it holds views and
   selections, and a run costs about 15% more.
 - Jev had no word for a lens, so it steered away from one: "look through the
   tall buildings" came back as `view tilt`, and Haiku, following it, tilted
@@ -476,7 +508,7 @@ and Jon. Each point says where it comes from; the unchecked ones say so.
   policy?").
 - A mark change resets the title and the scale and axis properties to the
   new mark's defaults; they do not travel with the chart.
-- Selections, smooth brushing and the lenses were tested headless
+- Selections, smooth brushing, the lenses and the lasso were tested headless
   (`--snapshot` with `!click`, `!hover`, `!brush` steps), not with a real
   mouse. No gesture sets softness; space folding and the angular brush are not
   built.

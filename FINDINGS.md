@@ -250,6 +250,24 @@ a reason, and the model fixed its tries from that text. The Vega-Lite
 compiler's `CompileError::path()` does this. **Not checked:** what
 `ChartDefinition::finish()` does with a property it cannot honour.
 
+### 16. \`geo\` 0.29 keeps SedonaDB's spatial predicates out
+
+A structure-aware lasso (CloudLasso) on the tile wanted \`st_contains\` from
+SedonaDB. The predicates (\`st_contains\`, \`st_within\`, \`st_intersects\`) are
+in \`sedona-geo\` only; \`sedona-functions\`, which this repo links, has
+constructors, accessors and affine transforms but no predicate. \`sedona-geo\`
+cannot join the workspace: it needs \`geo\` 0.33 → \`i_overlay\` 4.5 →
+\`i_float ~1.16\`, while \`avenger-geo\`, \`avenger-geometry\` and
+\`avenger-guides\` at \`3065e2a\` need \`geo\` 0.29 → \`i_overlay\` 1.9 →
+\`i_float ~1.6\`. Two \`geo\` versions could coexist, but not two 1.x versions
+of \`i_float\`, so resolution fails. Moving Avenger to \`geo\` 0.33 would let a
+host put SedonaDB's spatial SQL next to it; the lasso now tests the polygon in
+Rust on the drawn cells instead. **Measure:** add
+\`sedona-geo = { git = "https://github.com/apache/sedona-db", rev = "2f3e378…" }\`
+to \`experiments/06-pipelines/Cargo.toml\` and run \`cargo metadata --format-version 1 >/dev/null\`
+(it fails on \`i_float\`); \`cargo tree -i geo@0.29.3 --depth 1\` lists the
+Avenger crates.
+
 Also from experiment 7, as things that worked well: `RequestWakeup` with
 `RuntimeWake` for background work, `WriteClipboard`, `MouseUp` and
 `CursorMoved` for text fields (and for a lens that follows the cursor),

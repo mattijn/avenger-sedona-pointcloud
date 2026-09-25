@@ -183,6 +183,99 @@ pub enum Selection {
     /// A timebox (Hochheiser & Shneiderman 2004): the series whose every
     /// point within `x` has its value within `y`.
     Timebox { x: (f64, f64), y: (f64, f64) },
+    /// A lasso on the map: a polygon on the screen (the plot's unit square,
+    /// y up), drawn flat or in the tilted view \`tilt\` (yaw, elevation). With
+    /// \`structure\`, CloudLasso (Yu et al. 2012): of the cells whose
+    /// projection falls inside, only the largest structure of voxels whose
+    /// density reaches \`structure\` times the densest.
+    Lasso { poly: Vec<[f64; 2]>, tilt: Option<(f64, f64)>, structure: Option<f64> },
+}
+
+/// Whether p lies inside the polygon (even-odd rule).
+pub fn in_polygon(p: [f64; 2], poly: &[[f64; 2]]) -> bool {
+    let mut inside = false;
+    let n = poly.len();
+    for i in 0..n {
+        let (a, b) = (poly[i], poly[(i + n - 1) % n]);
+        if (a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0] {
+            inside = !inside;
+        }
+    }
+    inside
+}
+
+/// What a lasso takes, of a frame's cells: their keys, how many fell inside
+/// the polygon, and (for CloudLasso) how many dense regions there were.
+pub fn lasso_take(f: &Frame, poly: &[[f64; 2]], tilt: Option<(f64, f64)>, structure: Option<f64>) -> (std::collections::HashSet<String>, usize, usize) {
+    use std::collections::{HashMap, HashSet};
+    let dom = |a: &Axis| match a {
+        Axis::Linear { lo, hi, .. } => (*lo, *hi),
+        _ => (0.0, 1.0),
+    };
+    let ((x0, x1), (y0, y1)) = (dom(&f.x), dom(&f.y));
+    let unit = |x: f64, y: f64| [(x - x0) / (x1 - x0), (y - y0) / (y1 - y0)];
+    // Each cell where the screen shows it.
+    let inside: Vec<(usize, [f64; 2], f64)> = f
+        .items
+        .iter()
+        .enumerate()
+        .filter_map(|(i, it)| match &it.geo {
+            Geo::Point { x, y } => {
+                let u = unit(*x, *y);
+                let q = match tilt {
+                    None => u,
+                    Some((yaw, el)) => {
+                        let (p, _) = super::draw::tilt(u, it.h, yaw, el);
+                        [p[0] / super::draw::P, 1.0 - p[1] / super::draw::P]
+                    }
+                };
+                in_polygon(q, poly).then_some((i, u, it.h))
+            }
+            _ => None,
+        })
+        .collect();
+    let n_in = inside.len();
+    let Some(t) = structure else {
+        return (inside.iter().map(|(i, _, _)| f.items[*i].key.clone()).collect(), n_in, 0);
+    };
+    // Voxels: 1/40 of the plot across, 1/10 of the height range up.
+    let vox = |u: [f64; 2], h: f64| ((u[0] * 40.0).floor() as i64, (u[1] * 40.0).floor() as i64, (h * 10.0).floor() as i64);
+    let mut count: HashMap<(i64, i64, i64), usize> = HashMap::new();
+    for (_, u, h) in &inside {
+        *count.entry(vox(*u, *h)).or_default() += 1;
+    }
+    let top = count.values().copied().max().unwrap_or(0);
+    let dense: HashSet<(i64, i64, i64)> = count.iter().filter(|(_, c)| **c as f64 >= t * top as f64).map(|(v, _)| *v).collect();
+    // Regions: dense voxels joined across faces, edges and corners.
+    let mut seen: HashSet<(i64, i64, i64)> = HashSet::new();
+    let (mut best, mut best_n, mut regions) = (HashSet::new(), 0, 0);
+    for v in &dense {
+        if seen.contains(v) {
+            continue;
+        }
+        regions += 1;
+        let (mut stack, mut region, mut n) = (vec![*v], HashSet::new(), 0);
+        seen.insert(*v);
+        while let Some(c) = stack.pop() {
+            region.insert(c);
+            n += count[&c];
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    for dz in -1..=1 {
+                        let q = (c.0 + dx, c.1 + dy, c.2 + dz);
+                        if dense.contains(&q) && seen.insert(q) {
+                            stack.push(q);
+                        }
+                    }
+                }
+            }
+        }
+        if n > best_n {
+            (best, best_n) = (region, n);
+        }
+    }
+    let keys = inside.iter().filter(|(_, u, h)| best.contains(&vox(*u, *h))).map(|(i, _, _)| f.items[*i].key.clone()).collect();
+    (keys, n_in, regions)
 }
 
 /// Whether segments p1-p2 and q1-q2 cross (or touch).
@@ -426,6 +519,9 @@ pub struct Frame {
     pub selected: Option<usize>,
     /// The lens, and what it found.
     pub lens: Option<(Lens, Vec<Fit>)>,
+    /// A lasso's polygon (screen unit square), the view it was drawn in,
+    /// and what it took.
+    pub lasso: Option<(Vec<[f64; 2]>, Option<(f64, f64)>, String)>,
 }
 
 pub fn class_color(label: &str) -> [f32; 4] {
@@ -595,6 +691,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
         legend_keys: vec![],
         selected: None,
         lens: None,
+        lasso: None,
     };
     match s.mark {
         Mark::Bars | Mark::Pie => {
@@ -723,6 +820,7 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
             match &s.selection {
                 Selection::None => 1.0,
                 Selection::Keys(keys) => if keys.contains(&bare_key(&it.key)) { 1.0 } else { 0.0 },
+                Selection::Lasso { .. } => 1.0,
                 Selection::Interval { x, y } => {
                     let (a, b) = (unit([x.0, y.map_or(f64::MIN, |y| y.0)]), unit([x.1, y.map_or(f64::MAX, |y| y.1)]));
                     let dist = |p: [f64; 2]| {
@@ -761,7 +859,18 @@ pub fn resolve(s: &State, d: &Data) -> Frame {
                 },
             }
         };
-        let degrees: Vec<f64> = f.items.iter().map(degree).collect();
+        let degrees: Vec<f64> = match &s.selection {
+            Selection::Lasso { poly, tilt, structure } => {
+                let (keys, n_in, regions) = lasso_take(&f, poly, *tilt, *structure);
+                let label = match structure {
+                    None => format!("lasso: {n_in} cells"),
+                    Some(_) => format!("CloudLasso: {} of the {n_in} cells in the lasso, the largest of {regions} dense regions", keys.len()),
+                };
+                f.lasso = Some((poly.clone(), *tilt, label));
+                f.items.iter().map(|it| if keys.contains(&it.key) { 1.0 } else { 0.0 }).collect()
+            }
+            _ => f.items.iter().map(degree).collect(),
+        };
         f.selected = Some(degrees.iter().filter(|d| **d >= 0.5).count());
         match s.effect {
             Effect::Fade => {

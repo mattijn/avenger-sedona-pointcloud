@@ -328,6 +328,8 @@ struct App {
     press_series: Option<bool>,
     /// A brush being dragged, in window pixels.
     brush: Option<([f32; 2], [f32; 2])>,
+    /// A lasso being drawn, in window pixels: a drag on the map in 3D.
+    lasso: Vec<[f32; 2]>,
     /// A pan or a wheel zoom under way: the state before it (committed as one
     /// pipeline line when it ends), and for the wheel, its last tick.
     live_base: Option<State>,
@@ -1139,6 +1141,24 @@ impl App {
         self.changes.push(("click on the plot".into(), if self.state.lens.is_some() { "lens focus" } else { "view focus" }.into()));
         self.session.push(format!("{:.1} s, click on the plot: {line}", (clock() - self.t0).as_secs_f64()));
         self.logged += 1;
+    }
+
+    /// Whether a drag draws a lasso: the map in 3D, where a rectangle on the
+    /// screen means little.
+    fn lasso_chart(&self) -> bool {
+        use lidar_decide::layer::model::{Mark, View};
+        self.state.mark == Mark::Map && matches!(self.state.view, View::Tilt { .. })
+    }
+
+    /// A lasso drawn in 3D: CloudLasso, the largest dense structure of what
+    /// falls inside (the pipeline line can drop `--structure`).
+    async fn lasso_select(&mut self, path: &[[f32; 2]], now: Instant) {
+        use lidar_decide::layer::model::{Selection, View};
+        let View::Tilt { yaw, elevation } = self.state.view else { return };
+        let poly: Vec<[f64; 2]> = path.iter().map(|p| [((p[0] - draw::ORIGIN[0]) as f64 / draw::P), 1.0 - (p[1] - draw::ORIGIN[1]) as f64 / draw::P]).collect();
+        let mut n = self.state.clone();
+        n.selection = Selection::Lasso { poly, tilt: Some((yaw, elevation)), structure: Some(0.3) };
+        self.apply_direct(n, "lasso", now).await;
     }
 
     /// Whether series predicates apply: the time series, seen flat.
@@ -2274,6 +2294,14 @@ fn build(s: &mut App) -> SceneBuild {
             marks.push(draw::rect(x, y, w, h, [ac[0], ac[1], ac[2], fill], Some(ac), 0.0));
         }
     }
+    if s.lasso.len() > 1 {
+        let ac = accent();
+        for w in s.lasso.windows(2) {
+            marks.push(draw::rule(w[0][0], w[0][1], w[1][0], w[1][1], ac));
+        }
+        let (a, b) = (s.lasso[0], *s.lasso.last().unwrap());
+        marks.push(draw::rule(b[0], b[1], a[0], a[1], [ac[0], ac[1], ac[2], 0.35]));
+    }
     if let Some((key, at)) = &s.hover {
         tooltip(&tooltip_lines(key, &s.data), *at, &mut marks);
     }
@@ -2503,6 +2531,14 @@ impl EventStreamHandler<App> for Input {
                         }
                         let base = s.live_base.clone().unwrap();
                         s.pan_from(&base, [e.position[0] - at[0], e.position[1] - at[1]]);
+                    } else if s.lasso_chart() {
+                        if s.lasso.is_empty() {
+                            s.lasso.push(at);
+                        }
+                        let last = *s.lasso.last().unwrap();
+                        if (e.position[0] - last[0]).hypot(e.position[1] - last[1]) >= 3.0 {
+                            s.lasso.push(e.position);
+                        }
                     } else {
                         s.brush = Some((at, e.position));
                     }
@@ -2534,6 +2570,9 @@ impl EventStreamHandler<App> for Input {
                         let n = s.state.clone();
                         s.state = base;
                         s.apply_direct(n, "drag to pan", now).await;
+                    } else if s.lasso.len() >= 3 {
+                        let path = std::mem::take(&mut s.lasso);
+                        s.lasso_select(&path, now).await;
                     } else if let Some((a, b)) = s.brush.take() {
                         match s.press_series.take() {
                             Some(line) if s.series_chart() => s.series_select(a, b, line, now).await,
@@ -2542,6 +2581,7 @@ impl EventStreamHandler<App> for Input {
                     } else if (e.position[0] - at[0]).hypot(e.position[1] - at[1]) < 4.0 {
                         s.click_chart(at, shift, now).await;
                     }
+                    s.lasso.clear();
                     return rerender;
                 }
                 UpdateStatus::default()
@@ -2875,6 +2915,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         press_alt: false,
         press_series: None,
         brush: None,
+        lasso: vec![],
         live_base: None,
         wheel_at: None,
         busy: String::new(),
@@ -2958,6 +2999,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             if parts.len() == 4 {
                                 app.brush_select([parts[0], parts[1]], [parts[2], parts[3]], false, clock()).await;
                             }
+                        }
+                        // `!lasso x,y x,y x,y …`: a lasso drawn through these window points.
+                        "lasso" => {
+                            let pts: Vec<[f32; 2]> = at.split(' ').filter_map(|p| {
+                                let (x, y) = p.split_once(',')?;
+                                Some([x.trim().parse().ok()?, y.trim().parse().ok()?])
+                            }).collect();
+                            app.lasso_select(&pts, clock()).await;
                         }
                         "segment" | "timebox" => {
                             let parts: Vec<f32> = at.split(|c: char| c == ',' || c == ' ').filter_map(|v| v.trim().parse().ok()).collect();

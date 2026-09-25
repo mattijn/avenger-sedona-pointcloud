@@ -61,6 +61,9 @@ pub struct Drawn {
     /// Lens rings and what they found, each with its opacity.
     pub lenses: Vec<(Lens, f32)>,
     pub fits: Vec<(Fit, f32)>,
+    /// A lasso's outline (screen unit square), the view it was drawn in, and
+    /// what it took.
+    pub lasso: Option<(Vec<[f64; 2]>, Option<(f64, f64)>, String)>,
 }
 
 pub fn ease(t: f64) -> f64 {
@@ -269,5 +272,5 @@ pub fn transition(a: &Frame, b: &Frame, t: f64) -> Drawn {
         .flat_map(|(l, w)| l.iter().flat_map(move |l| l.1.iter().map(move |f| (f.clone(), w))))
         .filter(|(_, w)| *w > 0.0)
         .collect();
-    Drawn { bend, view_a: a.view, view_b: b.view, vt, items, x: axes(&a.x, &b.x, dx), y: axes(&a.y, &b.y, dy), titles, legends, colorbars, lenses, fits }
+    Drawn { bend, view_a: a.view, view_b: b.view, vt, items, x: axes(&a.x, &b.x, dx), y: axes(&a.y, &b.y, dy), titles, legends, colorbars, lenses, fits, lasso: b.lasso.clone() }
 }

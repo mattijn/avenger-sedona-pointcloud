@@ -145,13 +145,21 @@ async fn main() -> Result<(), Error> {
         ("a regression lens on the map", format!("{base}\n! lens regression --focus 0.5,0.5")),
         ("a sampling lens on bars", format!("{bars}\n! lens sample --focus 0.5,0.5")),
         ("a lens under a fisheye", format!("{base}\n! view fisheye --focus 0.5,0.5\n! lens mole --focus 0.5,0.5")),
+        ("a lasso on the flat map", format!("{base}\n! select lasso --poly \"0.6,0.35;0.8,0.35;0.8,0.55;0.6,0.55\"")),
+        ("a lasso in 3D", format!("{base}\n! zoom 657500..658000 6867250..6867750\n! view tilt --yaw 30 --elevation 35\n! select lasso --poly \"0.42,0.52;0.75,0.55;0.78,0.32;0.45,0.28\" --yaw 30 --elevation 35")),
+        ("CloudLasso in 3D", format!("{base}\n! zoom 657500..658000 6867250..6867750\n! view tilt --yaw 30 --elevation 35\n! select lasso --poly \"0.42,0.52;0.75,0.55;0.78,0.32;0.45,0.28\" --yaw 30 --elevation 35 --structure 0.3")),
+        ("a lasso of two points", format!("{base}\n! select lasso --poly \"0.1,0.1;0.2,0.2\"")),
+        ("a lasso on bars", format!("{bars}\n! select lasso --poly \"0.1,0.1;0.9,0.1;0.5,0.9\"")),
     ] {
         match editor::apply(&text, &d).await {
             Ok(a) => println!(
                 "{what}: {:?} · x title {:?} · y title {:?} · log {} · zoom {:?} · colour {} · selection {:?} {:?} soft {:?} · lens {:?} · {} items, {:?} selected, found {:?}",
                 a.state.mark, a.state.x_title, a.state.y_title, a.state.y_log, a.state.range, a.state.color.is_some(), a.state.selection, a.state.effect, a.state.soft, a.state.lens,
                 lidar_decide::layer::model::resolve(&a.state, &a.data).items.len(), lidar_decide::layer::model::resolve(&a.state, &a.data).selected,
-                lidar_decide::layer::model::resolve(&a.state, &a.data).lens.map(|l| l.1.into_iter().map(|f| f.label).collect::<Vec<_>>())
+                {
+                    let f = lidar_decide::layer::model::resolve(&a.state, &a.data);
+                    f.lens.map(|l| l.1.into_iter().map(|f| f.label).collect::<Vec<_>>()).or(f.lasso.map(|l| vec![l.2]))
+                }
             ),
             Err(e) => println!("{what}: refused: {e}"),
         }

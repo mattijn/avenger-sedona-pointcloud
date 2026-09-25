@@ -544,6 +544,26 @@ pub fn chart_marks(d: &Drawn, origin: [f32; 2]) -> Vec<SceneMark> {
     // Clip while the plot stays in its square; a bend or a tilt reaches past it.
     let clip = if inside { Clip::Rect { x: 0.0, y: 0.0, width: P as f32, height: P as f32 } } else { Clip::None };
     marks.push(SceneMark::Group(SceneGroup { marks: plot, clip, ..Default::default() }));
+    // A lasso is drawn on the screen, so it is shown only in the view it was
+    // drawn in.
+    if let Some((poly, tilt, label)) = &d.lasso {
+        let same = match (tilt, d.view_b) {
+            (None, View::Flat) => true,
+            (Some((y, e)), View::Tilt { yaw, elevation }) => (y - yaw).abs() < 1e-6 && (e - elevation).abs() < 1e-6,
+            _ => false,
+        };
+        if same && d.vt >= 1.0 && poly.len() > 2 {
+            let mut pts: Vec<[f64; 2]> = poly.iter().map(|p| [p[0] * P, (1.0 - p[1]) * P]).collect();
+            pts.push(pts[0]);
+            marks.push(polyline(&pts, fade(style().ink, 0.7), 1.25));
+            let top = pts.iter().fold([0.0, f64::MAX], |a, p| if p[1] < a[1] { *p } else { a });
+            let width = label.chars().count() as f32 * 6.1 + 10.0;
+            let x = (top[0] as f32 - width / 2.0).clamp(0.0, (P as f32 - width).max(0.0));
+            let y = (top[1] as f32 - 8.0).max(18.0);
+            marks.push(rect(x, y - 16.0, width, 17.0, [1.0, 1.0, 1.0, 0.85], None, 3.0));
+            marks.push(text(label, x + 5.0, y - 7.5, 11.0, style().ink, TextAlign::Left, TextBaseline::Middle, false, 0.0));
+        }
+    }
     // A lens: its ring on the ground plane, what it fitted, and a line of
     // text per finding beside it.
     for (lens, w) in &d.lenses {

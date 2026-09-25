@@ -1,7 +1,7 @@
 | Case | jev | haiku | haiku+jev | routed |
 |---|---|---|---|---|
 | v01 make the bars red | bars red | bars red | bars red | bars red |
-| v02 which share does each class have? | pie | **✗** bars "Share of points per LiDAR class (%)" (mark) | pie | pie |
+| v02 which share does each class have? | pie | **✗** bars "Share of points per LiDAR class" (mark) | pie | pie |
 | v03 zoom in on the start of the lines, the top left | line zoom north_west | line zoom north_west | line zoom north_west | line zoom north_west |
 | v04 mark the tallest buildings | map top 10 % | map top 10 % | map top 10 % | map top 10 % |
 | v05 kleur de gebouwen groen | map green | map green | map green | map green |
@@ -22,16 +22,16 @@
 | w14 filter ground | **✗** unchanged (rows) | pie 1 cells | pie 1 cells | pie 1 cells |
 | w15 only show ground and buildings | **✗** unchanged (rows) | bars 2 cells | bars 2 cells | bars 2 cells |
 | w16 exclude building | **✗** unchanged (rows) | bars 5 cells | bars 5 cells | bars 5 cells |
-| w17 show the local trend of each line between 15 and 25 seconds | line | line zoom custom | line zoom custom | line zoom custom |
-| w18 look through the tall buildings in the middle of the map | map | map, 2 tries | map | map |
+| w17 show the local trend of each line between 15 and 25 seconds | line | line zoom custom, 2 tries | line zoom custom | line zoom custom |
+| w18 look through the tall buildings in the middle of the map | map | **✗** map (lens), 2 tries | map | map |
 | w19 the north-east is crowded, show only a sample of the cells there | map | map | map | map |
 
 | Arm | Right, vocabulary (v) | Right, own text (w) | Writer used | Accepted on the first try | Tries | Latency p50 / max | Cost |
 |---|---|---|---|---|---|---|---|
 | jev | 6/6 | 4/19 | 0 | – | 0 | 291 / 640 ms | $0.0020 |
-| haiku | 5/6 | 18/19 | 25 | 23/25 | 28 | 1840 / 6490 ms | $0.1056 |
-| haiku+jev | 6/6 | 19/19 | 25 | 24/25 | 27 | 2060 / 8365 ms | $0.1048 |
-| routed | 6/6 | 19/19 | 20 | 19/20 | 22 | 1867 / 8365 ms | $0.0854 |
+| haiku | 5/6 | 17/19 | 25 | 22/25 | 29 | 1878 / 6627 ms | $0.1119 |
+| haiku+jev | 6/6 | 19/19 | 25 | 24/25 | 27 | 1967 / 7374 ms | $0.1063 |
+| routed | 6/6 | 19/19 | 20 | 19/20 | 22 | 1790 / 7374 ms | $0.0865 |
 
 | Case | Start | Expected | Jev | Render | Confidence |
 |---|---|---|---|---|---|

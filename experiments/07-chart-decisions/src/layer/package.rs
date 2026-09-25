@@ -351,6 +351,29 @@ impl Step for SelectStep {
                 let y = range(c.flag("y").ok_or_else(|| err("select timebox needs --y"))?)?;
                 p.chart["select"] = json!({"kind": "timebox", "x": [x.0, x.1], "y": [y.0, y.1]});
             }
+            Some("lasso") => {
+                let poly = c.flag("poly").ok_or_else(|| err("select lasso needs --poly \"u,v;u,v;…\""))?;
+                let mut pts = vec![];
+                for p in poly.split(';').map(str::trim).filter(|p| !p.is_empty()) {
+                    let (a, b) = p.split_once(',').ok_or_else(|| err(format!("select lasso: {p} is not u,v")))?;
+                    let (a, b): (f64, f64) = (a.trim().parse().map_err(|_| err(format!("select lasso: {a} is not a number")))?, b.trim().parse().map_err(|_| err(format!("select lasso: {b} is not a number")))?);
+                    pts.push([a, b]);
+                }
+                if pts.len() < 3 {
+                    return Err(err("select lasso: a polygon needs three points or more"));
+                }
+                let num = |k: &str| c.flag(k).map(|v| v.parse::<f64>().map_err(|_| err(format!("select lasso: --{k} {v} is not a number")))).transpose();
+                let tilt = match (num("yaw")?, num("elevation")?) {
+                    (Some(y), Some(e)) => json!([y, e]),
+                    (None, None) => Value::Null,
+                    _ => return Err(err("select lasso: --yaw and --elevation go together (the view the lasso was drawn in)")),
+                };
+                let structure = num("structure")?;
+                if structure.is_some_and(|d| !(0.0..=1.0).contains(&d)) {
+                    return Err(err("select lasso: --structure is a share of the densest voxel, 0..1"));
+                }
+                p.chart["select"] = json!({"kind": "lasso", "poly": pts, "tilt": tilt, "structure": structure});
+            }
             Some("clear") => {
                 if let Some(o) = p.chart.as_object_mut() {
                     o.remove("select");
@@ -472,6 +495,13 @@ pub fn select_line(n: &State) -> Option<String> {
         )),
         Selection::Segment { a, b } => Some(format!("select segment --from {},{} --to {},{}{effect}", short_num(a[0]), short_num(a[1]), short_num(b[0]), short_num(b[1]))),
         Selection::Timebox { x, y } => Some(format!("select timebox --x {}..{} --y {}..{}{effect}", short_num(x.0), short_num(x.1), short_num(y.0), short_num(y.1))),
+        Selection::Lasso { poly, tilt, structure } => Some(format!(
+            "select lasso --poly \"{}\"{}{}{}",
+            poly.iter().map(|p| format!("{},{}", short_num(p[0]), short_num(p[1]))).collect::<Vec<_>>().join(";"),
+            tilt.map_or(String::new(), |(y, e)| format!(" --yaw {} --elevation {}", short_num(y), short_num(e))),
+            structure.map_or(String::new(), |d| format!(" --structure {}", short_num(d))),
+            if n.effect == Effect::Filter { " --effect filter" } else { "" }
+        )),
     }
 }
 
@@ -674,6 +704,12 @@ pub fn state(chart: &Value, d: &Data) -> std::result::Result<State, String> {
         None => Selection::None,
         Some("point") => Selection::Keys(chart["select"]["keys"].as_array().map(|a| a.iter().filter_map(|k| k.as_str().map(String::from)).collect()).unwrap_or_default()),
         Some("segment" | "timebox") if mark != Mark::Line => return Err("a line brush and a timebox select series: the time series".into()),
+        Some("lasso") if mark != Mark::Map => return Err("a lasso selects the map's cells; on other charts, select point or a brush".into()),
+        Some("lasso") => Selection::Lasso {
+            poly: chart["select"]["poly"].as_array().map(|a| a.iter().filter_map(|p| Some([p[0].as_f64()?, p[1].as_f64()?])).collect()).unwrap_or_default(),
+            tilt: chart["select"]["tilt"].as_array().and_then(|a| Some((a.first()?.as_f64()?, a.get(1)?.as_f64()?))),
+            structure: chart["select"]["structure"].as_f64(),
+        },
         Some("segment") => {
             let p = |v: &Value| Some([v[0].as_f64()?, v[1].as_f64()?]);
             Selection::Segment { a: p(&chart["select"]["from"]).ok_or("select segment needs --from")?, b: p(&chart["select"]["to"]).ok_or("select segment needs --to")? }

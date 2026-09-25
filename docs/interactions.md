@@ -164,7 +164,9 @@ clouds; the parameters come from pointing, map and touch studies.
    regression on the time series, sampling and MoleView on the map; space
    folding not built): sampling, regression,
    MoleView, space folding, beside the fisheye and magnifier that exist now.
-4. **A structure-aware lasso on the LiDAR tile:** screen lasso, voxel
+4. **A structure-aware lasso on the LiDAR tile** (built in experiment 7 on
+   the map's cells in 3D, in Rust; in SQL on the raw tile not built, see
+   FINDINGS.md 16): screen lasso, voxel
    density, threshold. Measurable here, and not in any declarative library.
 5. **Scrubbing by dragging a mark** (DimpVis): keyed marks across time already
    define each mark's trail.

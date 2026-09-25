@@ -230,6 +230,9 @@ Aggregate in a `sql` stage before the mark, not in a channel. The layer draws th
   select interval --x a..b [--y c..d] [--effect fade|filter]   a brush in data units, on the time series and the map
   select segment --from x,y --to x,y   a line brush: the flight lines that cross the segment (data units)
   select timebox --x a..b --y c..d     the flight lines that stay inside the box over its x-range
+  select lasso --poly \"u,v;u,v;…\" [--yaw a --elevation e] [--structure d]   the map: a lasso drawn on the screen (unit square,
+    y up), in the tilted view when --yaw is given; --structure keeps only the largest dense structure (CloudLasso). Drawn with the
+    mouse; keep an existing lasso line as it is.
   --soft w on interval, segment and timebox: smooth brushing, interest falls off over w (0..1 of the plot) outside the brush
   select clear
   lens regression --focus <x>,<y> [--radius r]   the time series: a least-squares trend of each line under a circle
