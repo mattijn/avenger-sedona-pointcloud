@@ -1,4 +1,4 @@
-From 239d46d4e4746ffed0df6cd1d19f5b5e55f01a27 Mon Sep 17 00:00:00 2001
+From c305517512b4f8b010c8d392b27e92dff20a4ad4 Mon Sep 17 00:00:00 2001
 From: Mattijn van Hoek <mattijn@gmail.com>
 Date: Sat, 26 Sep 2026 18:41:27 +0200
 Subject: [PATCH] feat(vegalite-spec): export a JSON Schema with CEL rules
@@ -17,11 +17,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  avenger-vegalite-spec/src/bin.rs              |   2 +
  avenger-vegalite-spec/src/data.rs             |   2 +
  avenger-vegalite-spec/src/lib.rs              |   2 +
- avenger-vegalite-spec/src/schema.rs           | 286 ++++++++++++++++++
+ avenger-vegalite-spec/src/schema.rs           | 309 ++++++++++++++++++
  avenger-vegalite-spec/src/spec.rs             |  15 +
  avenger-vegalite-spec/src/transform.rs        |   8 +
  avenger-vegalite-spec/tests/spec.rs           |  27 ++
- 9 files changed, 358 insertions(+)
+ 9 files changed, 381 insertions(+)
  create mode 100644 avenger-vegalite-spec/examples/json_schema.rs
  create mode 100644 avenger-vegalite-spec/src/schema.rs
 
@@ -110,10 +110,10 @@ index 99ce9047c..f5f405b83 100644
  mod validate;
 diff --git a/avenger-vegalite-spec/src/schema.rs b/avenger-vegalite-spec/src/schema.rs
 new file mode 100644
-index 000000000..354d319b3
+index 000000000..6afd41183
 --- /dev/null
 +++ b/avenger-vegalite-spec/src/schema.rs
-@@ -0,0 +1,286 @@
+@@ -0,0 +1,309 @@
 +//! A JSON Schema of the supported subset (draft 2020-12), for programs that
 +//! validate without this crate and for generating bindings from it.
 +//!
@@ -212,8 +212,12 @@ index 000000000..354d319b3
 +                        "format": format
 +                    },
 +                    "additionalProperties": false,
-+                    "anyOf": [{ "required": ["values"] }, { "required": ["url"] }, { "required": ["name"] }],
-+                    "not": { "required": ["values", "url"] }
++                    // Which properties go together is a rule, not a type: a
++                    // generator reads every anyOf as a union of types.
++                    "x-avenger-rules": [
++                        { "rule": "has(self.values) || has(self.url) || has(self.name)", "message": "data requires values, url, or name" },
++                        { "rule": "!(has(self.values) && has(self.url))", "message": "data cannot contain both values and url" }
++                    ]
 +                }
 +            ]
 +        })
@@ -274,15 +278,34 @@ index 000000000..354d319b3
 +}
 +
 +fn rules(schema: &mut Schema, rules: Value) {
-+    schema.insert("x-avenger-rules".into(), rules);
++    match schema
++        .get_mut("x-avenger-rules")
++        .and_then(Value::as_array_mut)
++    {
++        Some(list) => list.extend(rules.as_array().unwrap().iter().cloned()),
++        None => {
++            schema.insert("x-avenger-rules".into(), rules);
++        }
++    }
 +}
 +
-+/// `field` is required unless the aggregate (or op) is count.
++/// `field` is required unless the aggregate (or op) is count. A rule, not an
++/// `anyOf` of `required`s, which a generator would read as a union of types.
 +fn field_unless_count(schema: &mut Schema, op: &str) {
-+    schema.insert(
-+        "anyOf".into(),
-+        json!([{ "required": ["field"] }, { "required": [op], "properties": { op: { "const": "count" } } }]),
-+    );
++    let rule = json!({
++        "rule": format!("has(self.field) || (has(self.{op}) && self.{op} == 'count')"),
++        "message": format!("field is required unless {op} is count"),
++        "path": "field"
++    });
++    match schema
++        .get_mut("x-avenger-rules")
++        .and_then(Value::as_array_mut)
++    {
++        Some(list) => list.push(rule),
++        None => {
++            schema.insert("x-avenger-rules".into(), json!([rule]));
++        }
++    }
 +}
 +
 +pub(crate) fn unit_spec(schema: &mut Schema) {

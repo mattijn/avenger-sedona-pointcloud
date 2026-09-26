@@ -86,7 +86,10 @@ The steps, each usable on its own:
    `avenger-vegalite-spec` (FINDINGS.md 24): JSON Schema for structure, with
    the rules JSON Schema cannot state as CEL in `x-avenger-rules`, so one
    file serves the generator, validation without Rust, and a check of the
-   Rust types themselves (it found FINDINGS.md 23). As long as
+   Rust types themselves (it found FINDINGS.md 23). Fed to Altair's own
+   generator it gives 35 core and 9 channel classes, and a chart built with
+   them is drawn by Avenger, identical to one from Altair's API; the mark and
+   config mixins still expect Vega-Lite's names. As long as
    Avenger's grammar is Vega-Lite's, Altair's API does not change for its
    users; what changes is where the classes, their docstrings and their
    validation come from. The JSON Schema route stays available as an

@@ -365,6 +365,15 @@ on it takes 155 µs where Altair's takes 705 µs. The change is
 (against `f4890be`; the crate's tests pass with and without the feature).
 Not proposed upstream yet.
 
+Altair's own `generate_schema_wrapper.py` reads the result: 35 core classes
+and 9 channel classes, with shorthand, and a chart built with them is
+validated against Avenger's schema and drawn by Avenger, the same PNG byte
+for byte as from Altair's API. Two names had to be Vega-Lite's
+(`FacetedEncoding`, `RepeatRef`), and the mark and config mixins need
+Vega-Lite's `MarkDef` and `Config`. Rules between fields must be CEL, not
+constraint-only `anyOf` branches, which the generator reads as a union of
+types. **Measure:** `python crates/avenger-altair/bench/altair_generator.py <altair checkout> <out>`.
+
 Also: the compiler's `pdf` feature pulls in `krilla` 0.8.2, which needs
 rustc 1.92, so the bridge builds with `svg` and `png` only on this machine's
 1.89.

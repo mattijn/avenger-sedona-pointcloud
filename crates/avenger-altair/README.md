@@ -66,6 +66,30 @@ the keyword `x-avenger-rules`, runs each rule on every instance node its
 subschema matches. The schema is what Altair's generator would read in place
 of Vega-Lite's (step 3 of the design).
 
+**Altair's own generator reads it.** `python bench/altair_generator.py <altair checkout> <out>`
+runs `tools/generate_schema_wrapper.py` from an Altair checkout (changing
+nothing in it) on this schema, after renaming `$defs` to draft-07
+`definitions` and giving two definitions the names the generator looks up
+(`FacetedEncoding` for `Encoding`, a stub `RepeatRef`):
+
+| Generator step | Result |
+|---|---|
+| core classes | 35 classes |
+| channel classes | 9 (`X`, `Y`, `X2`, `Y2` and their variants), with shorthand |
+| mark mixin (`mark_bar()` …) | not generated: it looks for Vega-Lite's `MarkDef` and its `type` enum |
+| config mixin (`configure_*()`) | not generated: no `Config` in Avenger's subset |
+
+A bar chart built with the generated classes
+(`core.TopLevelUnitSpec(data=…, mark="bar", encoding=core.Encoding(x=channels.X("category:N"), y=channels.Y("sum(amount):Q", title="total")))`)
+validates in `to_dict()` against Avenger's schema (365 µs, where Altair's
+`to_dict()` takes 1,069 µs), and Avenger draws it, byte for byte the PNG
+drawn from Altair's own API. The generated classes refuse what Avenger
+cannot draw, in Altair's words: "'point' is an invalid value for `type`.
+Valid values are one of ['bar']." The first run failed on constraint-only
+`anyOf` branches (`{"required": ["field"]}`), which the generator reads as
+a union of types; those rules moved into CEL, and the parity test above
+still agrees on 2,992 of 3,008.
+
 The schema comes from a change to `avenger-vegalite-spec`
 ([`schema/vegalite-spec-schema.patch`](schema/vegalite-spec-schema.patch),
 against `f4890be`): a `schema` feature deriving `schemars::JsonSchema`, the
@@ -190,4 +214,6 @@ is drawn.
 - The large-data comparison is a histogram; a line or scatter plot of
   millions of points waits for those marks in Avenger's compiler.
 - Interaction and the notebook widget.
-- The schema has not been fed to Altair's `generate_schema_wrapper.py`.
+- The mark and config mixins, `alt.Chart` itself (`api.py`) and the rest of
+  Altair's package were not generated from Avenger's schema; the generated
+  core and channels were used on their own.

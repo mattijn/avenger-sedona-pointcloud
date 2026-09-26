@@ -138,26 +138,16 @@
         }
       },
       "additionalProperties": false,
-      "anyOf": [
-        {
-          "required": [
-            "field"
-          ]
-        },
-        {
-          "properties": {
-            "op": {
-              "const": "count"
-            }
-          },
-          "required": [
-            "op"
-          ]
-        }
-      ],
       "required": [
         "op",
         "as"
+      ],
+      "x-avenger-rules": [
+        {
+          "message": "field is required unless op is count",
+          "path": "field",
+          "rule": "has(self.field) || (has(self.op) && self.op == 'count')"
+        }
       ]
     },
     "Axis": {
@@ -385,29 +375,16 @@
             }
           },
           "additionalProperties": false,
-          "anyOf": [
+          "x-avenger-rules": [
             {
-              "required": [
-                "values"
-              ]
+              "message": "data requires values, url, or name",
+              "rule": "has(self.values) || has(self.url) || has(self.name)"
             },
             {
-              "required": [
-                "url"
-              ]
-            },
-            {
-              "required": [
-                "name"
-              ]
+              "message": "data cannot contain both values and url",
+              "rule": "!(has(self.values) && has(self.url))"
             }
-          ],
-          "not": {
-            "required": [
-              "values",
-              "url"
-            ]
-          }
+          ]
         }
       ]
     },
@@ -629,21 +606,11 @@
         }
       },
       "additionalProperties": false,
-      "anyOf": [
+      "x-avenger-rules": [
         {
-          "required": [
-            "field"
-          ]
-        },
-        {
-          "properties": {
-            "aggregate": {
-              "const": "count"
-            }
-          },
-          "required": [
-            "aggregate"
-          ]
+          "message": "field is required unless aggregate is count",
+          "path": "field",
+          "rule": "has(self.field) || (has(self.aggregate) && self.aggregate == 'count')"
         }
       ]
     },
