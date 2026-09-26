@@ -1,0 +1,1 @@
+[ {"type":"readers.las","filename":"@PDAL_TEST_DATA@/las/simple.las","spatialreference":"EPSG:notanumber"}, "@OUT@/o.las" ]

@@ -1,0 +1,1 @@
+[ "@PDAL_TEST_DATA@/las/simple.las", {"type":"filters.decimation","step":"10abc"}, "@OUT@/o.las" ]

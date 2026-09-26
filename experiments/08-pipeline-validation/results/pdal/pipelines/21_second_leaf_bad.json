@@ -1,0 +1,3 @@
+[ {"type":"readers.las","filename":"@PDAL_TEST_DATA@/las/simple.las","tag":"A"},
+  {"type":"writers.las","filename":"@OUT@/leaf1.las","inputs":["A"]},
+  {"type":"filters.range","limits":"Nope[0:1]","inputs":["A"]} ]

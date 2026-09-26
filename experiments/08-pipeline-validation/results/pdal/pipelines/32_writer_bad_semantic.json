@@ -1,0 +1,1 @@
+[ "@PDAL_TEST_DATA@/las/simple.las", {"type":"writers.las","filename":"@OUT@/o.las","minor_version":9} ]

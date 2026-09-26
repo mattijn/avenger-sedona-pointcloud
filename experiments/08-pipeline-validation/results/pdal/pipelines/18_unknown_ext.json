@@ -1,0 +1,1 @@
+[ "@PDAL_TEST_DATA@/las/simple.las", "@OUT@/o.xyzzy" ]

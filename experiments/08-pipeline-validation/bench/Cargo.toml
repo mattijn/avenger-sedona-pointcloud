@@ -1,0 +1,28 @@
+[package]
+name = "lidar-validate"
+description = "Experiment 8: a four-layer pipeline validator, timed natively and from Python"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Not a member of the repo's workspace: this crate needs only DataFusion and
+# CEL, not the Avenger stack, so it builds in a few minutes on its own.
+[workspace]
+
+[lib]
+name = "lidar_validate"
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "validate_bench"
+path = "src/main.rs"
+
+[features]
+python = ["dep:pyo3"]
+
+[dependencies]
+cel = "0.14.5"
+datafusion = "54.1"
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "macros"] }
+pyo3 = { version = "0.25", optional = true, features = ["extension-module", "abi3-py39"] }

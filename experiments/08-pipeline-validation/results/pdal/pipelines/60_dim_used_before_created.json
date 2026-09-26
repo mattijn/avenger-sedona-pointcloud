@@ -1,0 +1,1 @@
+[ "@PDAL_TEST_DATA@/las/simple.las", {"type":"filters.range","limits":"HeightAboveGround[0:10]"}, {"type":"filters.ferry","dimensions":"=>HeightAboveGround"}, "@OUT@/o60.las" ]

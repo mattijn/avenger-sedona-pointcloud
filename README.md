@@ -27,6 +27,7 @@ without conversion is that both sides agree on Arrow 58.3 and DataFusion 54.
 | 5 | [one coordinate system](experiments/05-coordinate-systems/) | What does a general coordinate transform take, with Cartesian as the default and map projections as options? Includes a live viewer and two videos. |
 | 6 | [Vega expressions, SQL and pipelines](experiments/06-pipelines/) | Can Vega expressions compile to DataFusion, chain with SQL and tool steps in one lazy GDAL-style pipeline, and split into commands and queries? |
 | 7 | [charts driven by decisions](experiments/07-chart-decisions/) | Can a fast typed classifier (Jev) or an LLM drive a chart through the task vocabulary, from typed text and data changes, under a policy? |
+| 8 | [validating a pipeline](experiments/08-pipeline-validation/) | Can the step vocabulary be written once and validated from Rust, Python and elsewhere, how do GDAL and PDAL do it, and how fast is each layer? (research and a benchmark) |
 
 ![the class map](experiments/01-charts/images/top_class.png)
 

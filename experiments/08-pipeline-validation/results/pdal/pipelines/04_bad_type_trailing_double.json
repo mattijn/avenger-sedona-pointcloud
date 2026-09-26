@@ -1,0 +1,1 @@
+[ "@PDAL_TEST_DATA@/las/simple.las", {"type":"filters.sample","radius":"1.5abc"}, "@OUT@/o.las" ]

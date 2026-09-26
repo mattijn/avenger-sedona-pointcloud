@@ -1,0 +1,41 @@
+++ gdal raster reproject in.tif out.tif --resampling foo
+ERROR 5: Invalid value 'foo' for string argument 'resampling'. Should be one among 'nearest', 'bilinear', 'cubic', 'cubicspline', 'lanczos', 'average', 'rms', 'mode', 'min', 'max', 'med', 'q1', 'q3', 'sum'.
+++ gdal raster reproject in.tif out.tif --overwrite --append -d EPSG:3857
+ERROR 1: reproject: Argument 'append' is mutually exclusive with 'overwrite'.
+Usage: gdal raster reproject [OPTIONS] <INPUT> <OUTPUT>
+Try 'gdal raster reproject --help' for help.
+++ gdal raster blend in.tif out.tif --overlay in.tif --opacity 101
+ERROR 5: Value of argument 'opacity' is 101, but should be <= 100
+Usage: gdal raster blend [OPTIONS] <COLOR-INPUT> <OVERLAY> <OUTPUT>
+Try 'gdal raster blend --help' for help.
+++ gdal raster scale in.tif out.tif --input-min 0
+ERROR 1: scale: Argument(s) 'input-min' require(s) that the following argument(s) are also specified: input-max.
+Usage: gdal raster scale [OPTIONS] <INPUT> <OUTPUT>
+Try 'gdal raster scale --help' for help.
+++ gdal raster reproject in.tif out.tif -d NOTACRS
+ERROR 1: reproject: Invalid value for 'output-crs' argument
+Usage: gdal raster reproject [OPTIONS] <INPUT> <OUTPUT>
+Try 'gdal raster reproject --help' for help.
+++ gdal pipeline read in.tif '!' reproject --dst-crs EPSG:3857 '!' buffer 1 '!' write out.gpkg
+ERROR 1: pipeline: Step 'buffer' expects a vector input dataset, but previous step 'reproject' generates a raster output dataset
+Usage: gdal pipeline [OPTIONS] <PIPELINE>
+Try 'gdal pipeline --help' for help.
+++ gdal pipeline read in.tif '!' polygonize '!' buffer --distance 1 '!' write out.gpkg --overwrite
+0...10...20...30...40...50...60...70...80...90...100 - done.
+++ gdal pipeline read in.tif '!' polygonize '!' resize --size 10,10 '!' write out.tif
+ERROR 1: pipeline: Step 'resize' expects a raster input dataset, but previous step 'polygonize' generates a vector output dataset
+Usage: gdal pipeline [OPTIONS] <PIPELINE>
+Try 'gdal pipeline --help' for help.
+++ gdal raster pipeline read in.tif '!' polygonize '!' write out.gpkg
+ERROR 1: pipeline: unknown step name: polygonize
+Usage: gdal raster pipeline [OPTIONS] <PIPELINE>
+Try 'gdal raster pipeline --help' for help.
+++ gdal pipeline read in.tif '!' reproject --output-crs EPSG:3857 '!' tee '[' write tee.tif --overwrite ']' '!' write out2.tif --overwrite
+0...10...20...30...40...50...60...70...80...90...100 - done.
+++ gdal pipeline read in.tif '!' reproject --output-crs EPSG:3857 '!' write out3.gdalg.json --overwrite
+++ gdal raster reproject in.tif --output-crs EPSG:3857 out4.gdalg.json --overwrite
+++ gdal raster reproject in.tif --output-crs EPSG:3857 -r bilinear --output-format GDALG --output-string -q
+++ gdal pipeline read in.tif '!' nonexistentstep '!' write o.tif
+ERROR 1: pipeline: unknown step name: nonexistentstep
+Usage: gdal pipeline [OPTIONS] <PIPELINE>
+Try 'gdal pipeline --help' for help.
