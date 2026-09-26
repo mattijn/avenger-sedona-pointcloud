@@ -1,7 +1,7 @@
 """Does the portable validator (JSON Schema + CEL, no Rust) accept exactly
 what Avenger's Rust types accept?
 
-    python bench/schema_parity.py [avenger checkout] [altair gallery dir]
+    python bench/schema_parity.py <avenger checkout at the pinned revision> [--dump specs.jsonl]
 
 Seeds: Avenger's own fixtures and examples, and Altair bar charts. Each seed
 is mutated systematically (an unknown key on every object, null, wrong
@@ -21,7 +21,7 @@ import pandas as pd
 import avenger_altair as av
 from avenger_altair import _native, portable
 
-avenger = Path(sys.argv[1] if len(sys.argv) > 1 else "../avenger").expanduser()
+avenger = Path(sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "../avenger").expanduser()
 seeds = []
 for p in list(avenger.glob("avenger-vegalite-spec/tests/fixtures/*.json")) + list(avenger.glob("avenger-vegalite-compiler/examples/*.json")) + list(avenger.glob("avenger-vegalite-compiler/tests/fixtures/*.json")):
     try:
@@ -96,6 +96,7 @@ def mutants(spec):
     m = copy.deepcopy(spec); m.setdefault("transform", []).append({"bin": True, "aggregate": [{"op": "count", "as": "n"}], "field": "a", "as": "lo"}); yield "bin and aggregate", m
 
 
+dump = open(sys.argv[sys.argv.index("--dump") + 1], "w") if "--dump" in sys.argv else None
 rows, t_rust, t_port = [], 0.0, 0.0
 for name, seed in seeds:
     for label, spec in [("seed", seed)] + list(mutants(seed)):
@@ -103,6 +104,8 @@ for name, seed in seeds:
         t = time.perf_counter(); rust = _native.validate(text); t_rust += time.perf_counter() - t
         t = time.perf_counter(); port = portable.validate(spec); t_port += time.perf_counter() - t
         rows.append((name, label, rust is None, not port, rust, port))
+        if dump:
+            dump.write(json.dumps({"seed": name, "label": label, "spec": spec, "rust_valid": rust is None}) + "\n")
 
 agree = sum(1 for r in rows if r[2] == r[3])
 print(f"{len(seeds)} seeds, {len(rows)} specs: {agree} agree ({100 * agree / len(rows):.2f} %), "

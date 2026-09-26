@@ -88,6 +88,15 @@ Vega-Lite refuses it (FINDINGS.md 23).
 | Avenger's JSON Schema only (`jsonschema`) | 155 µs | 203 µs |
 | JSON Schema + CEL (`jsonschema` + `cel-python`) | 424 µs | 13,378 µs |
 | Altair's validation, the whole Vega-Lite schema | 705 µs | |
+| JSON Schema + CEL in JavaScript (`ajv` + cel-js), all 3,008 specs | 4.3 µs | |
+
+The same file runs in JavaScript: [`js/portable.mjs`](js/portable.mjs)
+compiles the schema with `ajv` (draft 2020-12) and adds `x-avenger-rules` as
+a keyword whose rules cel-js evaluates. On the same 3,008 specs
+(`python bench/schema_parity.py <checkout> --dump specs.jsonl`, then
+`node js/parity.mjs specs.jsonl`) it gives the same verdicts as Python's, so
+the same 2,992 agree with Rust and the same 16 arrays differ; it takes 4.3 µs
+a spec warm (15 µs on the first pass), faster than calling Rust from Python.
 
 The small schema alone validates 3.5–4.5 times faster than Vega-Lite's.
 cel-python is the slow part, and it sets one bound: CEL has no loop over
@@ -181,6 +190,4 @@ is drawn.
 - The large-data comparison is a histogram; a line or scatter plot of
   millions of points waits for those marks in Avenger's compiler.
 - Interaction and the notebook widget.
-- The portable validator in JavaScript (`ajv` with cel-js) was not built;
-  cel-js was fast on the pipeline rules (3.6 µs a pipeline in `avenger-validate`).
 - The schema has not been fed to Altair's `generate_schema_wrapper.py`.
