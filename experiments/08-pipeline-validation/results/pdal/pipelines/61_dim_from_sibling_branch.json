@@ -1,0 +1,4 @@
+[ {"type":"readers.las","filename":"@PDAL_TEST_DATA@/las/simple.las","tag":"A"},
+  {"type":"filters.ferry","dimensions":"=>Hag","inputs":["A"],"tag":"B"},
+  {"type":"filters.range","limits":"Hag[0:10]","inputs":["A"],"tag":"C"},
+  {"type":"filters.merge","inputs":["B","C"]}, "@OUT@/o61.las" ]

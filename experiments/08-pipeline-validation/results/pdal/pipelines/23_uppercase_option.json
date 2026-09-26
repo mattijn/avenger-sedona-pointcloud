@@ -1,0 +1,1 @@
+[ "@PDAL_TEST_DATA@/las/simple.las", {"type":"filters.range","Limits":"Z[0:500]"}, "@OUT@/o.las" ]

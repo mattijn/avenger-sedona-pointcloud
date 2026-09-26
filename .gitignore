@@ -6,3 +6,5 @@
 /experiments/02-chart-language/charts/*.parquet
 /experiments/06-pipelines/reference/node_modules
 /experiments/07-chart-decisions/.env
+/experiments/08-pipeline-validation/bench/target
+__pycache__/

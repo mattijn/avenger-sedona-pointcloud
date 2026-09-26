@@ -1,0 +1,1 @@
+[ "@PDAL_TEST_DATA@/las/simple.las", {"type":"filters.expression","expression":"Foo > 1"}, "@OUT@/o.las" ]

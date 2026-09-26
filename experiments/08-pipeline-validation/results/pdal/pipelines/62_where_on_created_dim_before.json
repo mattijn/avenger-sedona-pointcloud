@@ -1,0 +1,1 @@
+[ "@PDAL_TEST_DATA@/las/simple.las", {"type":"filters.expression","expression":"Hag > 1"}, {"type":"filters.ferry","dimensions":"=>Hag"}, "@OUT@/o62.las" ]

@@ -1,0 +1,1 @@
+[ {"type":"readers.las","filename":"@PDAL_TEST_DATA@/las/simple.las","tag":"A"}, {"type":"filters.range","limits":"Z[0:500]","inputs":["B"]}, "@OUT@/o.las" ]
