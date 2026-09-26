@@ -319,8 +319,11 @@ change is [`crates/avenger-altair/bench/charge-slices.patch`](crates/avenger-alt
 `materialize_partition` and `MaterializedValue::size` (`inputs.rs`) use
 `get_array_memory_size` the same way and were not measured. Proposed as
 [jonmmease/avenger#141](https://github.com/jonmmease/avenger/pull/141), on
-`codex/datafusion-dataflow` (the change without the logging; the crate's
-133 tests pass).
+`codex/datafusion-dataflow`, with a regression test in Avenger itself:
+`cargo test -p avenger-datafusion-dataflow --test materialization_budget`
+(a projection over one 100k-row batch, with a budget of four times the
+column, fails with `ResourceExhausted` without the change and passes with
+it; the crate's 134 tests pass).
 **Measure:** `python crates/avenger-altair/bench/budget.py 30000 100000 300000 1000000`
 bisects the smallest budget that draws, for JSON rows and for Arrow.
 
