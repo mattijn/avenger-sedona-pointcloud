@@ -30,9 +30,11 @@ class AvengerView(anywidget.AnyWidget):
     seq = traitlets.Int(0).tag(sync=True)
     frame_ms = traitlets.Float(0.0).tag(sync=True)
     status = traitlets.Unicode("").tag(sync=True)
+    zoom = traitlets.Float(1.0).tag(sync=True)
 
-    def __init__(self, draw: Callable[[Optional[dict]], dict], camera: Optional[dict], scale: float = 2.0, **kwargs):
+    def __init__(self, draw: Callable[[Optional[dict]], dict], camera: Optional[dict], scale: float = 2.0, zoom: float = 1.0, **kwargs):
         super().__init__(**kwargs)
+        self.zoom = zoom
         self._draw = draw
         self.scale = scale
         self.camera = dict(camera) if camera else None
@@ -80,8 +82,9 @@ class AvengerView(anywidget.AnyWidget):
             self.seq = event.get("seq", self.seq)
 
 
-def view(chart: Any, scale: float = 2.0) -> AvengerView:
-    """An interactive view of an Altair chart drawn by Avenger."""
+def view(chart: Any, scale: float = 2.0, zoom: float = 1.0) -> AvengerView:
+    """An interactive view of an Altair chart drawn by Avenger; `zoom` sizes
+    it on the page (draw at a `scale` at least as large to keep it sharp)."""
     from . import _bound, _native, _spec
 
     spec = _spec(chart)
@@ -91,13 +94,13 @@ def view(chart: Any, scale: float = 2.0) -> AvengerView:
         s = dict(spec, camera=camera) if camera else spec
         return _native.render_frame(json.dumps(s), scale, tables)
 
-    return AvengerView(draw, spec.get("camera"), scale)
+    return AvengerView(draw, spec.get("camera"), scale, zoom)
 
 
-def live_view(live: Any, scale: float = 2.0) -> AvengerView:
+def live_view(live: Any, scale: float = 2.0, zoom: float = 1.0) -> AvengerView:
     def draw(camera: Optional[dict]) -> dict:
         return live._live.render_frame(scale, json.dumps(camera) if camera else None)
 
-    v = AvengerView(draw, live.spec.get("camera"), scale)
+    v = AvengerView(draw, live.spec.get("camera"), scale, zoom)
     live._views.append(v)
     return v

@@ -18,9 +18,10 @@ function render({model, el}) {
   const hint = {fisheye: 'move the pointer over the plot', tilt: 'drag to turn', none: ''}
   function draw() {
     const [w, h] = model.get('size')
+    const zoom = model.get('zoom') || 1
     img.src = 'data:image/png;base64,' + model.get('png')
-    img.style.width = w + 'px'
-    img.style.height = h + 'px'
+    img.style.width = w * zoom + 'px'
+    img.style.height = h * zoom + 'px'
     img.style.cursor = model.get('interaction') === 'tilt' ? 'grab' : 'crosshair'
     const ms = model.get('frame_ms')
     status.textContent = [model.get('status'), ms ? `frame ${ms.toFixed(0)} ms` : '', hint[model.get('interaction')] || ''].filter(Boolean).join(' · ')

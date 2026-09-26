@@ -236,7 +236,7 @@ so frames do not queue behind a fast pointer.
 |---|---|---|---|
 | `av.view(chart.camera_fisheye())` | the focus follows it | 22 ms | 38 ms shown |
 | `av.view(chart.camera_tilt())` | a drag turns yaw and elevation | 22 ms | 23–34 ms shown |
-| `live.view()` of `av.live(chart)` | draws again on each `append` | 26 ms at 60k rows | 42 ms at 510k rows |
+| `live.view()` of `av.live(chart)` | draws again on each `append` | 26 ms at 60k rows | 42 ms at 510k rows, 46 ms at 1.01M |
 
 The kernel-side times are 20 scripted events each (`handle` and the `event`
 trait, as the browser sends them). The JupyterLab column is the frame time
@@ -246,6 +246,14 @@ the fisheye's focus from the bottom left to the top right, a drag turned the
 tilt, and the live histogram followed 50 appends to 510,000 rows. A live
 view also takes the camera, so a fisheye follows the pointer over growing
 data.
+
+[`video/notebook.mp4`](video/notebook.mp4) (47 s, 2.5 MB) records that
+notebook from a fresh kernel: the fisheye, the tilt, then a fisheye over a
+histogram that grows in 100 appends of 10,000 rows to 1.01 million. It was
+recorded headless with Playwright, a scripted pointer and captions added on
+top; the frame times in the status line are the widget's own. `scale` sets
+the PNG's pixel density and `zoom` the size it is shown at, so a view can be
+drawn at 2.5× and shown at 1.6× without a blurry image.
 
 ### Live data
 

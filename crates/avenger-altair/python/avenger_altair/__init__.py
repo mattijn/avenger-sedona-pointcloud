@@ -206,11 +206,11 @@ class LiveChart:
             v.refresh()
         return rows
 
-    def view(self, scale: float = 2.0):
+    def view(self, scale: float = 2.0, zoom: float = 1.0):
         """An interactive notebook view that follows the rows as they arrive."""
         from .widget import live_view
 
-        return live_view(self, scale)
+        return live_view(self, scale, zoom)
 
     @property
     def rows(self) -> int:
@@ -242,12 +242,12 @@ def _named_spec(chart: Any) -> "tuple[dict, Any]":
     return spec, _tables[names[0]]
 
 
-def view(chart: Any, scale: float = 2.0):
+def view(chart: Any, scale: float = 2.0, zoom: float = 1.0):
     """An interactive notebook view of the chart, drawn by Avenger in the
     kernel: a fisheye follows the pointer, a tilt turns with a drag."""
     from .widget import view as _view
 
-    return _view(chart, scale)
+    return _view(chart, scale, zoom)
 
 
 def live(chart: Any) -> LiveChart:
