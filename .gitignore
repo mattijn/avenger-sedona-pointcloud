@@ -12,3 +12,4 @@ __pycache__/
 /crates/avenger-validate/cel/node_modules/
 /crates/avenger-altair/bench/coverage.json
 /crates/*/python/**/*.so
+/.claude/launch.json

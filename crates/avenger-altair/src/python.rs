@@ -62,6 +62,29 @@ fn render<'py>(py: Python<'py>, spec: &str, format: &str, scale: f32, base_dir: 
     }
 }
 
+/// `render_frame(spec_json, scale=2.0, tables=None) -> {"png", "plot", "size"}`:
+/// a PNG with the plot rectangle and scene size, for an interactive view.
+#[pyfunction]
+#[pyo3(signature = (spec, scale = 2.0, tables = None))]
+fn render_frame<'py>(py: Python<'py>, spec: &str, scale: f32, tables: Option<Bound<'py, PyDict>>) -> PyResult<Bound<'py, PyDict>> {
+    let mut bound = crate::Tables::new();
+    for (k, v) in tables.iter().flat_map(|d| d.iter()) {
+        bound.insert(k.extract()?, table(&v)?);
+    }
+    let spec = spec.to_string();
+    let r = py.allow_threads(move || crate::render_with_layout(&spec, Format::Png, scale, &bound));
+    let d = PyDict::new(py);
+    match r {
+        Ok((png, layout)) => {
+            d.set_item("png", PyBytes::new(py, &png))?;
+            d.set_item("plot", layout.plot.to_vec())?;
+            d.set_item("size", layout.size.to_vec())?;
+        }
+        Err(e) => d.set_item("refusal", refusal(py, &e)?)?,
+    }
+    Ok(d)
+}
+
 fn batches(obj: &Bound<'_, PyAny>) -> PyResult<Vec<arrow::record_batch::RecordBatch>> {
     Ok(table(obj)?.batches().to_vec())
 }
@@ -93,6 +116,28 @@ impl Live {
         self.inner.rows()
     }
 
+    /// `render_frame(scale=2.0, camera=None) -> {"png", "plot", "size"}`;
+    /// `camera` is a JSON text overriding the spec's.
+    #[pyo3(signature = (scale = 2.0, camera = None))]
+    fn render_frame<'py>(&self, py: Python<'py>, scale: f32, camera: Option<&str>) -> PyResult<Bound<'py, PyDict>> {
+        let camera: Option<avenger_vegalite_spec::Camera> = match camera {
+            Some(c) => Some(serde_json::from_str(c).map_err(|e| PyValueError::new_err(format!("camera: {e}")))?),
+            None => None,
+        };
+        let inner = &self.inner;
+        let r = py.allow_threads(|| inner.render_frame(scale, camera.as_ref()));
+        let d = PyDict::new(py);
+        match r {
+            Ok((png, layout)) => {
+                d.set_item("png", PyBytes::new(py, &png))?;
+                d.set_item("plot", layout.plot.to_vec())?;
+                d.set_item("size", layout.size.to_vec())?;
+            }
+            Err(e) => d.set_item("refusal", refusal(py, &e)?)?,
+        }
+        Ok(d)
+    }
+
     #[pyo3(signature = (format = "png", scale = 2.0))]
     fn render<'py>(&self, py: Python<'py>, format: &str, scale: f32) -> PyResult<Bound<'py, PyBytes>> {
         let f = match format {
@@ -111,5 +156,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(validate, m)?)?;
     m.add_function(wrap_pyfunction!(render, m)?)?;
     m.add_class::<Live>()?;
+    m.add_function(wrap_pyfunction!(render_frame, m)?)?;
     Ok(())
 }

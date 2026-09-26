@@ -26,7 +26,7 @@ import altair as alt
 
 from . import _native
 
-__all__ = ["enable", "disable", "enabled", "explain", "live", "LiveChart", "normalise", "render", "save", "to_vegalite", "validate", "AvengerRefusal", "last"]
+__all__ = ["enable", "disable", "enabled", "explain", "live", "LiveChart", "view", "normalise", "render", "save", "to_vegalite", "validate", "AvengerRefusal", "last"]
 
 
 class AvengerRefusal(ValueError):
@@ -195,10 +195,22 @@ class LiveChart:
         spec, frame = _named_spec(chart)
         self._live = _native.Live(json.dumps(spec), _arrow(frame))
         self.spec = spec
+        self._views: list = []
 
     def append(self, frame: Any) -> int:
-        """Add rows (a pandas, Polars or PyArrow frame); returns the row count."""
-        return self._live.append(_arrow(frame))
+        """Add rows (a pandas, Polars or PyArrow frame); returns the row count.
+        Views of this chart draw again."""
+        rows = self._live.append(_arrow(frame))
+        for v in self._views:
+            v.status = f"{rows:,} rows"
+            v.refresh()
+        return rows
+
+    def view(self, scale: float = 2.0):
+        """An interactive notebook view that follows the rows as they arrive."""
+        from .widget import live_view
+
+        return live_view(self, scale)
 
     @property
     def rows(self) -> int:
@@ -228,6 +240,14 @@ def _named_spec(chart: Any) -> "tuple[dict, Any]":
     if len(names) != 1:
         raise ValueError("a live chart needs exactly one DataFrame as its data")
     return spec, _tables[names[0]]
+
+
+def view(chart: Any, scale: float = 2.0):
+    """An interactive notebook view of the chart, drawn by Avenger in the
+    kernel: a fisheye follows the pointer, a tilt turns with a drag."""
+    from .widget import view as _view
+
+    return _view(chart, scale)
 
 
 def live(chart: Any) -> LiveChart:

@@ -156,6 +156,35 @@ pub fn scene_outline(spec: &str) -> Result<String, Refusal> {
     })
 }
 
+/// Where the plot is, in a drawn frame: the plot rectangle and the scene's
+/// size, in the scene's units (PNG pixels divided by the scale).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Layout {
+    pub plot: [f32; 4],
+    pub size: [f32; 2],
+}
+
+fn layout(frame: &avenger_chart::RenderedChart) -> Layout {
+    let sg = frame.scenegraph();
+    let plot = frame.plots().first().map(|p| [p.rect.x, p.rect.y, p.rect.width, p.rect.height]).unwrap_or([0.0, 0.0, sg.width, sg.height]);
+    Layout { plot, size: [sg.width, sg.height] }
+}
+
+/// As `render`, with the frame's layout, for a view that maps the pointer
+/// into the plot.
+pub fn render_with_layout(spec: &str, format: Format, scale: f32, tables: &Tables) -> Result<(Vec<u8>, Layout), Refusal> {
+    let unit = validate(spec)?;
+    let camera = unit.camera.clone();
+    let formatting = avenger_scales::formatter::ScaleFormatting::d3(Default::default(), Default::default());
+    let options = VegaLiteOptions { chart: avenger_chart::ChartOptions { dataflow: Some(dataflow(budget())?), ..Default::default() }.with_formatting(formatting), ..Default::default() };
+    runtime().block_on(async move {
+        let chart = Chart::from_vegalite(&unit, tables, options).await.map_err(|e| Refusal { path: e.path().to_string(), message: e.message(), stage: "compile" })?;
+        let frame = chart.render(RenderOptions::default()).await.map_err(|e| Refusal { path: "$".into(), message: e.to_string(), stage: "render" })?;
+        let bytes = export(&frame, camera.as_ref(), format, scale).await?;
+        Ok((bytes, layout(&frame)))
+    })
+}
+
 /// A frame to image bytes, through the camera if there is one (PNG only).
 async fn export(frame: &avenger_chart::RenderedChart, camera: Option<&avenger_vegalite_spec::Camera>, format: Format, scale: f32) -> Result<Vec<u8>, Refusal> {
     let refuse = |message: String| Refusal { path: "camera".into(), message, stage: "render" };
@@ -217,6 +246,17 @@ impl Live {
 
     pub fn rows(&self) -> usize {
         self.store.snapshot().num_rows()
+    }
+
+    /// A PNG of the rows so far with its layout, seen through `camera` if
+    /// given (else the spec's own), for an interactive view.
+    pub fn render_frame(&self, scale: f32, camera: Option<&avenger_vegalite_spec::Camera>) -> Result<(Vec<u8>, Layout), Refusal> {
+        let run = |e: String| Refusal { path: "$".into(), message: e, stage: "render" };
+        runtime().block_on(async {
+            let frame = self.chart.render(RenderOptions::default().inputs(self.inputs.clone())).await.map_err(|e| run(e.to_string()))?;
+            let bytes = export(&frame, camera.or(self.camera.as_ref()), Format::Png, scale).await?;
+            Ok((bytes, layout(&frame)))
+        })
     }
 
     pub fn render(&self, format: Format, scale: f32) -> Result<Vec<u8>, Refusal> {

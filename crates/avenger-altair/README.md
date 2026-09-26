@@ -188,6 +188,30 @@ not by Vega-Lite's schema, which does not know the property; a chart that
 falls back to Vega has its camera removed. The tilt stands up rect marks
 only, which is all the compiler draws so far.
 
+### Interactive views in the notebook
+
+`av.view(chart)` is an anywidget view. The kernel draws every frame with
+Avenger and sends a PNG; the browser (`widget.js`) only shows it and sends the
+pointer back, so no GPU or chart code runs in the frontend, which is what
+stopped Avenger's earlier `avenger-html` renderer (jonmmease/avenger#77). One
+event is in flight at a time and the newest waiting one replaces the rest,
+so frames do not queue behind a fast pointer.
+
+| View | The pointer | Frame, kernel side | In JupyterLab 4.6 |
+|---|---|---|---|
+| `av.view(chart.camera_fisheye())` | the focus follows it | 22 ms | 38 ms shown |
+| `av.view(chart.camera_tilt())` | a drag turns yaw and elevation | 22 ms | 23–34 ms shown |
+| `live.view()` of `av.live(chart)` | draws again on each `append` | 26 ms at 60k rows | 42 ms at 510k rows |
+
+The kernel-side times are 20 scripted events each (`handle` and the `event`
+trait, as the browser sends them). The JupyterLab column is the frame time
+the widget shows, in the notebook [`notebooks/interactive.ipynb`](notebooks/interactive.ipynb)
+opened in a local JupyterLab and driven with a real pointer: hovering moved
+the fisheye's focus from the bottom left to the top right, a drag turned the
+tilt, and the live histogram followed 50 appends to 510,000 rows. A live
+view also takes the camera, so a fisheye follows the pointer over growing
+data.
+
 ### Live data
 
 `av.live(chart)` compiles the chart once over its DataFrame, as a

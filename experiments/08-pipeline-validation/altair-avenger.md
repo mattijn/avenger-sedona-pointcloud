@@ -101,8 +101,17 @@ The steps, each usable on its own:
    interface, as a named `TableSnapshot`: 48 ms for the same chart. In
    Altair itself this is a data transformer and a way for a renderer to
    receive the frames by name.
-5. **Interaction in the notebook**: a widget (anywidget) that hosts an
-   Avenger canvas, so selections and parameters work without Vega.
+5. **Interaction in the notebook** (built in the bridge as an anywidget
+   view): the kernel draws each frame and the browser sends the pointer
+   back, so nothing depends on WebGPU in the frontend. A fisheye follows the
+   pointer, a tilt turns with a drag, and a live chart redraws as rows
+   arrive.
+
+Beyond Vega-Lite, the bridge also carries Avenger grammar Vega-Lite does not
+have: `camera` (a fisheye, or a tilt into 3D), declared in Avenger's spec
+types, validated by them, and turned into `camera_*()` methods on Altair's
+`Chart` from the schema. New grammar in Avenger's types becomes new API in
+Altair without Altair knowing about it.
 
 ## What Avenger needs
 
