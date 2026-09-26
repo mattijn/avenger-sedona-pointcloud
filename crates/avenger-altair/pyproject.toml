@@ -1,0 +1,15 @@
+[build-system]
+requires = ["maturin>=1.5,<2"]
+build-backend = "maturin"
+
+[project]
+name = "avenger-altair"
+description = "Avenger as an opt-in backend for Altair: validate and render charts natively."
+requires-python = ">=3.9"
+dynamic = ["version"]
+dependencies = ["altair>=5.5"]
+
+[tool.maturin]
+features = ["python"]
+python-source = "python"
+module-name = "avenger_altair._native"

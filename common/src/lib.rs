@@ -54,22 +54,28 @@ use avenger_guides::legend::colorbar::ColorbarConfig;
 use avenger_scales::scales::ConfiguredScale;
 use avenger_scenegraph::marks::group::SceneGroup;
 
+/// D3 number and date formatting, for scales and for text alike.
+pub fn scale_formatting() -> avenger_scales::formatter::ScaleFormatting {
+    avenger_scales::formatter::ScaleFormatting::d3(Default::default(), Default::default())
+}
+
 /// The default text engine with D3 number formatting, built once.
 pub fn text_engine() -> &'static avenger_text::TextEngine {
     static ENGINE: std::sync::OnceLock<avenger_text::TextEngine> = std::sync::OnceLock::new();
     ENGINE.get_or_init(|| {
-        let mut registry = avenger_text::NumberFormatRegistry::default();
-        registry.register("d3", Arc::new(avenger_format_number_d3::D3NumberFormatProvider));
-        avenger_text::default_text_engine().with_number_formatting(avenger_text::NumberFormatConfig::new("d3"), Arc::new(registry))
+        scale_formatting().configure_text_engine(avenger_text::default_text_engine())
     })
 }
 
 /// `avenger_guides::axis::numeric::make_numeric_axis_marks`, with numbers formatted.
 pub fn make_numeric_axis_marks(scale: &ConfiguredScale, title: &str, origin: [f32; 2], config: &AxisConfig) -> Result<SceneGroup, AvengerGuidesError> {
-    avenger_guides::axis::numeric::make_numeric_axis_marks_with_text_engine(scale, title, origin, config, text_engine())
+    // Since f4890be a scale carries its own label formatting as well.
+    let scale = scale.clone().with_formatting(scale_formatting());
+    avenger_guides::axis::numeric::make_numeric_axis_marks_with_text_engine(&scale, title, origin, config, text_engine())
 }
 
 /// `avenger_guides::legend::colorbar::make_colorbar_marks`, with numbers formatted.
 pub fn make_colorbar_marks(scale: &ConfiguredScale, title: &str, origin: [f32; 2], config: &ColorbarConfig) -> Result<SceneGroup, AvengerGuidesError> {
-    avenger_guides::legend::colorbar::make_colorbar_marks_with_text_engine(scale, title, origin, config, text_engine())
+    let scale = scale.clone().with_formatting(scale_formatting());
+    avenger_guides::legend::colorbar::make_colorbar_marks_with_text_engine(&scale, title, origin, config, text_engine())
 }

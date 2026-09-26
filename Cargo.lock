@@ -599,9 +599,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "avenger-altair"
+version = "0.1.0"
+dependencies = [
+ "avenger-chart",
+ "avenger-scales",
+ "avenger-vegalite-compiler",
+ "avenger-vegalite-spec",
+ "pyo3",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "avenger-app"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "async-trait",
  "avenger-common",
@@ -617,7 +630,7 @@ dependencies = [
 [[package]]
 name = "avenger-chart"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "async-trait",
  "avenger-app",
@@ -633,6 +646,7 @@ dependencies = [
  "avenger-panels",
  "avenger-scales",
  "avenger-scenegraph",
+ "avenger-svg",
  "avenger-text",
  "avenger-transform",
  "avenger-wgpu",
@@ -646,7 +660,7 @@ dependencies = [
 [[package]]
 name = "avenger-chart-definition"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-datafusion-dataflow",
  "avenger-layout",
@@ -661,7 +675,7 @@ dependencies = [
 [[package]]
 name = "avenger-color"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "css-color-parser",
  "ordered-float 5.4.0",
@@ -672,7 +686,7 @@ dependencies = [
 [[package]]
 name = "avenger-common"
 version = "0.0.8"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-color",
  "avenger-image",
@@ -688,7 +702,7 @@ dependencies = [
 [[package]]
 name = "avenger-datafusion-aggregate-state"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "arrow-schema",
  "datafusion",
@@ -700,7 +714,7 @@ dependencies = [
 [[package]]
 name = "avenger-datafusion-dataflow"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "async-trait",
  "chrono",
@@ -720,7 +734,7 @@ dependencies = [
 [[package]]
 name = "avenger-eventstream"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "async-trait",
  "avenger-common",
@@ -734,23 +748,44 @@ dependencies = [
 [[package]]
 name = "avenger-fonts"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 
 [[package]]
 name = "avenger-format"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "chrono",
- "serde",
- "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "avenger-format-config"
+version = "0.1.0"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
+dependencies = [
+ "avenger-format",
+ "avenger-format-datetime-chrono",
+ "avenger-format-datetime-d3",
+ "avenger-format-number-d3",
+ "serde",
+]
+
+[[package]]
+name = "avenger-format-datetime-chrono"
+version = "0.1.0"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
+dependencies = [
+ "avenger-format",
+ "chrono",
+ "chrono-tz",
+ "serde",
 ]
 
 [[package]]
 name = "avenger-format-datetime-d3"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-format",
  "chrono",
@@ -763,7 +798,7 @@ dependencies = [
 [[package]]
 name = "avenger-format-number-d3"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-format",
  "num-bigint",
@@ -777,7 +812,7 @@ dependencies = [
 [[package]]
 name = "avenger-geo"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "geo",
  "geo-traits",
@@ -793,7 +828,7 @@ dependencies = [
 [[package]]
 name = "avenger-geometry"
 version = "0.0.8"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-common",
  "avenger-scenegraph",
@@ -812,12 +847,13 @@ dependencies = [
 [[package]]
 name = "avenger-guides"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "arrow",
  "avenger-color",
  "avenger-common",
  "avenger-format",
+ "avenger-format-config",
  "avenger-geometry",
  "avenger-scales",
  "avenger-scenegraph",
@@ -835,7 +871,7 @@ dependencies = [
 [[package]]
 name = "avenger-image"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-resource",
  "base64 0.22.1",
@@ -856,12 +892,12 @@ dependencies = [
 [[package]]
 name = "avenger-layout"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 
 [[package]]
 name = "avenger-panels"
 version = "0.0.1"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-layout",
 ]
@@ -869,7 +905,7 @@ dependencies = [
 [[package]]
 name = "avenger-resource"
 version = "0.0.1"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "serde",
 ]
@@ -877,12 +913,16 @@ dependencies = [
 [[package]]
 name = "avenger-scales"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "arrow",
  "avenger-color",
  "avenger-common",
  "avenger-format",
+ "avenger-format-config",
+ "avenger-format-datetime-chrono",
+ "avenger-format-datetime-d3",
+ "avenger-format-number-d3",
  "avenger-image",
  "avenger-text",
  "chrono",
@@ -907,10 +947,11 @@ dependencies = [
 [[package]]
 name = "avenger-scenegraph"
 version = "0.0.8"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-color",
  "avenger-common",
+ "avenger-format-config",
  "avenger-image",
  "avenger-resource",
  "avenger-text",
@@ -927,9 +968,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "avenger-svg"
+version = "0.0.8"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
+dependencies = [
+ "avenger-color",
+ "avenger-common",
+ "avenger-image",
+ "avenger-scenegraph",
+ "avenger-text",
+ "base64 0.22.1",
+ "font-subset",
+ "image",
+ "itertools 0.14.0",
+ "lyon_algorithms",
+ "lyon_path",
+ "thiserror 2.0.21",
+ "ttf-parser",
+]
+
+[[package]]
 name = "avenger-text"
 version = "0.0.8"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-fonts",
  "avenger-format",
@@ -941,7 +1002,6 @@ dependencies = [
  "lyon_path",
  "ordered-float 5.4.0",
  "serde",
- "serde_json",
  "strum",
  "thiserror 2.0.21",
  "tracing",
@@ -952,7 +1012,7 @@ dependencies = [
 [[package]]
 name = "avenger-transform"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "datafusion",
  "datafusion-proto",
@@ -961,7 +1021,7 @@ dependencies = [
 [[package]]
 name = "avenger-typst-label"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-format",
  "chrono",
@@ -1005,9 +1065,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "avenger-vegalite-compiler"
+version = "0.1.0"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
+dependencies = [
+ "avenger-chart",
+ "avenger-chart-definition",
+ "avenger-datafusion-dataflow",
+ "avenger-transform",
+ "avenger-vegalite-spec",
+ "css-color-parser",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "avenger-vegalite-spec"
+version = "0.1.0"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "avenger-wgpu"
 version = "0.0.8"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-color",
  "avenger-common",
@@ -1037,7 +1125,7 @@ dependencies = [
 [[package]]
 name = "avenger-widgets"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-color",
  "avenger-common",
@@ -1052,7 +1140,7 @@ dependencies = [
 [[package]]
 name = "avenger-winit-wgpu"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "arboard",
  "avenger-app",
@@ -1435,6 +1523,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "pure-rust-locales",
  "serde",
  "wasm-bindgen",
  "windows-link",
@@ -2828,6 +2917,15 @@ name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
+
+[[package]]
+name = "font-subset"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e47922b9d737f16d425c10ec7b9b9751590cf8908270b5f9647bdad960b4b979"
+dependencies = [
+ "brotli",
+]
 
 [[package]]
 name = "fontconfig-parser"
@@ -5848,6 +5946,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d8f70e07b9c3962945a74e59ca1c511bba65b6419468acc217c457d93f3c740"
 
 [[package]]
+name = "pure-rust-locales"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "869675ad2d7541aea90c6d88c81f46a7f4ea9af8cd0395d38f11a95126998a0d"
+
+[[package]]
 name = "pxfm"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6779,6 +6883,17 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "serde_path_to_error"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
+dependencies = [
+ "itoa",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]

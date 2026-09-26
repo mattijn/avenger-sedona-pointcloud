@@ -73,7 +73,7 @@ impl ScalarUDFImpl for Format {
         let locale = NumberLocaleRegistry::with_builtins()
             .resolve("en-US")
             .map_err(|e| datafusion::error::DataFusionError::Execution(e.to_string()))?;
-        let fmt = PreparedNumberFormat::new(Some(&spec), Default::default(), &locale)
+        let fmt = PreparedNumberFormat::new(Some(&spec), &locale)
         .map_err(|e| datafusion::error::DataFusionError::Execution(format!("format: {e}")))?;
         let value = args.args[0].cast_to(&DataType::Float64, None)?;
         map_values(&value, args.number_rows, |a, i| {
@@ -108,11 +108,7 @@ impl ScalarUDFImpl for TimeFormat {
             .map_err(|e| datafusion::error::DataFusionError::Execution(e.to_string()))?;
         // Vega formats in local time; this package uses UTC so results do not
         // depend on the machine. utcFormat is the exact match.
-        let fmt = PreparedDateTimeFormat::new(
-            Some(&spec),
-            Default::default(),
-            DateTimeFormatContext::new(&locale, chrono_tz::UTC),
-        )
+        let fmt = PreparedDateTimeFormat::new(Some(&spec), DateTimeFormatContext::new(&locale, chrono_tz::UTC))
         .map_err(|e| datafusion::error::DataFusionError::Execution(format!("timeFormat: {e}")))?;
         // Numbers are epoch milliseconds, as in JavaScript.
         let value = match args.args[0].data_type() {

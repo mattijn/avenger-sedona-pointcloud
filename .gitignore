@@ -10,3 +10,5 @@
 __pycache__/
 /.venv-validate/
 /crates/avenger-validate/cel/node_modules/
+/crates/avenger-altair/bench/coverage.json
+/crates/*/python/**/*.so

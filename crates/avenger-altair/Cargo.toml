@@ -1,0 +1,26 @@
+[package]
+name = "avenger-altair"
+description = "Avenger as an opt-in backend for Altair: validate a Vega-Lite spec with Avenger's own spec types and render it natively."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "avenger_altair"
+crate-type = ["rlib", "cdylib"]
+
+[features]
+python = ["dep:pyo3"]
+
+[dependencies]
+avenger-vegalite-compiler.workspace = true
+avenger-vegalite-spec.workspace = true
+avenger-chart.workspace = true
+avenger-scales.workspace = true
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+pyo3 = { version = "0.25", optional = true, features = ["extension-module", "abi3-py39"] }
+
+[[bin]]
+name = "avenger-altair"
+path = "src/main.rs"

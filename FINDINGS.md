@@ -4,8 +4,8 @@ What this repo has run into while building real charts on the Avenger stack,
 kept as a ledger so it can be rechecked when the stack moves. Every entry says
 how it was measured, so a recheck is a command rather than an opinion.
 
-- **Checked against:** `jonmmease/avenger` `3065e2a` ([#130](https://github.com/jonmmease/avenger/pull/130), `codex/portable-dataflow-inputs`, the top of the stack after the rebase of 25 Sep 2026, 19:17 CEST).
-  Previous rounds: `602b99c` (#130, before that rebase), 25 Sep 2026; `5f31c58` (#124), 20 Sep 2026.
+- **Checked against:** `jonmmease/avenger` `f4890be` ([#130](https://github.com/jonmmease/avenger/pull/130), `codex/portable-dataflow-inputs`, the top of the stack after the rebase of 26 Sep 2026, 02:57 CEST), on 26 Sep 2026.
+  Previous rounds: `3065e2a` (#130, rebased 25 Sep 19:17 CEST); `602b99c` (#130), 25 Sep 2026; `5f31c58` (#124), 20 Sep 2026.
 - **Machine:** Apple Silicon, macOS, wgpu/Metal, Rust 1.89
 - **Recheck:** `cargo run --release -p lidar-probes --bin probe_guides` and
   `cargo run --release -p lidar-probes --bin probe_render` print everything
@@ -212,6 +212,81 @@ All other findings were re-measured on `3065e2a` and are unchanged: the index
 costs 392 ms for 300k symbols (`interactive: false` the same), gradients draw
 flat, and the guide pitfalls remain.
 
+## From the repin to `f4890be`, and Altair on Avenger
+
+Findings 1–7 re-measured on `f4890be` are unchanged: the geometry index
+costs 383 ms for 300k symbols (392 ms before; `interactive: false` the
+same), gradients draw flat, and the three guide pitfalls remain.
+
+### 17. Number formatting moved again, and scales now carry it
+
+Three changes, found by the compiler. `avenger_text::NumberFormatRegistry`
+and `NumberFormatConfig` are gone; the idiom is
+`ScaleFormatting::d3(Default::default(), Default::default())`, applied to a
+text engine with `configure_text_engine` and to chart options with
+`ChartOptions::with_formatting` (which also gained a `scale_formatting`
+field). `PreparedNumberFormat::new` and `PreparedDateTimeFormat::new` each
+lost one argument. And a scale now needs its own `with_formatting`: a
+colorbar built with a formatted text engine but an unformatted scale fails
+with `InvalidAxisLabelFormat("number formatting is not configured")`
+(`probe_guides` did, until `lidar_common` formatted the scale too). Two
+places must now agree on formatting for one axis. **Measure:**
+`cargo run --release -p lidar-probes --bin probe_guides`.
+
+### 18. The Vega-Lite front end fails on axis labels with default options
+
+`Chart::from_vegalite(&spec, &datasets, VegaLiteOptions::default())`, then
+`render`, fails for Altair's plain bar chart with "Invalid axis label format:
+number formatting is not configured"; with
+`VegaLiteOptions { chart: ChartOptions::default().with_formatting(ScaleFormatting::d3(..)), .. }`
+it draws. This is finding 14 reached through the Vega-Lite front end; a
+default that formats numbers the way Vega-Lite does would suit a Vega-Lite
+compiler. The compiler README's example uses the default options; that
+example itself was not run here. **Measure:** in
+`crates/avenger-altair/src/lib.rs`, drop the `chart:` option and run
+`avenger-altair render <spec> out.png`.
+
+### 19. Every Altair chart carries `config`, which the spec types refuse
+
+Altair's default theme adds `"config": {"view": {"continuousWidth": 300,
+"continuousHeight": 300}}` to every chart, and `avenger-vegalite-spec`
+refuses the key (`config: unknown field`), so no Altair chart passes as
+written. `avenger-altair` writes that one config out as Vega-Lite applies it
+(a width or height of 300 for a continuous axis) and leaves any other config
+to be refused. Reading `config.view` (and ignoring, or reporting, the rest)
+would let Altair's output through unchanged. **Measure:**
+`python crates/avenger-altair/bench/coverage.py ~/vega/altair/tests/examples_methods_syntax`
+(19 of 117 gallery examples stop at `config` even after the default theme is
+written out).
+
+### 20. SVG export spends 340 ms on the font
+
+For an 8-bar chart, validating takes 0.05 ms, compiling 0.7–1.8 ms,
+rendering 4–5 ms, PNG export 14 ms, and SVG export 341 ms. The SVG is 148 KB,
+of which 139 KB is one embedded font, subset and encoded as WOFF2 in
+`avenger-svg`'s `font_face_css`; the time is most likely there (not
+profiled). An option to reference fonts instead of embedding them, or a
+cached subset, would make SVG the cheap format it is in Vega. **Measure:**
+`avenger-altair render <spec> out.svg 10` and `… out.png 10` print the
+stages.
+
+### 21. What Altair's gallery needs first
+
+Of Altair's 120 gallery examples (`tests/examples_methods_syntax`), 117 run
+here and none compiles to Avenger yet. The first refusal of each, with the
+default theme written out and `config` set aside: `layer` 41, `mark.type`
+41 (marks other than bar), `encoding.color` 8, composition (`vconcat`,
+`hconcat`, `concat`, `facet`, `repeat`) 19, sorting by another channel
+(`sort: "-x"`) 3, and one each of `joinaggregate`, `mark.binSpacing`,
+`mark.cursor`, `data.format.parse`, `encoding.row`. By this measure the
+order that opens the most of Altair is: other marks and layering, then
+colour, then composition. The same script reruns it; `coverage.json` has
+every example.
+
+Also: the compiler's `pdf` feature pulls in `krilla` 0.8.2, which needs
+rustc 1.92, so the bridge builds with `svg` and `png` only on this machine's
+1.89.
+
 ## From experiment 7: charts driven by typed decisions
 
 Experiment 7 drives one chart from typed text (a classifier, and an LLM that
@@ -254,22 +329,22 @@ a reason, and the model fixed its tries from that text. The Vega-Lite
 compiler's `CompileError::path()` does this. **Not checked:** what
 `ChartDefinition::finish()` does with a property it cannot honour.
 
-### 16. \`geo\` 0.29 keeps SedonaDB's spatial predicates out
+### 16. `geo` 0.29 keeps SedonaDB's spatial predicates out
 
-A structure-aware lasso (CloudLasso) on the tile wanted \`st_contains\` from
-SedonaDB. The predicates (\`st_contains\`, \`st_within\`, \`st_intersects\`) are
-in \`sedona-geo\` only; \`sedona-functions\`, which this repo links, has
-constructors, accessors and affine transforms but no predicate. \`sedona-geo\`
-cannot join the workspace: it needs \`geo\` 0.33 → \`i_overlay\` 4.5 →
-\`i_float ~1.16\`, while \`avenger-geo\`, \`avenger-geometry\` and
-\`avenger-guides\` at \`3065e2a\` need \`geo\` 0.29 → \`i_overlay\` 1.9 →
-\`i_float ~1.6\`. Two \`geo\` versions could coexist, but not two 1.x versions
-of \`i_float\`, so resolution fails. Moving Avenger to \`geo\` 0.33 would let a
+A structure-aware lasso (CloudLasso) on the tile wanted `st_contains` from
+SedonaDB. The predicates (`st_contains`, `st_within`, `st_intersects`) are
+in `sedona-geo` only; `sedona-functions`, which this repo links, has
+constructors, accessors and affine transforms but no predicate. `sedona-geo`
+cannot join the workspace: it needs `geo` 0.33 → `i_overlay` 4.5 →
+`i_float ~1.16`, while `avenger-geo`, `avenger-geometry` and
+`avenger-guides` at `3065e2a` need `geo` 0.29 → `i_overlay` 1.9 →
+`i_float ~1.6`. Two `geo` versions could coexist, but not two 1.x versions
+of `i_float`, so resolution fails. Moving Avenger to `geo` 0.33 would let a
 host put SedonaDB's spatial SQL next to it; the lasso now tests the polygon in
 Rust on the drawn cells instead. **Measure:** add
-\`sedona-geo = { git = "https://github.com/apache/sedona-db", rev = "2f3e378…" }\`
-to \`experiments/06-pipelines/Cargo.toml\` and run \`cargo metadata --format-version 1 >/dev/null\`
-(it fails on \`i_float\`); \`cargo tree -i geo@0.29.3 --depth 1\` lists the
+`sedona-geo = { git = "https://github.com/apache/sedona-db", rev = "2f3e378…" }`
+to `experiments/06-pipelines/Cargo.toml` and run `cargo metadata --format-version 1 >/dev/null`
+(it fails on `i_float`); `cargo tree -i geo@0.29.3 --depth 1` lists the
 Avenger crates.
 
 Also from experiment 7, as things that worked well: `RequestWakeup` with
@@ -320,6 +395,9 @@ From an earlier round, **not re-verified on the current branch**:
   moved past.
 
 ## What this round did not check
+
+- After the repin to `f4890be`: the renders of experiments 1–3 ran, but were
+  not compared with the committed images; the live viewers were not opened.
 
 - The live frame rates (`stream_live` without `--snapshots`); the headless
   snapshots ran and look the same.
