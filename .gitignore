@@ -13,3 +13,4 @@ __pycache__/
 /crates/avenger-altair/bench/coverage.json
 /crates/*/python/**/*.so
 /.claude/launch.json
+.ipynb_checkpoints/
