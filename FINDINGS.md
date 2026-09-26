@@ -283,19 +283,41 @@ order that opens the most of Altair is: other marks and layering, then
 colour, then composition. The same script reruns it; `coverage.json` has
 every example.
 
-### 22. The materialisation charge grows faster than the data
+### 22. The materialisation charge counts shared buffers once per batch
 
 `ExecutionConfig::max_materialized_bytes` (256 MB by default) is charged by
-what active queries produce, conservatively. For a Vega-Lite histogram
-(`bin`, `count()`) over one float column, the smallest budget that draws is
+what active queries produce. For a Vega-Lite histogram (`bin`, `count()`) over
+one float column, the smallest budget that draws grows roughly quadratically:
 83 bytes a row at 30k rows, 216 at 100k, 628 at 300k, about 2,000 at 1M and
-about 5,900 at 3M: roughly quadratic in the rows, the same with the table
-given as JSON rows or as an Arrow `TableSnapshot`. At 3M rows it asks
-17.7 GB while the process peaks 121 MB above where it started, for a 24 MB
-column. So the default refuses a histogram over 1M rows ("active
-materialization exceeds the 268435456 byte budget"). A charge that follows
-what is actually held (or is released as batches are consumed) would make
-the budget protect memory rather than refuse charts that fit.
+about 5,900 at 3M (17.7 GB, while the process peaks 121 MB above where it
+started). So the default refuses a histogram over 1M rows ("active
+materialization exceeds the 268435456 byte budget").
+
+**Where.** `avenger-datafusion-dataflow/src/runtime.rs`, where each batch a
+query streams is charged:
+
+```rust
+self.reservation.charge(
+    batch.get_array_memory_size().saturating_add(std::mem::size_of::<RecordBatch>()),
+)?;
+```
+
+`get_array_memory_size` counts the whole buffers a column refers to, and a
+batch that is a slice of a larger array shares them. Logged per node (a
+scratch copy with a counter at that line): at 1M rows every byte of the
+1,968 MB is charged by one node, `__vl_bins_5`, the compiler's bin
+assignment, whose 123 batches of about 8,192 rows each hold 0.26 MB and are
+charged about 16 MB, the buffers of all 1M rows. Handing the input over in
+8,192-row batches only shrinks it (524 MB at 1M, 4.5 GB at 3M): the bin
+node's batches still share buffers of 3.6 to 7.6 MB each.
+
+**Measured fix.** Charging each column's `to_data().get_slice_memory_size()`
+instead makes the charge linear and exact: 3.2 MB at 100k rows, 32 MB at 1M,
+97 MB at 3M, 32 bytes a row, which is the bin node's four 8-byte columns. The
+change is [`crates/avenger-altair/bench/charge-slices.patch`](crates/avenger-altair/bench/charge-slices.patch)
+(against `f4890be`, behind an environment variable, with the logging).
+`materialize_partition` and `MaterializedValue::size` (`inputs.rs`) use
+`get_array_memory_size` the same way and were not measured.
 **Measure:** `python crates/avenger-altair/bench/budget.py 30000 100000 300000 1000000`
 bisects the smallest budget that draws, for JSON rows and for Arrow.
 

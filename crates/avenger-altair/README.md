@@ -99,7 +99,10 @@ Avenger's dataflow charges what active queries materialise against a budget,
 256 MB by default. The charge grows faster than the data (22 MB for 100k
 rows, 1.98 GB for 1M, 17.7 GB for 3M, JSON or Arrow alike), so the default
 refuses a histogram over 1M rows; the bridge sets 64 GiB
-(`AVENGER_MAX_MATERIALIZED_BYTES` overrides it). FINDINGS.md 22.
+(`AVENGER_MAX_MATERIALIZED_BYTES` overrides it). The cause is that each
+batch is charged for the whole buffers it shares with other batches;
+charging the slice makes it linear, 32 bytes a row
+([`bench/charge-slices.patch`](bench/charge-slices.patch), FINDINGS.md 22).
 
 SVG is the default in Vega's notebooks, but here 139 of its 148 KB is one
 embedded font and nearly all its time is spent there, so the renderer
