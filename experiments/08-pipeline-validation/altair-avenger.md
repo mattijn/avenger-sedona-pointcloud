@@ -1,9 +1,10 @@
 # Altair on Avenger
 
-Status: a design and a first bridge, 26 Sep 2026, grown out of this
-experiment's validator. The bridge is
-[`crates/avenger-altair`](../../crates/avenger-altair/); the measurements are in
-its README.
+Status: a design and a spike, 26 Sep 2026, grown out of this experiment's
+validator. The spike is [`crates/avenger-altair`](../../crates/avenger-altair/),
+throwaway code that answers whether this can work and what each side must
+change; its README has the answers, the measurements, and where each of its
+shortcuts belongs.
 
 Altair stays the front end: the Python API people write charts with. Avenger
 becomes the engine underneath: it validates the chart and it draws it, natively

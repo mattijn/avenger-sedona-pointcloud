@@ -243,8 +243,8 @@ from the crate.
 The same question, a fast check with an error that names its place, applies
 to Altair: it validates every chart against the whole Vega-Lite JSON Schema
 (705 µs for an 8-row bar chart) before anything is drawn.
-[`crates/avenger-altair`](../../crates/avenger-altair/) makes Avenger an
-opt-in backend: `avenger_altair.enable()` has Altair's validation ask
+[`crates/avenger-altair`](../../crates/avenger-altair/), a spike, makes
+Avenger an opt-in backend: `avenger_altair.enable()` has Altair's validation ask
 Avenger's own Vega-Lite types first (13.5 µs for the same chart) and draws
 with Avenger, falling back to the JSON Schema and the usual renderer for a
 chart Avenger does not draw yet. [`altair-avenger.md`](altair-avenger.md)

@@ -27,7 +27,7 @@ without conversion is that both sides agree on Arrow 58.3 and DataFusion 54.
 | 5 | [one coordinate system](experiments/05-coordinate-systems/) | What does a general coordinate transform take, with Cartesian as the default and map projections as options? Includes a live viewer and two videos. |
 | 6 | [Vega expressions, SQL and pipelines](experiments/06-pipelines/) | Can Vega expressions compile to DataFusion, chain with SQL and tool steps in one lazy GDAL-style pipeline, and split into commands and queries? |
 | 7 | [charts driven by decisions](experiments/07-chart-decisions/) | Can a fast typed classifier (Jev) or an LLM drive a chart through the task vocabulary, from typed text and data changes, under a policy? |
-| 8 | [validating a pipeline](experiments/08-pipeline-validation/) | Can the step vocabulary be written once and validated from Rust, Python and elsewhere, how do GDAL and PDAL do it, and how fast is each layer? Grew two crates: [`avenger-validate`](crates/avenger-validate/), a pipeline validator for Rust, Python and wasm with its rules exported as CEL, and [`avenger-altair`](crates/avenger-altair/), Avenger as an opt-in backend for Altair ([design](experiments/08-pipeline-validation/altair-avenger.md)). |
+| 8 | [validating a pipeline](experiments/08-pipeline-validation/) | Can the step vocabulary be written once and validated from Rust, Python and elsewhere, how do GDAL and PDAL do it, and how fast is each layer? Grew two crates: [`avenger-validate`](crates/avenger-validate/), a pipeline validator for Rust, Python and wasm with its rules exported as CEL, and [`avenger-altair`](crates/avenger-altair/), a spike of Avenger as Altair's engine ([design](experiments/08-pipeline-validation/altair-avenger.md)). |
 
 ![the class map](experiments/01-charts/images/top_class.png)
 
@@ -62,7 +62,7 @@ experiments/06-pipelines/       Vega expressions, SQL and chained pipelines
 experiments/07-chart-decisions/ charts driven by a decider (Jev, an LLM, rules)
 experiments/08-pipeline-validation/ how to validate a pipeline, and how fast
 crates/avenger-validate/        from experiment 8: the pipeline validator (Rust, Python, wasm, CEL)
-crates/avenger-altair/          from experiment 8: Avenger as a backend for Altair
+crates/avenger-altair/          from experiment 8: a spike of Avenger as Altair's engine
 probes/                         re-measures everything in FINDINGS.md
 data/                           the tile (downloaded, not in git)
 scripts/download_tile.sh

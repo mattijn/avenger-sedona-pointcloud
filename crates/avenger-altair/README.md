@@ -1,26 +1,59 @@
-# avenger-altair
+# avenger-altair: a spike
 
-Avenger as an opt-in backend for Altair. Altair stays the front end; Avenger
-validates the chart and draws it, in-process, with no JavaScript.
+A spike solution, in the Extreme Programming sense: the least code that
+answers a question, written to be thrown away. The question is whether
+Altair can keep its API and have Avenger underneath, validating a chart and
+drawing it natively, fast enough for an agent that writes charts, and what
+each side would have to change for that. This crate answers it with
+measurements; it is not the implementation. What should outlive it is the
+table of answers and the list of what moves where.
 
 ```python
 import altair as alt
 import avenger_altair as av
 
-av.enable()                     # draw with Avenger, validate with Avenger
+av.enable()                     # validate and draw with Avenger
 chart = alt.Chart(df).mark_bar().encode(x="category:N", y="sum(amount):Q")
 chart                           # a PNG from Avenger in the notebook
-av.save(chart, "bars.png")      # or .svg
 av.explain(chart)               # "Avenger draws this chart." or the property that stops it
+av.view(chart.camera_fisheye()) # interactive: the lens follows the pointer
+live = av.live(chart); live.append(more_rows)   # rows arriving
 av.disable()                    # back to what was active before
 ```
 
 ![An Altair bar chart drawn by Avenger](images/bars.png)
 
-The design, and the steps from here to an Altair whose API and validation come
-from Avenger, are in [experiments/08-pipeline-validation/altair-avenger.md](../../experiments/08-pipeline-validation/altair-avenger.md).
+## What the spike answered
 
-## What it does
+Measured on 26 Sep 2026, Avenger `f4890be`, Altair 6.3.0, Apple Silicon.
+The sections below have the details and the commands.
+
+| Question | Answer |
+|---|---|
+| Can Avenger validate what Altair writes, and how fast? | Yes, for its subset: 6–7 µs in Rust, 13.5 µs from Python, against 705 µs for Altair's JSON Schema; errors carry a path (`encoding.color`). A 1 MB module suffices ([`avenger-vegalite-py`](../avenger-vegalite-py/)); the renderer's is 89 MB. |
+| Can it draw what Altair writes? | A bar chart, yes, byte-identical whether the spec comes from Altair's API or from classes generated from Avenger's schema. Of 117 gallery examples, none yet: layers, other marks, colour and composition come first (FINDINGS.md 21). |
+| Does large data change the picture? | With frames passed as Arrow instead of JSON rows: a histogram over 1M values in 48 ms (JSON rows 2.2 s, VegaFusion 0.5 s, vl-convert 3.1 s, matplotlib 37 ms). It needed a fix in Avenger's dataflow (jonmmease/avenger#141). |
+| Can Altair's API come from Avenger instead of Vega-Lite? | Altair's own generator, fed Avenger's schema, makes 38 core and 9 channel classes, `mark_bar()` and `configure_view()`; two names had to be Vega-Lite's. |
+| Can validation run without Rust? | Yes: JSON Schema plus CEL rules in one file, 99 % agreement with Rust over 3,330 mutated specs (the rest is a Rust bug, FINDINGS.md 23); 4.3 µs a spec in JavaScript, 0.4–13 ms in Python. |
+| Can Avenger grammar Vega-Lite lacks reach Altair? | Yes: `camera` (fisheye, tilt into 3D) is declared in Avenger's types and becomes `camera_*()` methods on Altair's `Chart` from the schema. |
+| Interaction and streaming in a notebook? | Yes, with the kernel drawing and the browser sending the pointer: 22 ms a frame; rows appended in 0.3 ms, a frame over 1M rows in 39 ms. |
+
+## Where the shortcuts are, and where the real thing belongs
+
+| Spike shortcut | The real place |
+|---|---|
+| `enable()` replaces `Chart.validate` | Altair: a validator registry beside `alt.renderers` |
+| `camera_*()` patched onto `alt.Chart` | Altair: its API generated from Avenger's schema |
+| a small hand-written `Chart` over the generated classes (`bench/altair_generator.py`) | Altair: `api.py` generated or ported to the new source |
+| the generator given `FacetedEncoding` and `RepeatRef`, and `mark_*()` names by hand | Altair: `generate_schema_wrapper.py` reading those from the schema |
+| Avenger's spec crate copied here with `schema`, `config` and `camera` ([`crates/avenger-vegalite-spec`](../avenger-vegalite-spec/VENDORED.md)) | Avenger: the same additions upstream |
+| the camera applied to the rendered scene (`src/camera.rs`) | Avenger: a projection stage in the chart runtime |
+| `config.view` sizes written out in Python (`normalise`) | Avenger: the compiler sizing by `config` |
+| a 64 GiB materialisation budget | Avenger: #141, after which the default suffices |
+| every frame a PNG from the kernel | a browser renderer once it does not depend on WebGPU (jonmmease/avenger#77) |
+| a live chart recomputing all rows each frame | Avenger: incremental aggregation (`avenger-datafusion-aggregate-state`) |
+
+## What the spike does
 
 - **Validation.** `to_dict()` calls `validate` on the top-level chart; enabled,
   that asks Avenger first (`avenger-vegalite-spec`, typed Vega-Lite 6.4.3). A
@@ -40,9 +73,9 @@ from Avenger, are in [experiments/08-pipeline-validation/altair-avenger.md](../.
   into the spec's `datasets` first. `enable(arrow=False)` keeps Altair's
   transformer.
 - **Altair's default theme.** Every Altair chart carries
-  `config.view.continuousWidth/Height`; Avenger reads no `config` yet, so that
-  one config is written out as the width or height Vega-Lite would give a
-  continuous axis. Any other config is left for Avenger to refuse.
+  `config.view.continuousWidth/Height`. Avenger's types (as carried here)
+  read `config`, but its compiler does not size by it, so the continuous
+  sizes are written out as the width or height Vega-Lite would give.
 
 ## Without Rust: the schema and its rules
 
@@ -95,8 +128,8 @@ drawn from Altair's own API. The generated classes refuse what Avenger
 cannot draw, in Altair's words: "'point' is an invalid value for `type`.
 Valid values are one of ['bar']." The first run failed on constraint-only
 `anyOf` branches (`{"required": ["field"]}`), which the generator reads as
-a union of types; those rules moved into CEL, and the parity test above
-still agrees on 2,992 of 3,008.
+a union of types; those rules moved into CEL, and the parity test
+kept its agreement.
 
 The schema comes from a change to `avenger-vegalite-spec`
 (now carried in this repo as [`crates/avenger-vegalite-spec`](../avenger-vegalite-spec/VENDORED.md), against `f4890be`): a `schema` feature deriving `schemars::JsonSchema`, the
@@ -105,13 +138,15 @@ schema of the five types with their own `Deserialize` written by hand, and
 `cargo run -p avenger-vegalite-spec --features schema --example json_schema`.
 
 **Does it accept what Rust accepts?** `python bench/schema_parity.py <avenger checkout at f4890be>`
-judges 3,008 specs both ways: 12 seeds (Avenger's fixtures and examples, and
+judges 3,330 specs both ways: 12 seeds (Avenger's fixtures and examples, and
 Altair bar charts), each mutated on every node (an unknown key, null, wrong
 types, out-of-range numbers, removed properties) and with each rule broken
-on purpose. 2,992 agree (99.47 %). The 16 that differ are all one thing, and
+on purpose. 3,300 agree (99.10 %). The 30 that differ are all one thing, and
 it is Rust's: a JSON array where an object belongs (`"encoding": []`,
-`"axis": []`) is accepted by the Rust types and refused by the schema, as
-Vega-Lite refuses it (FINDINGS.md 23).
+`"axis": []`, `"config": {"view": []}`) is accepted by the Rust types and
+refused by the schema, as Vega-Lite refuses it (FINDINGS.md 23). (Before
+`config` and `camera` were added: 3,008 specs, 2,992 in agreement, 16
+arrays.)
 
 | Per spec, warm | Bar chart | Histogram (`bin`) |
 |---|---|---|
@@ -119,15 +154,15 @@ Vega-Lite refuses it (FINDINGS.md 23).
 | Avenger's JSON Schema only (`jsonschema`) | 155 µs | 203 µs |
 | JSON Schema + CEL (`jsonschema` + `cel-python`) | 424 µs | 13,378 µs |
 | Altair's validation, the whole Vega-Lite schema | 705 µs | |
-| JSON Schema + CEL in JavaScript (`ajv` + cel-js), all 3,008 specs | 4.3 µs | |
+| JSON Schema + CEL in JavaScript (`ajv` + cel-js), all parity specs | 4.3–4.8 µs | |
 
 The same file runs in JavaScript: [`js/portable.mjs`](js/portable.mjs)
 compiles the schema with `ajv` (draft 2020-12) and adds `x-avenger-rules` as
-a keyword whose rules cel-js evaluates. On the same 3,008 specs
+a keyword whose rules cel-js evaluates. On the same specs
 (`python bench/schema_parity.py <checkout> --dump specs.jsonl`, then
 `node js/parity.mjs specs.jsonl`) it gives the same verdicts as Python's, so
-the same 2,992 agree with Rust and the same 16 arrays differ; it takes 4.3 µs
-a spec warm (15 µs on the first pass), faster than calling Rust from Python.
+the same specs agree with Rust and the same arrays differ; it takes 4.3–4.8 µs
+a spec warm (15–16 µs on the first pass), faster than calling Rust from Python.
 
 The small schema alone validates 3.5–4.5 times faster than Vega-Lite's.
 cel-python is the slow part, and it sets one bound: CEL has no loop over
@@ -294,7 +329,10 @@ is drawn.
   one integer column.
 - The large-data comparison is a histogram; a line or scatter plot of
   millions of points waits for those marks in Avenger's compiler.
-- Interaction and the notebook widget.
-- The mark and config mixins, `alt.Chart` itself (`api.py`) and the rest of
-  Altair's package were not generated from Avenger's schema; the generated
-  core and channels were used on their own.
+- `alt.Chart` itself (`api.py`) and the rest of Altair's package were not
+  generated from Avenger's schema; the spike used the generated core,
+  channels and mixins under a small `Chart` of its own.
+- The fisheye is the polar one from experiment 7; a Cartesian fisheye, which
+  keeps bars rectangular, was not built.
+- No tests beyond the benchmark scripts; nothing here is packaged or
+  published.
