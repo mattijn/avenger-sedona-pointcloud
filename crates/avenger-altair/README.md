@@ -18,7 +18,7 @@ av.disable()                    # back to what was active before
 ![An Altair bar chart drawn by Avenger](images/bars.png)
 
 The design, and the steps from here to an Altair whose API and validation come
-from Avenger, are in [docs/altair-avenger.md](../../docs/altair-avenger.md).
+from Avenger, are in [experiments/08-pipeline-validation/altair-avenger.md](../../experiments/08-pipeline-validation/altair-avenger.md).
 
 ## What it does
 

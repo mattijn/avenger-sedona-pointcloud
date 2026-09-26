@@ -1,7 +1,8 @@
 # Altair on Avenger
 
-Status: a design and a first bridge, 26 Sep 2026. The bridge is
-[`crates/avenger-altair`](../crates/avenger-altair/); the measurements are in
+Status: a design and a first bridge, 26 Sep 2026, grown out of this
+experiment's validator. The bridge is
+[`crates/avenger-altair`](../../crates/avenger-altair/); the measurements are in
 its README.
 
 Altair stays the front end: the Python API people write charts with. Avenger
@@ -74,7 +75,7 @@ The steps, each usable on its own:
 Measured on 26 Sep 2026 at `f4890be`: none of the 117 gallery examples that
 run here compiles to Avenger yet. The first refusal of each is `layer` (41),
 a mark other than bar (41), `encoding.color` (8), composition (19), and a
-handful of single properties. [FINDINGS.md](../FINDINGS.md) 19–21 has the
+handful of single properties. [FINDINGS.md](../../FINDINGS.md) 19–21 has the
 list and the command.
 
 Today the compiler draws bar charts only: bars, ranges, aggregates,
@@ -82,7 +83,7 @@ histograms, stacks, a `gte` filter and numeric parameters. Altair's gallery
 is the measure of what comes next; the bridge's coverage script runs the 120
 examples of `tests/examples_methods_syntax` and groups the first refusal of
 each by property, so the order of work follows use. That list is for Jon;
-this repo will hand it back through [FINDINGS.md](../FINDINGS.md).
+this repo will hand it back through [FINDINGS.md](../../FINDINGS.md).
 
 ## What Altair needs
 
