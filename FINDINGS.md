@@ -327,6 +327,13 @@ it; the crate's 134 tests pass).
 **Measure:** `python crates/avenger-altair/bench/budget.py 30000 100000 300000 1000000`
 bisects the smallest budget that draws, for JSON rows and for Arrow.
 
+With the fix on `f4890be` (the Python bridge built against it), Avenger's
+own 256 MB default draws the histogram over 1M and 3M rows, as JSON rows and
+as Arrow, and the times are the same as with the budget raised (51 and 88 ms
+with Arrow); the fix changes the accounting, not the work.
+`LARGE_ALL=1 python crates/avenger-altair/bench/large.py 1000000 3000000`
+with `AVENGER_MAX_MATERIALIZED_BYTES=268435456`.
+
 With the budget raised, the same histogram over 1M values draws in 48 ms
 from a pandas frame passed as Arrow, and over 3M in 83 ms (matplotlib's
 `hist`: 37 and 52 ms; Altair with VegaFusion: 519 and 482 ms).

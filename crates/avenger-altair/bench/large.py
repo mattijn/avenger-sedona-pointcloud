@@ -26,6 +26,8 @@ import avenger_altair as av
 from avenger_altair import _native
 
 alt.data_transformers.disable_max_rows()
+# LARGE_ALL=1 runs every route at every size (vl-convert over 3M takes a while).
+ALL = bool(__import__("os").environ.get("LARGE_ALL"))
 
 
 def chart(df):
@@ -52,21 +54,25 @@ for n in [int(a) for a in sys.argv[1:]] or [10_000, 100_000, 1_000_000]:
     alt.data_transformers.disable_max_rows()
     spec, r["to_dict"] = clock(lambda: av.normalise(chart(df).to_dict(validate=False)))
     text, r["json.dumps"] = clock(lambda: json.dumps(spec))
-    if n <= 1_000_000:
+    if n <= 1_000_000 or ALL:
         (png, refusal), r["avenger (Rust)"] = clock(lambda: _native.render(text, "png", 2.0, None))
-        assert refusal is None, refusal
+        if refusal is not None:
+            r["avenger (Rust)"] = float("nan")
+            r["avenger refusal"] = refusal["message"]
     else:
-        r["avenger (Rust)"] = float("nan")  # JSON rows exceed the budget
+        r["avenger (Rust)"] = float("nan")  # JSON rows exceed the default budget
     r["avenger total"] = r["to_dict"] + r["json.dumps"] + r["avenger (Rust)"]
     # Avenger with the Arrow data path: the frame goes by name.
     av.enable(arrow=True, validation=False)
     spec2, r["arrow: to_dict"] = clock(lambda: av.normalise(chart(df).to_dict(validate=False)))
     (png2, refusal2), r["arrow: avenger (Rust)"] = clock(lambda: _native.render(json.dumps(spec2), "png", 2.0, None, av._bound(spec2)))
-    assert refusal2 is None, refusal2
+    if refusal2 is not None:
+        r["arrow: avenger (Rust)"] = float("nan")
+        r["arrow refusal"] = refusal2["message"]
     r["arrow: avenger total"] = r["arrow: to_dict"] + r["arrow: avenger (Rust)"]
     av.disable()
     # Altair's default route.
-    if n <= 1_000_000:
+    if n <= 1_000_000 or ALL:
         _, r["vl-convert total"] = clock(lambda: vlc.vegalite_to_png(chart(df).to_dict(validate=False), scale=2))
     # VegaFusion pre-evaluates the transforms, then vl-convert draws 20 bars.
     alt.data_transformers.enable("vegafusion")
