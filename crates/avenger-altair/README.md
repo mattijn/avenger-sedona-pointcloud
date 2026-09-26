@@ -247,13 +247,15 @@ tilt, and the live histogram followed 50 appends to 510,000 rows. A live
 view also takes the camera, so a fisheye follows the pointer over growing
 data.
 
-[`video/notebook.mp4`](video/notebook.mp4) (47 s, 2.5 MB) records that
-notebook from a fresh kernel: the fisheye, the tilt, then a fisheye over a
-histogram that grows in 100 appends of 10,000 rows to 1.01 million. It was
-recorded headless with Playwright, a scripted pointer and captions added on
-top; the frame times in the status line are the widget's own. `scale` sets
-the PNG's pixel density and `zoom` the size it is shown at, so a view can be
-drawn at 2.5× and shown at 1.6× without a blurry image.
+[`video/notebook.mp4`](video/notebook.mp4) (33 s, 1.7 MB) records that
+notebook from a fresh kernel: quick sweeps of the fisheye, a few drags of the
+tilt, then a histogram that grows in 100 appends of 10,000 rows to 1.01
+million, with a counter above it of every row so far. It was recorded
+headless with Playwright, a scripted pointer moving at about 60 Hz and
+captions added on top; the frame times in the status line are the widget's
+own. Sampled at 10 frames a second, the lens stays within one sample of the
+pointer. `scale` sets the PNG's pixel density and `zoom` the size it is
+shown at, so a view can be drawn at 2.5× and shown at 1.6× without a blurry image.
 
 ### Live data
 

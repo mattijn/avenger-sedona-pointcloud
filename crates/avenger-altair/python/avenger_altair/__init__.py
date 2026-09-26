@@ -202,7 +202,7 @@ class LiveChart:
         Views of this chart draw again."""
         rows = self._live.append(_arrow(frame))
         for v in self._views:
-            v.status = f"{rows:,} rows"
+            v.rows = rows
             v.refresh()
         return rows
 

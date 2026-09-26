@@ -12,7 +12,10 @@ function render({model, el}) {
   img.draggable = false
   const status = document.createElement('div')
   status.style.cssText = 'margin-top:4px'
-  box.append(img, status)
+  // A live view's row count: every row so far, whatever the chart aggregates them into.
+  const rows = document.createElement('div')
+  rows.style.cssText = 'font:600 20px system-ui,sans-serif;color:#222;margin-bottom:6px;font-variant-numeric:tabular-nums'
+  box.append(rows, img, status)
   el.append(box)
 
   const hint = {fisheye: 'move the pointer over the plot', tilt: 'drag to turn', none: ''}
@@ -23,11 +26,15 @@ function render({model, el}) {
     img.style.width = w * zoom + 'px'
     img.style.height = h * zoom + 'px'
     img.style.cursor = model.get('interaction') === 'tilt' ? 'grab' : 'crosshair'
+    const n = model.get('rows')
+    rows.style.display = n >= 0 ? 'block' : 'none'
+    rows.textContent = n >= 0 ? `${n.toLocaleString('en-US')} rows` : ''
     const ms = model.get('frame_ms')
     status.textContent = [model.get('status'), ms ? `frame ${ms.toFixed(0)} ms` : '', hint[model.get('interaction')] || ''].filter(Boolean).join(' · ')
   }
   model.on('change:png', draw)
   model.on('change:status', draw)
+  model.on('change:rows', draw)
   draw()
 
   let pending = null

@@ -31,6 +31,7 @@ class AvengerView(anywidget.AnyWidget):
     frame_ms = traitlets.Float(0.0).tag(sync=True)
     status = traitlets.Unicode("").tag(sync=True)
     zoom = traitlets.Float(1.0).tag(sync=True)
+    rows = traitlets.Int(-1).tag(sync=True)  # a live view's row count; -1 hides it
 
     def __init__(self, draw: Callable[[Optional[dict]], dict], camera: Optional[dict], scale: float = 2.0, zoom: float = 1.0, **kwargs):
         super().__init__(**kwargs)
@@ -101,6 +102,6 @@ def live_view(live: Any, scale: float = 2.0, zoom: float = 1.0) -> AvengerView:
     def draw(camera: Optional[dict]) -> dict:
         return live._live.render_frame(scale, json.dumps(camera) if camera else None)
 
-    v = AvengerView(draw, live.spec.get("camera"), scale, zoom)
+    v = AvengerView(draw, live.spec.get("camera"), scale, zoom, rows=live.rows)
     live._views.append(v)
     return v
