@@ -1,0 +1,9 @@
+[build-system]
+requires = ["maturin>=1.5,<2"]
+build-backend = "maturin"
+
+[project]
+name = "avenger-vegalite"
+description = "Avenger's Vega-Lite validation for Python, with no other dependency."
+requires-python = ">=3.9"
+dynamic = ["version"]

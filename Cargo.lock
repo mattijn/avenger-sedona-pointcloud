@@ -1086,6 +1086,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "avenger-vegalite-py"
+version = "0.1.0"
+dependencies = [
+ "avenger-vegalite-spec",
+ "pyo3",
+]
+
+[[package]]
 name = "avenger-vegalite-spec"
 version = "0.1.0"
 source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"

@@ -84,7 +84,7 @@ Vega-Lite refuses it (FINDINGS.md 23).
 
 | Per spec, warm | Bar chart | Histogram (`bin`) |
 |---|---|---|
-| Rust, from Python | 5.0 µs | 6.3 µs |
+| Rust, from Python (`avenger-vegalite-spec` alone; [`avenger-vegalite-py`](../avenger-vegalite-py/) is a 1.0 MB module for just this) | 5.0 µs | 6.3 µs |
 | Avenger's JSON Schema only (`jsonschema`) | 155 µs | 203 µs |
 | JSON Schema + CEL (`jsonschema` + `cel-python`) | 424 µs | 13,378 µs |
 | Altair's validation, the whole Vega-Lite schema | 705 µs | |

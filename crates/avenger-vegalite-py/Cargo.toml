@@ -1,0 +1,17 @@
+[package]
+name = "avenger-vegalite-py"
+description = "Avenger's Vega-Lite validation for Python, and nothing else: avenger-vegalite-spec behind pyo3."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "avenger_vegalite"
+crate-type = ["cdylib"]
+
+[dependencies]
+avenger-vegalite-spec.workspace = true
+pyo3 = { version = "0.25", features = ["extension-module", "abi3-py39"] }
+
+[package.metadata.maturin]
+name = "avenger_vegalite"

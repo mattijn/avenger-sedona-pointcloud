@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "common",
     "crates/avenger-altair",
+    "crates/avenger-vegalite-py",
     "crates/avenger-validate",
     "experiments/01-charts",
     "experiments/02-chart-language",
