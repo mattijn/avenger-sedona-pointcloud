@@ -34,6 +34,31 @@ spec in 13.5 µs from Python (6.5 µs of it in Rust), and `to_dict()` takes
 735 µs: the rest of it is Altair's own Python layer walking its objects and
 serialising the data, which is what steps 3 and 4 below are about.
 
+## What 2024 taught
+
+Avenger met Altair once before. In 2024 the `avenger` Python package (0.0.x)
+registered `avenger-html` and `avenger-png` renderers: Vega-Lite went to Vega,
+Vega built its scenegraph, and Avenger drew that scenegraph with the GPU.
+Two things stopped it:
+
+- **The browser.** `avenger-html` drew in the notebook's frontend with
+  WebGPU, which Chrome on Linux did not enable, and the WebGL fallback did
+  not take; in JupyterLab and VS Code the chart then also failed inside
+  vega-embed while the same HTML file worked on its own
+  ([jonmmease/avenger#77](https://github.com/jonmmease/avenger/issues/77#issuecomment-2116340446)).
+  The bridge here draws in the kernel and sends a PNG, so no GPU or script
+  runs in the frontend; interaction (step 5) will meet the same question.
+- **Everything before the renderer.** A 3M-point line took 34.9 s with
+  `avenger-png` (14.7 s with vl-convert, 0.2 s with matplotlib), because
+  Vega processes data row by row to build the scenegraph, and tables cross
+  between components as JSON
+  ([vega/altair#3035](https://github.com/vega/altair/discussions/3035#discussioncomment-10647136)).
+  Jon's answer then was column-oriented processing. The present stack is
+  that: Vega-Lite compiles to a DataFusion dataflow over columns, with no
+  Vega in between, and with the Arrow data path below a histogram over 3M
+  values draws in 83 ms. (A histogram, not a line: the compiler draws bars
+  only so far.)
+
 ## Where it goes
 
 Avenger has its own Vega-Lite front end: `avenger-vegalite-spec` (typed Serde
@@ -62,11 +87,13 @@ The steps, each usable on its own:
    users; what changes is where the classes, their docstrings and their
    validation come from. The JSON Schema route stays available as an
    opt-out.
-4. **Data without JSON.** Today a DataFrame becomes inline JSON rows (or a
-   file) in the spec. Avenger reads Arrow: a pandas, Polars or PyArrow frame
-   can reach DataFusion through the Arrow C data interface without being
-   written out, as a named `TableSnapshot`. This is where the largest time
-   goes for real data, and where native rendering pays most.
+4. **Data without JSON** (built in the bridge). Altair writes a DataFrame
+   into the spec as JSON rows; for a million values that is 2.2 s of a
+   2.2 s chart. The bridge's `"avenger"` data transformer puts only a name
+   in the spec and hands the frame to Avenger through the Arrow PyCapsule
+   interface, as a named `TableSnapshot`: 48 ms for the same chart. In
+   Altair itself this is a data transformer and a way for a renderer to
+   receive the frames by name.
 5. **Interaction in the notebook**: a widget (anywidget) that hosts an
    Avenger canvas, so selections and parameters work without Vega.
 

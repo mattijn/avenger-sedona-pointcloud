@@ -71,6 +71,72 @@ def _spec(chart_or_spec: Any) -> dict:
         return normalise(chart_or_spec.to_dict(validate=False))
 
 
+# --- data -------------------------------------------------------------------
+#
+# Altair's default data transformer writes a DataFrame into the spec as JSON
+# rows; for a million values that is most of the time (to_dict, json.dumps,
+# and parsing it again in Rust). The "avenger" transformer instead keeps the
+# frame and puts only its name in the spec; the renderer hands the frame to
+# Avenger as Arrow, through the Arrow PyCapsule interface.
+
+_tables: "dict[str, Any]" = {}
+_MAX_TABLES = 64
+
+
+def _arrow(data: Any) -> Any:
+    if hasattr(data, "__arrow_c_stream__"):
+        return data
+    import pyarrow as pa  # a pandas frame without the interface
+
+    return pa.Table.from_pandas(data, preserve_index=False)
+
+
+def to_avenger(data: Any) -> dict:
+    """Altair data transformer: a frame by name, not as rows."""
+    if isinstance(data, dict) or not (hasattr(data, "__arrow_c_stream__") or hasattr(data, "to_numpy")):
+        return _default_transformer(data)
+    name = f"avenger-{id(data):x}"
+    _tables[name] = data
+    while len(_tables) > _MAX_TABLES:
+        _tables.pop(next(iter(_tables)))
+    return {"name": name}
+
+
+def _default_transformer(data: Any) -> dict:
+    return alt.default_data_transformer(data)
+
+
+def _named(spec: Any, out: set) -> set:
+    if isinstance(spec, dict):
+        d = spec.get("data")
+        if isinstance(d, dict) and isinstance(d.get("name"), str) and d["name"] in _tables:
+            out.add(d["name"])
+        for v in spec.values():
+            _named(v, out)
+    elif isinstance(spec, list):
+        for v in spec:
+            _named(v, out)
+    return out
+
+
+def _bound(spec: dict) -> dict:
+    return {n: _arrow(_tables[n]) for n in _named(spec, set())}
+
+
+def _with_rows(spec: dict) -> dict:
+    """The spec with its named frames written in as rows, for a renderer
+    that is not Avenger."""
+    names = _named(spec, set())
+    if not names:
+        return spec
+    spec = dict(spec)
+    datasets = dict(spec.get("datasets") or {})
+    for n in names:
+        datasets[n] = alt.utils.data.to_values(_tables[n])["values"]
+    spec["datasets"] = datasets
+    return spec
+
+
 def validate(chart_or_spec: Any) -> Optional[dict]:
     """None if Avenger takes the spec, else `{"path", "message", "stage"}`."""
     return _native.validate(json.dumps(_spec(chart_or_spec)))
@@ -78,7 +144,8 @@ def validate(chart_or_spec: Any) -> Optional[dict]:
 
 def render(chart_or_spec: Any, format: str = "svg", scale: float = 2.0, base_dir: str | None = None) -> bytes:
     """The chart drawn by Avenger, as SVG (UTF-8) or PNG bytes."""
-    data, refusal = _native.render(json.dumps(_spec(chart_or_spec)), format, scale, base_dir)
+    spec = _spec(chart_or_spec)
+    data, refusal = _native.render(json.dumps(spec), format, scale, base_dir, _bound(spec))
     if refusal is not None:
         raise AvengerRefusal(refusal)
     return data
@@ -96,7 +163,7 @@ def explain(chart_or_spec: Any) -> str:
     spec = _spec(chart_or_spec)
     r = _native.validate(json.dumps(spec))
     if r is None:
-        _, r = _native.render(json.dumps(spec), "svg", 1.0, None)
+        _, r = _native.render(json.dumps(spec), "png", 1.0, None, _bound(spec))
     if r is None:
         return "Avenger draws this chart."
     return f"Avenger does not draw this chart yet ({r['stage']}): {r['path']}: {r['message']}"
@@ -142,7 +209,7 @@ def _remove_validation() -> None:
 def _renderer(spec: dict, **kwargs) -> dict:
     fmt = _options.get("format", "png")
     fallback = _options.get("fallback", True)
-    data, refusal = _native.render(json.dumps(normalise(spec)), fmt, _options.get("scale", 2.0), None)
+    data, refusal = _native.render(json.dumps(normalise(spec)), fmt, _options.get("scale", 2.0), None, _bound(spec))
     if refusal is None:
         last.clear()
         last.update({"backend": "avenger"})
@@ -153,20 +220,29 @@ def _renderer(spec: dict, **kwargs) -> dict:
     last.update({"backend": "fallback", **refusal})
     if not fallback:
         raise AvengerRefusal(refusal)
-    # The renderer that was active before, as `enable` found it.
-    return _options["previous_renderer"](spec, **kwargs)
+    # The renderer that was active before, as `enable` found it, with any
+    # frame that went by name written back in as rows.
+    return _options["previous_renderer"](_with_rows(spec), **kwargs)
 
 
 _options: dict = {}
 
 
-def enable(format: str = "png", scale: float = 2.0, fallback: bool = True, validation: bool = True) -> None:
+def enable(format: str = "png", scale: float = 2.0, fallback: bool = True, validation: bool = True, arrow: bool = True) -> None:
     """Render with Avenger (and validate with it, unless `validation=False`).
     `fallback=False` raises `AvengerRefusal` for a chart Avenger does not draw
-    yet, instead of drawing it the usual way."""
+    yet, instead of drawing it the usual way. With `arrow` (the default), a
+    DataFrame reaches Avenger as Arrow by name instead of as JSON rows."""
+    if arrow:
+        if alt.data_transformers.active != "avenger":
+            _options["previous_data"] = alt.data_transformers.active
+            _options["previous_data_options"] = dict(alt.data_transformers.options)
+        alt.data_transformers.register("avenger", to_avenger)
+        alt.data_transformers.enable("avenger")
     previous = alt.renderers.active
     if previous != "avenger":
         _options["previous"] = previous
+        _options["previous_options"] = dict(alt.renderers.options)
         _options["previous_renderer"] = alt.renderers.get()
     _options.update(format=format, scale=scale, fallback=fallback)
     alt.renderers.register("avenger", _renderer)
@@ -178,8 +254,10 @@ def enable(format: str = "png", scale: float = 2.0, fallback: bool = True, valid
 def disable() -> None:
     """Back to the renderer and validation that were active before."""
     _remove_validation()
+    if alt.data_transformers.active == "avenger":
+        alt.data_transformers.enable(_options.get("previous_data") or "default", **_options.get("previous_data_options", {}))
     if alt.renderers.active == "avenger":
-        alt.renderers.enable(_options.get("previous") or "default")
+        alt.renderers.enable(_options.get("previous") or "default", **_options.get("previous_options", {}))
 
 
 @contextmanager

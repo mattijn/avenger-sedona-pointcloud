@@ -32,6 +32,13 @@ from Avenger, are in [experiments/08-pipeline-validation/altair-avenger.md](../.
   not draw yet falls back to the renderer that was active; `av.last` says
   which one drew the last chart and why, and `enable(fallback=False)` makes
   that an `AvengerRefusal` with the path instead.
+- **Data as Arrow.** Enabled, an `"avenger"` data transformer keeps a
+  DataFrame and puts only its name in the spec; the renderer hands the frame
+  to Avenger through the Arrow PyCapsule interface (`__arrow_c_stream__`:
+  pandas, Polars, PyArrow), where it becomes a named `TableSnapshot`. No rows
+  are written as JSON. For a chart that falls back, the rows are written back
+  into the spec's `datasets` first. `enable(arrow=False)` keeps Altair's
+  transformer.
 - **Altair's default theme.** Every Altair chart carries
   `config.view.continuousWidth/Height`; Avenger reads no `config` yet, so that
   one config is written out as the width or height Vega-Lite would give a
@@ -61,6 +68,39 @@ An 8-row bar chart (`x="category:N", y="sum(amount):Q"`), warm.
 | draw to PNG: validate, compile, render, export | 0.02 + 0.7 + 4.3 + 14.1 ms |
 | draw to SVG | 0.05 + 1.8 + 5.4 + 341 ms |
 
+### Large data
+
+A histogram (`bin` with 20 bins, `count()`) over N normal values, to PNG at
+scale 2, warm; `python bench/large.py 10000 100000 1000000 3000000`.
+
+| N | Avenger, Arrow | Avenger, JSON rows | VegaFusion + vl-convert | vl-convert | matplotlib `hist` |
+|---|---|---|---|---|---|
+| 10k | 35 ms | 57 ms | 427 ms | 431 ms | 50 ms |
+| 100k | 38 ms | 273 ms | 506 ms | 744 ms | 32 ms |
+| 1M | **48 ms** | 2,184 ms | 519 ms | 3,131 ms | 37 ms |
+| 3M | **83 ms** | refused (budget) | 482 ms | not run | 52 ms |
+
+With JSON rows at 1M, the time is Altair's `to_dict` (975 ms), `json.dumps`
+(545 ms), and in Rust parsing the rows (221 ms) and turning them into Arrow
+(144 ms); the chart itself, binning and counting and drawing, is about 50 ms.
+With Arrow, `to_dict` takes 2 ms and the rest is the chart. At 3M the process
+peaks 121 MB above where it started, for a 24 MB column.
+
+This is the question of vega/altair#3035
+([Jon's reply, 2024](https://github.com/vega/altair/discussions/3035#discussioncomment-10647136)):
+then, `avenger-png` drew a 3M-point line in 34.9 s because Vega built the
+scenegraph row by row before Avenger drew it, and passing tables as JSON cost
+about a second per million rows each way. The present stack answers both:
+Vega-Lite compiles to a DataFusion dataflow over columns, and the table
+arrives as Arrow. The comparison is not like for like: that chart was a line,
+which Avenger's compiler does not draw yet; this one is a histogram.
+
+Avenger's dataflow charges what active queries materialise against a budget,
+256 MB by default. The charge grows faster than the data (22 MB for 100k
+rows, 1.98 GB for 1M, 17.7 GB for 3M, JSON or Arrow alike), so the default
+refuses a histogram over 1M rows; the bridge sets 64 GiB
+(`AVENGER_MAX_MATERIALIZED_BYTES` overrides it). FINDINGS.md 22.
+
 SVG is the default in Vega's notebooks, but here 139 of its 148 KB is one
 embedded font and nearly all its time is spent there, so the renderer
 defaults to PNG ([FINDINGS.md](../../FINDINGS.md) 20). `enable(format="svg")`
@@ -80,6 +120,9 @@ is drawn.
 - A validator hook in Altair itself; this bridge replaces `Chart.validate` on
   `enable()` and restores it on `disable()`. `LayerChart` and the
   concatenated charts are not hooked, since Avenger draws none of them yet.
-- Data goes through Altair's JSON serialisation (`datasets` in the spec); an
-  Arrow path is step 4 of the design.
+- Frames with nested or object columns were not tried on the Arrow path;
+  the frames above have one float column, and the bar chart one string and
+  one integer column.
+- The large-data comparison is a histogram; a line or scatter plot of
+  millions of points waits for those marks in Avenger's compiler.
 - Interaction and the notebook widget.

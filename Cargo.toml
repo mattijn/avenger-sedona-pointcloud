@@ -41,6 +41,7 @@ avenger-scales = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1
 avenger-scenegraph = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }
 avenger-text = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }
 avenger-transform = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }
+avenger-datafusion-dataflow = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }
 avenger-vegalite-compiler = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8", default-features = false, features = ["svg", "png"] }
 avenger-vegalite-spec = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }
 avenger-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }

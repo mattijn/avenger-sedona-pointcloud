@@ -17,6 +17,9 @@ avenger-vegalite-compiler.workspace = true
 avenger-vegalite-spec.workspace = true
 avenger-chart.workspace = true
 avenger-scales.workspace = true
+avenger-transform.workspace = true
+avenger-datafusion-dataflow.workspace = true
+arrow = { workspace = true, features = ["ffi"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 pyo3 = { version = "0.25", optional = true, features = ["extension-module", "abi3-py39"] }

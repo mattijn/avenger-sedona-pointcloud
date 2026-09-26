@@ -33,6 +33,30 @@ fn runtime() -> &'static tokio::runtime::Runtime {
     RT.get_or_init(|| tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().expect("a Tokio runtime"))
 }
 
+/// The budget for what active queries may materialise. The charge is
+/// conservative and grows faster than the data: a histogram over 3 million
+/// rows is charged 17.7 GB while the process peaks 121 MB above where it
+/// started (FINDINGS.md 22). Avenger's default, 256 MB, refuses such charts;
+/// this one is 64 GiB, and `AVENGER_MAX_MATERIALIZED_BYTES` overrides it.
+pub fn budget() -> usize {
+    std::env::var("AVENGER_MAX_MATERIALIZED_BYTES").ok().and_then(|v| v.parse().ok()).unwrap_or(64 << 30)
+}
+
+/// A dataflow runtime as `Chart::prepare` builds one, with this budget.
+fn dataflow(max_materialized_bytes: usize) -> Result<avenger_datafusion_dataflow::Runtime, Refusal> {
+    use avenger_datafusion_dataflow::{datafusion::prelude::SessionContext, ExecutionConfig, Runtime, RuntimeConfig};
+    Runtime::with_session_state_and_codec(
+        SessionContext::new().state(),
+        RuntimeConfig {
+            execution: ExecutionConfig { max_materialized_bytes, ..Default::default() },
+            function_versions: avenger_transform::function_versions(),
+            ..Default::default()
+        },
+        std::sync::Arc::new(avenger_transform::TransformExtensionCodec::default()),
+    )
+    .map_err(|e| Refusal { path: "$".into(), message: e.to_string(), stage: "render" })
+}
+
 /// Parse and validate a Vega-Lite spec (JSON text) with Avenger's types.
 pub fn validate(spec: &str) -> Result<UnitSpec, Refusal> {
     UnitSpec::from_json(spec).map_err(|e| Refusal { path: e.path().to_string(), message: e.message().to_string(), stage: "spec" })
@@ -53,12 +77,16 @@ pub struct Stages {
     pub export: f64,
 }
 
+/// Tables bound by name (`{"data": {"name": ...}}`), as Arrow; they take
+/// precedence over the spec's own `datasets`.
+pub type Tables = BTreeMap<String, avenger_datafusion_dataflow::TableSnapshot>;
+
 /// Validate, compile and render: the image's bytes (SVG as UTF-8).
 pub fn render(spec: &str, format: Format, scale: f32, base_dir: Option<&str>) -> Result<Vec<u8>, Refusal> {
-    render_timed(spec, format, scale, base_dir, &mut Stages::default())
+    render_timed(spec, format, scale, base_dir, &Tables::new(), &mut Stages::default())
 }
 
-pub fn render_timed(spec: &str, format: Format, scale: f32, base_dir: Option<&str>, st: &mut Stages) -> Result<Vec<u8>, Refusal> {
+pub fn render_timed(spec: &str, format: Format, scale: f32, base_dir: Option<&str>, tables: &Tables, st: &mut Stages) -> Result<Vec<u8>, Refusal> {
     let ms = |t: std::time::Instant| t.elapsed().as_secs_f64() * 1e3;
     let t = std::time::Instant::now();
     let unit = validate(spec)?;
@@ -68,11 +96,11 @@ pub fn render_timed(spec: &str, format: Format, scale: f32, base_dir: Option<&st
     let formatting = avenger_scales::formatter::ScaleFormatting::d3(Default::default(), Default::default());
     let options = VegaLiteOptions {
         base_dir: base_dir.map_or_else(|| ".".into(), Into::into),
-        chart: avenger_chart::ChartOptions::default().with_formatting(formatting),
+        chart: avenger_chart::ChartOptions { dataflow: Some(dataflow(budget())?), ..Default::default() }.with_formatting(formatting),
     };
     runtime().block_on(async move {
         let t = std::time::Instant::now();
-        let chart = Chart::from_vegalite(&unit, &BTreeMap::new(), options)
+        let chart = Chart::from_vegalite(&unit, tables, options)
             .await
             .map_err(|e| Refusal { path: e.path().to_string(), message: e.message(), stage: "compile" })?;
         st.compile = ms(t);

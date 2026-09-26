@@ -23,7 +23,7 @@ fn main() {
             let mut sum = avenger_altair::Stages::default();
             let mut result = None;
             for _ in 0..n {
-                result = Some(avenger_altair::render_timed(&spec, format, 2.0, dir.as_deref(), &mut st));
+                result = Some(avenger_altair::render_timed(&spec, format, 2.0, dir.as_deref(), &Default::default(), &mut st));
                 (sum.validate, sum.compile, sum.render, sum.export) = (sum.validate + st.validate, sum.compile + st.compile, sum.render + st.render, sum.export + st.export);
             }
             let k = n as f64;

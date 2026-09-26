@@ -283,6 +283,26 @@ order that opens the most of Altair is: other marks and layering, then
 colour, then composition. The same script reruns it; `coverage.json` has
 every example.
 
+### 22. The materialisation charge grows faster than the data
+
+`ExecutionConfig::max_materialized_bytes` (256 MB by default) is charged by
+what active queries produce, conservatively. For a Vega-Lite histogram
+(`bin`, `count()`) over one float column, the smallest budget that draws is
+83 bytes a row at 30k rows, 216 at 100k, 628 at 300k, about 2,000 at 1M and
+about 5,900 at 3M: roughly quadratic in the rows, the same with the table
+given as JSON rows or as an Arrow `TableSnapshot`. At 3M rows it asks
+17.7 GB while the process peaks 121 MB above where it started, for a 24 MB
+column. So the default refuses a histogram over 1M rows ("active
+materialization exceeds the 268435456 byte budget"). A charge that follows
+what is actually held (or is released as batches are consumed) would make
+the budget protect memory rather than refuse charts that fit.
+**Measure:** `python crates/avenger-altair/bench/budget.py 30000 100000 300000 1000000`
+bisects the smallest budget that draws, for JSON rows and for Arrow.
+
+With the budget raised, the same histogram over 1M values draws in 48 ms
+from a pandas frame passed as Arrow, and over 3M in 83 ms (matplotlib's
+`hist`: 37 and 52 ms; Altair with VegaFusion: 519 and 482 ms).
+
 Also: the compiler's `pdf` feature pulls in `krilla` 0.8.2, which needs
 rustc 1.92, so the bridge builds with `svg` and `png` only on this machine's
 1.89.
