@@ -26,7 +26,7 @@ import altair as alt
 
 from . import _native
 
-__all__ = ["enable", "disable", "enabled", "explain", "normalise", "render", "save", "to_vegalite", "validate", "AvengerRefusal", "last"]
+__all__ = ["enable", "disable", "enabled", "explain", "live", "LiveChart", "normalise", "render", "save", "to_vegalite", "validate", "AvengerRefusal", "last"]
 
 
 class AvengerRefusal(ValueError):
@@ -174,6 +174,64 @@ def explain(chart_or_spec: Any) -> str:
     if r is None:
         return "Avenger draws this chart."
     return f"Avenger does not draw this chart yet ({r['stage']}): {r['path']}: {r['message']}"
+
+
+# --- live data ------------------------------------------------------------
+
+
+class LiveChart:
+    """A chart compiled once over its DataFrame, redrawn as rows arrive.
+
+        live = av.live(chart)          # chart = alt.Chart(df).mark_bar()...
+        live.append(more_rows)         # a DataFrame with the same columns
+        live.png()                     # the chart over all rows so far
+
+    The spec is compiled once; each append hands the new rows to Avenger as
+    Arrow and the next draw recomputes the dataflow over the whole table.
+    """
+
+    def __init__(self, chart: Any):
+        spec, frame = _named_spec(chart)
+        self._live = _native.Live(json.dumps(spec), _arrow(frame))
+        self.spec = spec
+
+    def append(self, frame: Any) -> int:
+        """Add rows (a pandas, Polars or PyArrow frame); returns the row count."""
+        return self._live.append(_arrow(frame))
+
+    @property
+    def rows(self) -> int:
+        return self._live.rows
+
+    def png(self, scale: float = 2.0) -> bytes:
+        return self._live.render("png", scale)
+
+    def svg(self) -> str:
+        return self._live.render("svg", 1.0).decode()
+
+    def _repr_mimebundle_(self, include=None, exclude=None):
+        return {"image/png": base64.b64encode(self.png()).decode()}
+
+
+def _named_spec(chart: Any) -> "tuple[dict, Any]":
+    """The chart's spec with its DataFrame as named data, and the frame."""
+    alt.data_transformers.register("avenger", to_avenger)
+    previous = alt.data_transformers.active
+    options = dict(alt.data_transformers.options)
+    alt.data_transformers.enable("avenger")
+    try:
+        spec = normalise(chart.to_dict(validate=False))
+    finally:
+        alt.data_transformers.enable(previous, **options)
+    names = sorted(_named(spec, set()))
+    if len(names) != 1:
+        raise ValueError("a live chart needs exactly one DataFrame as its data")
+    return spec, _tables[names[0]]
+
+
+def live(chart: Any) -> LiveChart:
+    """A chart that grows with its data: `live(chart).append(frame)`."""
+    return LiveChart(chart)
 
 
 # --- validation -------------------------------------------------------------

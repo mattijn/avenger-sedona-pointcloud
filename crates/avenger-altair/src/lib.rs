@@ -117,5 +117,63 @@ pub fn render_timed(spec: &str, format: Format, scale: f32, base_dir: Option<&st
     })
 }
 
+/// A chart compiled once over a named table that grows: `append` adds rows,
+/// `render` draws what is there now. After Avenger's `streaming_bars`: the
+/// spec's `data.name` becomes a replaceable table input of the dataflow.
+pub struct Live {
+    chart: Chart,
+    input: avenger_datafusion_dataflow::TableInput,
+    store: avenger_datafusion_dataflow::TableStore,
+    inputs: avenger_datafusion_dataflow::Inputs,
+}
+
+impl Live {
+    pub fn new(spec: &str, first: avenger_datafusion_dataflow::TableSnapshot) -> Result<Live, Refusal> {
+        let unit = validate(spec)?;
+        let name = match &unit.data {
+            avenger_vegalite_spec::Data::Named { name, .. } => name.clone(),
+            _ => return Err(Refusal { path: "data".into(), message: "a live chart needs {\"name\": ...} data".into(), stage: "spec" }),
+        };
+        let compile = |e: avenger_vegalite_compiler::CompileError| Refusal { path: e.path().to_string(), message: e.message(), stage: "compile" };
+        let run = |e: String| Refusal { path: "$".into(), message: e, stage: "render" };
+        let definition = avenger_vegalite_compiler::compile_vegalite_with_input(&unit, first.schema().clone()).map_err(compile)?;
+        let input = definition.dataflow().interface().root().table_input(&name).map_err(|e| run(e.to_string()))?;
+        let formatting = avenger_scales::formatter::ScaleFormatting::d3(Default::default(), Default::default());
+        let options = avenger_chart::ChartOptions { dataflow: Some(dataflow(budget())?), ..Default::default() }.with_formatting(formatting);
+        let store = avenger_datafusion_dataflow::TableStore::new(first);
+        runtime().block_on(async {
+            let chart = Chart::prepare(definition, options).await.map_err(|e| run(e.to_string()))?;
+            let builder = chart.inputs().map_err(|e| run(e.to_string()))?;
+            let inputs = builder.table(&input, store.snapshot()).and_then(|b| b.finish()).map_err(|e| run(e.to_string()))?;
+            Ok(Live { chart, input, store, inputs })
+        })
+    }
+
+    /// Add rows; the next render includes them.
+    pub fn append(&mut self, batches: Vec<arrow::record_batch::RecordBatch>) -> Result<usize, Refusal> {
+        let run = |e: String| Refusal { path: "$".into(), message: e, stage: "render" };
+        let snapshot = self.store.append_batches(batches).map_err(|e| run(e.to_string()))?;
+        let rows = snapshot.num_rows();
+        self.inputs = self.inputs.edit().table(&self.input, snapshot).and_then(|b| b.finish()).map_err(|e| run(e.to_string()))?;
+        Ok(rows)
+    }
+
+    pub fn rows(&self) -> usize {
+        self.store.snapshot().num_rows()
+    }
+
+    pub fn render(&self, format: Format, scale: f32) -> Result<Vec<u8>, Refusal> {
+        let run = |e: String| Refusal { path: "$".into(), message: e, stage: "render" };
+        runtime().block_on(async {
+            let frame = self.chart.render(RenderOptions::default().inputs(self.inputs.clone())).await.map_err(|e| run(e.to_string()))?;
+            match format {
+                Format::Svg => frame.to_svg().map(String::into_bytes),
+                Format::Png => frame.to_png(scale).await,
+            }
+            .map_err(|e| run(e.to_string()))
+        })
+    }
+}
+
 #[cfg(feature = "python")]
 mod python;

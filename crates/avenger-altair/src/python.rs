@@ -62,9 +62,54 @@ fn render<'py>(py: Python<'py>, spec: &str, format: &str, scale: f32, base_dir: 
     }
 }
 
+fn batches(obj: &Bound<'_, PyAny>) -> PyResult<Vec<arrow::record_batch::RecordBatch>> {
+    Ok(table(obj)?.batches().to_vec())
+}
+
+/// `Live(spec_json, first_frame)`: a chart compiled once over a named table;
+/// `append(frame)` adds rows, `render(format, scale)` draws the rows so far.
+#[pyclass(unsendable, module = "avenger_altair._native")]
+struct Live {
+    inner: crate::Live,
+}
+
+#[pymethods]
+impl Live {
+    #[new]
+    fn new(spec: &str, first: Bound<'_, PyAny>) -> PyResult<Self> {
+        let snapshot = table(&first)?;
+        crate::Live::new(spec, snapshot).map(|inner| Live { inner }).map_err(|r| PyValueError::new_err(r.to_string()))
+    }
+
+    /// Add the rows of a frame; returns the number of rows now.
+    fn append(&mut self, py: Python<'_>, frame: Bound<'_, PyAny>) -> PyResult<usize> {
+        let b = batches(&frame)?;
+        let inner = &mut self.inner;
+        py.allow_threads(|| inner.append(b)).map_err(|r| PyValueError::new_err(r.to_string()))
+    }
+
+    #[getter]
+    fn rows(&self) -> usize {
+        self.inner.rows()
+    }
+
+    #[pyo3(signature = (format = "png", scale = 2.0))]
+    fn render<'py>(&self, py: Python<'py>, format: &str, scale: f32) -> PyResult<Bound<'py, PyBytes>> {
+        let f = match format {
+            "svg" => Format::Svg,
+            "png" => Format::Png,
+            other => return Err(PyValueError::new_err(format!("format is svg or png, not {other}"))),
+        };
+        let inner = &self.inner;
+        let bytes = py.allow_threads(|| inner.render(f, scale)).map_err(|r| PyValueError::new_err(r.to_string()))?;
+        Ok(PyBytes::new(py, &bytes))
+    }
+}
+
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(validate, m)?)?;
     m.add_function(wrap_pyfunction!(render, m)?)?;
+    m.add_class::<Live>()?;
     Ok(())
 }

@@ -160,6 +160,28 @@ An 8-row bar chart (`x="category:N", y="sum(amount):Q"`), warm.
 | draw to PNG: validate, compile, render, export | 0.02 + 0.7 + 4.3 + 14.1 ms |
 | draw to SVG | 0.05 + 1.8 + 5.4 + 341 ms |
 
+### Live data
+
+`av.live(chart)` compiles the chart once over its DataFrame, as a
+replaceable table input of Avenger's dataflow (`compile_vegalite_with_input`,
+after Avenger's `streaming_bars`); `append(frame)` hands new rows over as
+Arrow, and `png()` draws the rows so far. A histogram fed 10,000 rows at a
+time (`python bench/live.py 10000 100`):
+
+| Rows | `append` | draw | the same rows drawn from scratch |
+|---|---|---|---|
+| 20k | 0.39 ms | 24.6 ms | 26.6 ms |
+| 100k | 0.28 ms | 24.2 ms | 27.7 ms |
+| 500k | 0.37 ms | 31.1 ms | 34.9 ms |
+| 1M | 0.35 ms | 39.2 ms | 44.6 ms |
+
+Appending costs the same at any size. Drawing grows with the table, because
+each frame recomputes the dataflow over all rows, and compiling is cheap
+(2–5 ms), so compiling once gains little. A draw that does not grow with the
+table needs incremental aggregation (Avenger's
+`avenger-datafusion-aggregate-state`, the rolling states of experiment 3);
+that is not wired here.
+
 ### Large data
 
 A histogram (`bin` with 20 bins, `count()`) over N normal values, to PNG at
