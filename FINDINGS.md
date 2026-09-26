@@ -359,7 +359,7 @@ on `avenger-vegalite-spec` does it with `schemars` (derives on 31 types, the
 schema of the five with their own `Deserialize` by hand), and puts what JSON
 Schema cannot state (an ordered extent, strictly increasing steps, distinct
 names and aliases) as CEL in `x-avenger-rules`, Kubernetes-style. The
-result is 18.8 KB against Vega-Lite's 1.5 MB, and a plain `jsonschema` run
+result is 18.8 KB against the 1.9 MB of Vega-Lite's schema that Altair ships, and a plain `jsonschema` run
 on it takes 155 µs where Altair's takes 705 µs. The change is
 [`crates/avenger-altair/schema/vegalite-spec-schema.patch`](crates/avenger-altair/schema/vegalite-spec-schema.patch)
 (against `f4890be`; the crate's tests pass with and without the feature).
