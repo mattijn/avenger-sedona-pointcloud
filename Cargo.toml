@@ -4,6 +4,7 @@ members = [
     "common",
     "crates/avenger-altair",
     "crates/avenger-vegalite-py",
+    "crates/avenger-vegalite-spec",
     "crates/avenger-validate",
     "experiments/01-charts",
     "experiments/02-chart-language",
@@ -70,3 +71,9 @@ winit = "0.30.11"
 copc-rs = { git = "https://github.com/pka/copc-rs", rev = "7918657abc8ba767cdccf041b7b020c218029ace", features = ["laz-parallel"] }
 
 lidar-common = { path = "common" }
+
+# Avenger's Vega-Lite spec types, carried in this repo with additions that are
+# not upstream yet: a JSON Schema export, `config`, and `camera`
+# (crates/avenger-vegalite-spec/VENDORED.md).
+[patch."https://github.com/jonmmease/avenger"]
+avenger-vegalite-spec = { path = "crates/avenger-vegalite-spec" }

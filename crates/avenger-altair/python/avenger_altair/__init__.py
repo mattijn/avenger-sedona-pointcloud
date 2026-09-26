@@ -26,7 +26,7 @@ import altair as alt
 
 from . import _native
 
-__all__ = ["enable", "disable", "enabled", "explain", "normalise", "render", "save", "validate", "AvengerRefusal", "last"]
+__all__ = ["enable", "disable", "enabled", "explain", "normalise", "render", "save", "to_vegalite", "validate", "AvengerRefusal", "last"]
 
 
 class AvengerRefusal(ValueError):
@@ -43,25 +43,32 @@ class AvengerRefusal(ValueError):
 last: dict = {}
 
 
-# Altair's default theme adds this to every chart. Vega-Lite reads it as the
-# size of a continuous axis; Avenger takes no `config` yet, so it becomes the
-# explicit width or height Vega-Lite would give. Any other config is left in
-# place, and Avenger says what it does not take.
-_ALTAIR_DEFAULT_CONFIG = {"view": {"continuousWidth": 300, "continuousHeight": 300}}
+# Vega-Lite gives a view with a continuous axis the size in
+# `config.view.continuousWidth/Height` (Altair's default theme sets both to
+# 300). Avenger's spec reads `config` but its compiler does not size by it
+# yet, so the size is written out as the explicit width or height Vega-Lite
+# would use.
 _CONTINUOUS = {"quantitative", "temporal"}
 
 
 def normalise(spec: dict) -> dict:
-    """The spec with Altair's default theme written out as Vega-Lite applies it."""
-    if spec.get("config") != _ALTAIR_DEFAULT_CONFIG:
-        return spec
-    spec = {k: v for k, v in spec.items() if k != "config"}
+    """The spec with `config.view`'s continuous sizes written out."""
+    view = (spec.get("config") or {}).get("view") or {}
     enc = spec.get("encoding") or {}
-    for channel, size in (("x", "width"), ("y", "height")):
+    if not isinstance(enc, dict):
+        return spec
+    out = None
+    for channel, size, key in (("x", "width", "continuousWidth"), ("y", "height", "continuousHeight")):
         ch = enc.get(channel) or {}
-        if size not in spec and ch.get("type") in _CONTINUOUS:
-            spec[size] = 300
-    return spec
+        if key in view and size not in spec and isinstance(ch, dict) and ch.get("type") in _CONTINUOUS:
+            out = out or dict(spec)
+            out[size] = view[key]
+    return out or spec
+
+
+def to_vegalite(spec: dict) -> dict:
+    """The spec without what is Avenger's alone (`camera`), for Vega."""
+    return {k: v for k, v in spec.items() if k != "camera"}
 
 
 def _spec(chart_or_spec: Any) -> dict:
@@ -222,7 +229,7 @@ def _renderer(spec: dict, **kwargs) -> dict:
         raise AvengerRefusal(refusal)
     # The renderer that was active before, as `enable` found it, with any
     # frame that went by name written back in as rows.
-    return _options["previous_renderer"](_with_rows(spec), **kwargs)
+    return _options["previous_renderer"](to_vegalite(_with_rows(spec)), **kwargs)
 
 
 _options: dict = {}

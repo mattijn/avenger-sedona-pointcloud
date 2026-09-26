@@ -1,0 +1,346 @@
+//! A JSON Schema of the supported subset (draft 2020-12), for programs that
+//! validate without this crate and for generating bindings from it.
+//!
+//! Structure, types, choices and numeric ranges are JSON Schema. The rules
+//! JSON Schema cannot state (an ordered extent, strictly increasing steps,
+//! distinct names and aliases) are CEL expressions over `self`, the object
+//! they are attached to, in `x-avenger-rules`, as Kubernetes attaches CEL to
+//! OpenAPI schemas (`x-kubernetes-validations`). A validator runs JSON Schema,
+//! then each rule on every instance node its subschema matches. Together they
+//! state what `UnitSpec::from_json` accepts.
+
+use std::borrow::Cow;
+
+use schemars::{json_schema, JsonSchema, Schema, SchemaGenerator};
+use serde_json::{json, Value};
+
+use crate::{
+    AggregateTransform, BarMark, Bin, BinParams, BinTransform, Data, FilterTransform, Mark,
+    MissingNullOrValue, Transform,
+};
+
+/// The schema of [`crate::UnitSpec`]. Optional properties are not nullable:
+/// the crate refuses explicit null unless a property allows it, and those
+/// few say so with `{"const": null}`.
+pub fn unit_spec_schema() -> Schema {
+    let settings = schemars::generate::SchemaSettings::draft2020_12()
+        .with_transform(schemars::transform::RecursiveTransform(not_nullable));
+    let mut schema = settings
+        .into_generator()
+        .into_root_schema_for::<crate::UnitSpec>();
+    schema.insert("title".into(), json!("Avenger's Vega-Lite subset"));
+    schema.insert(
+        "description".into(),
+        json!("What avenger-vegalite-spec accepts. Rules beyond JSON Schema are CEL over `self` in `x-avenger-rules`."),
+    );
+    schema
+}
+
+/// Drop the `null` schemars adds for `Option<T>`: `"type": [T, "null"]`, or an
+/// `anyOf` alternative `{"type": "null"}`.
+fn not_nullable(schema: &mut Schema) {
+    if let Some(Value::Array(types)) = schema.get_mut("type") {
+        types.retain(|t| t != "null");
+        if types.len() == 1 {
+            let only = types[0].clone();
+            schema.insert("type".into(), only);
+        }
+    }
+    let mut single = None;
+    if let Some(Value::Array(any)) = schema.get_mut("anyOf") {
+        any.retain(|a| a != &json!({ "type": "null" }));
+        if any.len() == 1 {
+            single = Some(any[0].clone());
+        }
+    }
+    if let Some(Value::Object(only)) = single {
+        schema.remove("anyOf");
+        for (k, v) in only {
+            schema.insert(k, v);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Types with their own Deserialize.
+
+impl<T: JsonSchema> JsonSchema for MissingNullOrValue<T> {
+    fn inline_schema() -> bool {
+        true
+    }
+    fn schema_name() -> Cow<'static, str> {
+        format!("Nullable_{}", T::schema_name()).into()
+    }
+    fn json_schema(g: &mut SchemaGenerator) -> Schema {
+        json_schema!({ "anyOf": [g.subschema_for::<T>(), { "const": null }] })
+    }
+}
+
+impl JsonSchema for Data {
+    fn schema_name() -> Cow<'static, str> {
+        "Data".into()
+    }
+    fn json_schema(g: &mut SchemaGenerator) -> Schema {
+        let values = g.subschema_for::<crate::InlineDataset>();
+        let format = g.subschema_for::<crate::DataFormat>();
+        json_schema!({
+            "description": "Inline rows, a URL, or a name bound later; or null.",
+            "anyOf": [
+                { "const": null },
+                {
+                    "type": "object",
+                    "properties": {
+                        "values": values,
+                        "url": { "type": "string" },
+                        "name": { "type": "string" },
+                        "format": format
+                    },
+                    "additionalProperties": false,
+                    // Which properties go together is a rule, not a type: a
+                    // generator reads every anyOf as a union of types.
+                    "x-avenger-rules": [
+                        { "rule": "has(self.values) || has(self.url) || has(self.name)", "message": "data requires values, url, or name" },
+                        { "rule": "!(has(self.values) && has(self.url))", "message": "data cannot contain both values and url" }
+                    ]
+                }
+            ]
+        })
+    }
+}
+
+impl JsonSchema for Bin {
+    fn schema_name() -> Cow<'static, str> {
+        "Bin".into()
+    }
+    fn json_schema(g: &mut SchemaGenerator) -> Schema {
+        json_schema!({ "anyOf": [{ "type": "boolean" }, { "const": "binned" }, g.subschema_for::<BinParams>()] })
+    }
+}
+
+impl JsonSchema for Mark {
+    fn schema_name() -> Cow<'static, str> {
+        "Mark".into()
+    }
+    fn json_schema(g: &mut SchemaGenerator) -> Schema {
+        json_schema!({ "anyOf": [{ "const": "bar" }, g.subschema_for::<BarMark>()] })
+    }
+}
+
+impl JsonSchema for Transform {
+    fn schema_name() -> Cow<'static, str> {
+        "Transform".into()
+    }
+    fn json_schema(g: &mut SchemaGenerator) -> Schema {
+        // Each form refuses the others' properties, so exactly one matches.
+        json_schema!({
+            "anyOf": [
+                g.subschema_for::<BinTransform>(),
+                g.subschema_for::<AggregateTransform>(),
+                g.subschema_for::<FilterTransform>()
+            ]
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// What `validate` checks, as JSON Schema where it can be, else as CEL.
+
+fn property<'a>(schema: &'a mut Schema, name: &str) -> &'a mut serde_json::Map<String, Value> {
+    schema
+        .get_mut("properties")
+        .and_then(Value::as_object_mut)
+        .and_then(|p| p.get_mut(name))
+        .and_then(Value::as_object_mut)
+        .unwrap_or_else(|| panic!("schema has property {name}"))
+}
+
+fn set(schema: &mut Schema, name: &str, entries: Value) {
+    let p = property(schema, name);
+    for (k, v) in entries.as_object().unwrap() {
+        p.insert(k.clone(), v.clone());
+    }
+}
+
+fn rules(schema: &mut Schema, rules: Value) {
+    match schema
+        .get_mut("x-avenger-rules")
+        .and_then(Value::as_array_mut)
+    {
+        Some(list) => list.extend(rules.as_array().unwrap().iter().cloned()),
+        None => {
+            schema.insert("x-avenger-rules".into(), rules);
+        }
+    }
+}
+
+/// `field` is required unless the aggregate (or op) is count. A rule, not an
+/// `anyOf` of `required`s, which a generator would read as a union of types.
+fn field_unless_count(schema: &mut Schema, op: &str) {
+    let rule = json!({
+        "rule": format!("has(self.field) || (has(self.{op}) && self.{op} == 'count')"),
+        "message": format!("field is required unless {op} is count"),
+        "path": "field"
+    });
+    match schema
+        .get_mut("x-avenger-rules")
+        .and_then(Value::as_array_mut)
+    {
+        Some(list) => list.push(rule),
+        None => {
+            schema.insert("x-avenger-rules".into(), json!([rule]));
+        }
+    }
+}
+
+pub(crate) fn unit_spec(schema: &mut Schema) {
+    set(schema, "width", json!({ "minimum": 0 }));
+    set(schema, "height", json!({ "minimum": 0 }));
+    rules(
+        schema,
+        json!([{
+            "rule": "!has(self.params) || type(self.params) != list || self.params.all(p, type(p) != map || !has(p.name) || self.params.filter(q, type(q) == map && has(q.name) && q.name == p.name).size() == 1)",
+            "message": "duplicate parameter name",
+            "path": "params"
+        }]),
+    );
+}
+
+pub(crate) fn bar_mark(schema: &mut Schema) {
+    set(schema, "opacity", json!({ "minimum": 0, "maximum": 1 }));
+    set(schema, "size", json!({ "minimum": 0 }));
+}
+
+pub(crate) fn position_field(schema: &mut Schema) {
+    field_unless_count(schema, "aggregate");
+}
+
+pub(crate) fn axis(schema: &mut Schema) {
+    set(
+        schema,
+        "labelAngle",
+        json!({ "minimum": -360, "maximum": 360 }),
+    );
+}
+
+pub(crate) fn parameter(schema: &mut Schema) {
+    set(
+        schema,
+        "name",
+        json!({ "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$", "not": { "enum": ["datum", "event", "item", "parent"] } }),
+    );
+}
+
+/// Steps are checked pairwise up to this many. CEL has no loop over indices,
+/// so the rule runs `all` over a literal index list. cel-python sets the
+/// bound: a chain of conjunctions exceeded its recursion limit, and `all` over
+/// 16 indices takes 14 ms there but over 32 more than 40 s. Vega's own default
+/// is two steps.
+pub const MAX_CHECKED_STEPS: usize = 16;
+
+pub(crate) fn bin_params(schema: &mut Schema) {
+    set(schema, "maxbins", json!({ "minimum": 2 }));
+    set(schema, "step", json!({ "exclusiveMinimum": 0 }));
+    set(schema, "minstep", json!({ "minimum": 0 }));
+    set(schema, "base", json!({ "exclusiveMinimum": 1 }));
+    set(
+        schema,
+        "steps",
+        json!({ "minItems": 1, "items": { "type": "number", "exclusiveMinimum": 0 } }),
+    );
+    set(
+        schema,
+        "divide",
+        json!({ "minItems": 1, "maxItems": 2, "items": { "type": "number", "exclusiveMinimum": 1 } }),
+    );
+    let indices = (0..MAX_CHECKED_STEPS - 1)
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let increasing = format!("[{indices}].all(i, self.steps.size() <= i + 1 || double(self.steps[i]) < double(self.steps[i + 1]))");
+    rules(
+        schema,
+        json!([
+            {
+                "rule": "!has(self.extent) || type(self.extent) != list || self.extent.size() != 2 || double(self.extent[0]) <= double(self.extent[1])",
+                "message": "extent must be ordered from minimum to maximum",
+                "path": "extent"
+            },
+            {
+                "rule": format!("!has(self.steps) || type(self.steps) != list || {increasing}"),
+                "message": "steps must be strictly increasing",
+                "path": "steps"
+            }
+        ]),
+    );
+}
+
+pub(crate) fn aggregate_transform(schema: &mut Schema) {
+    set(schema, "aggregate", json!({ "minItems": 1 }));
+    rules(
+        schema,
+        json!([{
+            "rule": "!has(self.aggregate) || type(self.aggregate) != list || self.aggregate.all(m, type(m) != map || !('as' in m) || self.aggregate.filter(n, type(n) == map && 'as' in n && n['as'] == m['as']).size() == 1)",
+            "message": "aggregate output aliases must be distinct",
+            "path": "aggregate"
+        }]),
+    );
+}
+
+pub(crate) fn aggregated_field(schema: &mut Schema) {
+    field_unless_count(schema, "op");
+}
+
+pub(crate) fn bin_transform(schema: &mut Schema) {
+    // An explicit bin transform takes true or parameters, not false or "binned".
+    let bin = property(schema, "bin");
+    bin.clear();
+    bin.insert(
+        "anyOf".into(),
+        json!([{ "const": true }, { "$ref": "#/$defs/BinParams" }]),
+    );
+    rules(
+        schema,
+        json!([{
+            "rule": "!('as' in self) || type(self['as']) != list || self['as'].size() != 2 || self['as'][0] != self['as'][1]",
+            "message": "bin boundary aliases must be distinct",
+            "path": "as"
+        }]),
+    );
+}
+
+pub(crate) fn view_config(schema: &mut Schema) {
+    for name in ["continuousWidth", "continuousHeight", "step", "strokeWidth"] {
+        set(schema, name, json!({ "minimum": 0 }));
+    }
+}
+
+/// Ranges on each camera. schemars writes the tagged variants as `oneOf`;
+/// their `type` constants already exclude each other, so they become `anyOf`,
+/// which Altair's generator reads (it has no case for `oneOf`).
+pub(crate) fn camera(schema: &mut Schema) {
+    if let Some(variants) = schema.remove("oneOf") {
+        schema.insert("anyOf".into(), variants);
+    }
+    let Some(Value::Array(variants)) = schema.get_mut("anyOf") else {
+        return;
+    };
+    for v in variants {
+        let Some(props) = v.get_mut("properties").and_then(Value::as_object_mut) else {
+            continue;
+        };
+        let mut range = |name: &str, entries: Value| {
+            if let Some(Value::Object(p)) = props.get_mut(name) {
+                for (k, x) in entries.as_object().unwrap() {
+                    p.insert(k.clone(), x.clone());
+                }
+            }
+        };
+        range(
+            "focus",
+            json!({ "items": { "type": "number", "minimum": 0, "maximum": 1 } }),
+        );
+        range("radius", json!({ "exclusiveMinimum": 0, "maximum": 1 }));
+        range("distortion", json!({ "minimum": 0 }));
+        range("elevation", json!({ "exclusiveMinimum": 0, "maximum": 90 }));
+    }
+}

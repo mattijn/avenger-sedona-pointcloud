@@ -1,38 +1,23 @@
-From c305517512b4f8b010c8d392b27e92dff20a4ad4 Mon Sep 17 00:00:00 2001
-From: Mattijn van Hoek <mattijn@gmail.com>
-Date: Sat, 26 Sep 2026 18:41:27 +0200
-Subject: [PATCH] feat(vegalite-spec): export a JSON Schema with CEL rules
-
-Behind a schema feature, derive schemars::JsonSchema for the spec types and
-write the schema of the five with their own Deserialize by hand. Ranges from
-validate() become JSON Schema; the rules JSON Schema cannot state (an ordered
-extent, strictly increasing steps, distinct parameter names and aliases) are
-CEL over self in x-avenger-rules, as Kubernetes attaches CEL to OpenAPI.
-examples/json_schema.rs prints it.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
----
- avenger-vegalite-spec/Cargo.toml              |  10 +
- avenger-vegalite-spec/examples/json_schema.rs |   6 +
- avenger-vegalite-spec/src/bin.rs              |   2 +
- avenger-vegalite-spec/src/data.rs             |   2 +
- avenger-vegalite-spec/src/lib.rs              |   2 +
- avenger-vegalite-spec/src/schema.rs           | 309 ++++++++++++++++++
- avenger-vegalite-spec/src/spec.rs             |  15 +
- avenger-vegalite-spec/src/transform.rs        |   8 +
- avenger-vegalite-spec/tests/spec.rs           |  27 ++
- 9 files changed, 381 insertions(+)
- create mode 100644 avenger-vegalite-spec/examples/json_schema.rs
- create mode 100644 avenger-vegalite-spec/src/schema.rs
-
-diff --git a/avenger-vegalite-spec/Cargo.toml b/avenger-vegalite-spec/Cargo.toml
-index 91fe3e2e3..7e0288139 100644
---- a/avenger-vegalite-spec/Cargo.toml
-+++ b/avenger-vegalite-spec/Cargo.toml
-@@ -11,3 +11,13 @@ serde = { workspace = true }
- serde_json = { workspace = true }
+diff -ruN -x LICENSE -x VENDORED.md -x UPSTREAM.diff -x target upstream/avenger-vegalite-spec/Cargo.toml avenger-vegalite-spec/Cargo.toml
+--- upstream/avenger-vegalite-spec/Cargo.toml	2026-09-26 14:47:16
++++ avenger-vegalite-spec/Cargo.toml	2026-09-26 20:24:20
+@@ -2,12 +2,22 @@
+ name = "avenger-vegalite-spec"
+ version = "0.1.0"
+ edition = "2021"
+-description = "Handwritten Serde types for a subset of Vega-Lite specifications"
++description = "Handwritten Serde types for a subset of Vega-Lite specifications (jonmmease/avenger at f4890be, with a schema export, config, and camera; see VENDORED.md)"
+ license = "BSD-3-Clause"
+ readme = "README.md"
+ 
+ [dependencies]
+-serde = { workspace = true }
+-serde_json = { workspace = true }
++serde = { version = "1", features = ["derive"] }
++serde_json = "1"
  serde_path_to_error = "0.1"
- thiserror = { workspace = true }
+-thiserror = { workspace = true }
++thiserror = "2"
 +schemars = { version = "1.2", optional = true }
 +
 +[features]
@@ -43,11 +28,9 @@ index 91fe3e2e3..7e0288139 100644
 +[[example]]
 +name = "json_schema"
 +required-features = ["schema"]
-diff --git a/avenger-vegalite-spec/examples/json_schema.rs b/avenger-vegalite-spec/examples/json_schema.rs
-new file mode 100644
-index 000000000..74313916e
---- /dev/null
-+++ b/avenger-vegalite-spec/examples/json_schema.rs
+diff -ruN -x LICENSE -x VENDORED.md -x UPSTREAM.diff -x target upstream/avenger-vegalite-spec/examples/json_schema.rs avenger-vegalite-spec/examples/json_schema.rs
+--- upstream/avenger-vegalite-spec/examples/json_schema.rs	1970-01-01 01:00:00
++++ avenger-vegalite-spec/examples/json_schema.rs	2026-09-26 20:24:09
 @@ -0,0 +1,6 @@
 +//! Print the JSON Schema of the supported subset:
 +//! `cargo run -p avenger-vegalite-spec --features schema --example json_schema`
@@ -55,11 +38,10 @@ index 000000000..74313916e
 +    let schema = avenger_vegalite_spec::schema::unit_spec_schema();
 +    println!("{}", serde_json::to_string_pretty(&schema).unwrap());
 +}
-diff --git a/avenger-vegalite-spec/src/bin.rs b/avenger-vegalite-spec/src/bin.rs
-index b90036b55..ebe83dc73 100644
---- a/avenger-vegalite-spec/src/bin.rs
-+++ b/avenger-vegalite-spec/src/bin.rs
-@@ -15,6 +15,7 @@ pub enum Bin {
+diff -ruN -x LICENSE -x VENDORED.md -x UPSTREAM.diff -x target upstream/avenger-vegalite-spec/src/bin.rs avenger-vegalite-spec/src/bin.rs
+--- upstream/avenger-vegalite-spec/src/bin.rs	2026-09-26 14:47:16
++++ avenger-vegalite-spec/src/bin.rs	2026-09-26 20:24:09
+@@ -15,6 +15,7 @@
  
  /// Vega-Lite bin parameters, with all defaults left unresolved.
  #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -67,7 +49,7 @@ index b90036b55..ebe83dc73 100644
  #[serde(deny_unknown_fields)]
  pub struct BinParams {
      #[serde(
-@@ -81,6 +82,7 @@ pub struct BinParams {
+@@ -81,6 +82,7 @@
  
  /// A bin-start alias or explicit start/end aliases. The string form stays unexpanded.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -75,11 +57,10 @@ index b90036b55..ebe83dc73 100644
  #[serde(untagged)]
  pub enum BinOutput {
      Name(String),
-diff --git a/avenger-vegalite-spec/src/data.rs b/avenger-vegalite-spec/src/data.rs
-index 08fd19abf..0505d77c4 100644
---- a/avenger-vegalite-spec/src/data.rs
-+++ b/avenger-vegalite-spec/src/data.rs
-@@ -37,6 +37,7 @@ pub enum Data {
+diff -ruN -x LICENSE -x VENDORED.md -x UPSTREAM.diff -x target upstream/avenger-vegalite-spec/src/data.rs avenger-vegalite-spec/src/data.rs
+--- upstream/avenger-vegalite-spec/src/data.rs	2026-09-26 14:47:16
++++ avenger-vegalite-spec/src/data.rs	2026-09-26 20:24:09
+@@ -37,6 +37,7 @@
  
  /// An optional file-format hint. Parsing directives are not supported.
  #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -87,7 +68,7 @@ index 08fd19abf..0505d77c4 100644
  #[serde(deny_unknown_fields)]
  pub struct DataFormat {
      #[serde(
-@@ -50,6 +51,7 @@ pub struct DataFormat {
+@@ -50,6 +51,7 @@
  
  /// Supported source-format names.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,11 +76,10 @@ index 08fd19abf..0505d77c4 100644
  #[serde(rename_all = "lowercase")]
  pub enum FormatType {
      Json,
-diff --git a/avenger-vegalite-spec/src/lib.rs b/avenger-vegalite-spec/src/lib.rs
-index 99ce9047c..f5f405b83 100644
---- a/avenger-vegalite-spec/src/lib.rs
-+++ b/avenger-vegalite-spec/src/lib.rs
-@@ -4,6 +4,8 @@ mod bin;
+diff -ruN -x LICENSE -x VENDORED.md -x UPSTREAM.diff -x target upstream/avenger-vegalite-spec/src/lib.rs avenger-vegalite-spec/src/lib.rs
+--- upstream/avenger-vegalite-spec/src/lib.rs	2026-09-26 14:47:16
++++ avenger-vegalite-spec/src/lib.rs	2026-09-26 20:25:43
+@@ -4,6 +4,8 @@
  mod data;
  mod error;
  mod presence;
@@ -108,12 +88,22 @@ index 99ce9047c..f5f405b83 100644
  mod spec;
  mod transform;
  mod validate;
-diff --git a/avenger-vegalite-spec/src/schema.rs b/avenger-vegalite-spec/src/schema.rs
-new file mode 100644
-index 000000000..6afd41183
---- /dev/null
-+++ b/avenger-vegalite-spec/src/schema.rs
-@@ -0,0 +1,309 @@
+@@ -13,8 +15,9 @@
+ pub use error::SpecError;
+ pub use presence::MissingNullOrValue;
+ pub use spec::{
+-    Axis, BarMark, Encoding, FieldType, Mark, MarkType, Orient, Parameter, PositionFieldDef, Scale,
+-    ScaleType, SecondaryFieldDef, SortOrder, StackOffset, Text, UnitSpec,
++    Axis, BarMark, Camera, Config, Encoding, FieldType, Mark, MarkType, Orient, Parameter,
++    PositionFieldDef, Scale, ScaleType, SecondaryFieldDef, SortOrder, StackOffset, Text, UnitSpec,
++    ViewConfig,
+ };
+ pub use transform::{
+     AggregateOp, AggregateTransform, AggregatedFieldDef, BinTransform, ExpressionReference,
+diff -ruN -x LICENSE -x VENDORED.md -x UPSTREAM.diff -x target upstream/avenger-vegalite-spec/src/schema.rs avenger-vegalite-spec/src/schema.rs
+--- upstream/avenger-vegalite-spec/src/schema.rs	1970-01-01 01:00:00
++++ avenger-vegalite-spec/src/schema.rs	2026-09-26 20:29:46
+@@ -0,0 +1,346 @@
 +//! A JSON Schema of the supported subset (draft 2020-12), for programs that
 +//! validate without this crate and for generating bindings from it.
 +//!
@@ -423,11 +413,47 @@ index 000000000..6afd41183
 +        }]),
 +    );
 +}
-diff --git a/avenger-vegalite-spec/src/spec.rs b/avenger-vegalite-spec/src/spec.rs
-index 2db40c5c9..9f5a9f322 100644
---- a/avenger-vegalite-spec/src/spec.rs
-+++ b/avenger-vegalite-spec/src/spec.rs
-@@ -12,6 +12,7 @@ use crate::{AggregateOp, Bin, Data, InlineDataset, MissingNullOrValue, SpecError
++
++pub(crate) fn view_config(schema: &mut Schema) {
++    for name in ["continuousWidth", "continuousHeight", "step", "strokeWidth"] {
++        set(schema, name, json!({ "minimum": 0 }));
++    }
++}
++
++/// Ranges on each camera. schemars writes the tagged variants as `oneOf`;
++/// their `type` constants already exclude each other, so they become `anyOf`,
++/// which Altair's generator reads (it has no case for `oneOf`).
++pub(crate) fn camera(schema: &mut Schema) {
++    if let Some(variants) = schema.remove("oneOf") {
++        schema.insert("anyOf".into(), variants);
++    }
++    let Some(Value::Array(variants)) = schema.get_mut("anyOf") else {
++        return;
++    };
++    for v in variants {
++        let Some(props) = v.get_mut("properties").and_then(Value::as_object_mut) else {
++            continue;
++        };
++        let mut range = |name: &str, entries: Value| {
++            if let Some(Value::Object(p)) = props.get_mut(name) {
++                for (k, x) in entries.as_object().unwrap() {
++                    p.insert(k.clone(), x.clone());
++                }
++            }
++        };
++        range(
++            "focus",
++            json!({ "items": { "type": "number", "minimum": 0, "maximum": 1 } }),
++        );
++        range("radius", json!({ "exclusiveMinimum": 0, "maximum": 1 }));
++        range("distortion", json!({ "minimum": 0 }));
++        range("elevation", json!({ "exclusiveMinimum": 0, "maximum": 90 }));
++    }
++}
+diff -ruN -x LICENSE -x VENDORED.md -x UPSTREAM.diff -x target upstream/avenger-vegalite-spec/src/spec.rs avenger-vegalite-spec/src/spec.rs
+--- upstream/avenger-vegalite-spec/src/spec.rs	2026-09-26 14:47:16
++++ avenger-vegalite-spec/src/spec.rs	2026-09-26 20:25:33
+@@ -12,6 +12,7 @@
  /// Parsing preserves authored options and performs no data access. Direct Serde
  /// deserialization checks structure only. Call `validate` after construction or editing.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -435,7 +461,126 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(deny_unknown_fields)]
  pub struct UnitSpec {
      pub data: Data,
-@@ -113,6 +114,7 @@ impl UnitSpec {
+@@ -83,8 +84,118 @@
+         skip_serializing_if = "Option::is_none"
+     )]
+     pub usermeta: Option<Map<String, Value>>,
++    /// Chart-wide defaults. Altair's default theme sets `config.view`.
++    #[serde(
++        default,
++        deserialize_with = "present",
++        skip_serializing_if = "Option::is_none"
++    )]
++    pub config: Option<Config>,
++    /// How the plot is seen: flat, through a fisheye lens, or tilted into 3D.
++    /// Not Vega-Lite, whose `view` is the plot's background.
++    #[serde(
++        default,
++        deserialize_with = "present",
++        skip_serializing_if = "Option::is_none"
++    )]
++    pub camera: Option<Camera>,
+ }
+ 
++/// Chart-wide defaults. Only the view's size and outline are read.
++#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
++#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
++#[serde(deny_unknown_fields)]
++pub struct Config {
++    #[serde(
++        default,
++        deserialize_with = "present",
++        skip_serializing_if = "Option::is_none"
++    )]
++    pub view: Option<ViewConfig>,
++}
++
++/// The size of a view with continuous axes, the step of a discrete one, and
++/// the view's outline and fill.
++#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
++#[cfg_attr(feature = "schema", derive(schemars::JsonSchema), schemars(transform = crate::schema::view_config))]
++#[serde(deny_unknown_fields, rename_all = "camelCase")]
++pub struct ViewConfig {
++    #[serde(
++        default,
++        deserialize_with = "present",
++        skip_serializing_if = "Option::is_none"
++    )]
++    pub continuous_width: Option<f64>,
++    #[serde(
++        default,
++        deserialize_with = "present",
++        skip_serializing_if = "Option::is_none"
++    )]
++    pub continuous_height: Option<f64>,
++    #[serde(
++        default,
++        deserialize_with = "present",
++        skip_serializing_if = "Option::is_none"
++    )]
++    pub step: Option<f64>,
++    #[serde(default, skip_serializing_if = "MissingNullOrValue::is_missing")]
++    pub stroke: MissingNullOrValue<String>,
++    #[serde(
++        default,
++        deserialize_with = "present",
++        skip_serializing_if = "Option::is_none"
++    )]
++    pub stroke_width: Option<f64>,
++    #[serde(
++        default,
++        deserialize_with = "present",
++        skip_serializing_if = "Option::is_none"
++    )]
++    pub fill: Option<String>,
++}
++
++/// How the plot is seen. The focus is in the plot's unit square, (0, 0) at
++/// the bottom left.
++#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
++#[cfg_attr(feature = "schema", derive(schemars::JsonSchema), schemars(transform = crate::schema::camera))]
++#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
++pub enum Camera {
++    Flat,
++    /// Sarkar-Brown fisheye: within `radius` of `focus`, marks move outward.
++    Fisheye {
++        #[serde(default = "default_focus")]
++        focus: [f64; 2],
++        #[serde(default = "default_radius")]
++        radius: f64,
++        #[serde(default = "default_distortion")]
++        distortion: f64,
++    },
++    /// The plot on the ground, marks extruded by their value, seen from `yaw`
++    /// degrees around and `elevation` degrees above the horizon.
++    Tilt {
++        #[serde(default = "default_yaw")]
++        yaw: f64,
++        #[serde(default = "default_elevation")]
++        elevation: f64,
++    },
++}
++
++fn default_focus() -> [f64; 2] {
++    [0.5, 0.5]
++}
++fn default_radius() -> f64 {
++    0.35
++}
++fn default_distortion() -> f64 {
++    3.0
++}
++fn default_yaw() -> f64 {
++    30.0
++}
++fn default_elevation() -> f64 {
++    40.0
++}
++
+ impl UnitSpec {
+     /// Parses one JSON document and validates rules that do not require source data.
+     ///
+@@ -113,6 +224,7 @@
  
  /// A single line or multiple title lines, preserving the JSON shape.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -443,7 +588,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(untagged)]
  pub enum Text {
      String(String),
-@@ -128,6 +130,7 @@ pub enum Mark {
+@@ -128,6 +240,7 @@
  
  /// Supported bar options. Orientation and styling defaults remain unresolved.
  #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -451,7 +596,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(deny_unknown_fields)]
  pub struct BarMark {
      #[serde(rename = "type")]
-@@ -160,6 +163,7 @@ pub struct BarMark {
+@@ -160,6 +273,7 @@
  
  /// The supported mark object discriminator.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -459,7 +604,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(rename_all = "lowercase")]
  pub enum MarkType {
      #[default]
-@@ -168,6 +172,7 @@ pub enum MarkType {
+@@ -168,6 +282,7 @@
  
  /// Explicit bar orientation.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -467,7 +612,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(rename_all = "lowercase")]
  pub enum Orient {
      Horizontal,
-@@ -176,6 +181,7 @@ pub enum Orient {
+@@ -176,6 +291,7 @@
  
  /// Positional encodings for ordinary and ranged bars.
  #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -475,7 +620,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(deny_unknown_fields)]
  pub struct Encoding {
      #[serde(
-@@ -206,6 +212,7 @@ pub struct Encoding {
+@@ -206,6 +322,7 @@
  
  /// A primary positional field, optionally binned or aggregated.
  #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -483,7 +628,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(deny_unknown_fields)]
  pub struct PositionFieldDef {
      #[serde(
-@@ -243,6 +250,7 @@ pub struct PositionFieldDef {
+@@ -243,6 +360,7 @@
  
  /// A secondary boundary field. Primary-channel options do not apply here.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -491,7 +636,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(deny_unknown_fields)]
  pub struct SecondaryFieldDef {
      pub field: String,
-@@ -250,6 +258,7 @@ pub struct SecondaryFieldDef {
+@@ -250,6 +368,7 @@
  
  /// Authored measurement type, before data-driven inference.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -499,7 +644,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(rename_all = "lowercase")]
  pub enum FieldType {
      Quantitative,
-@@ -260,6 +269,7 @@ pub enum FieldType {
+@@ -260,6 +379,7 @@
  
  /// Supported field sort directions.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -507,7 +652,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(rename_all = "lowercase")]
  pub enum SortOrder {
      Ascending,
-@@ -268,6 +278,7 @@ pub enum SortOrder {
+@@ -268,6 +388,7 @@
  
  /// Axis options for the initial bar-chart subset.
  #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -515,7 +660,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(deny_unknown_fields, rename_all = "camelCase")]
  pub struct Axis {
      #[serde(default, skip_serializing_if = "MissingNullOrValue::is_missing")]
-@@ -294,6 +305,7 @@ pub struct Axis {
+@@ -294,6 +415,7 @@
  
  /// Basic scale options, with omission distinct from an explicitly disabled scale.
  #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -523,7 +668,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(deny_unknown_fields)]
  pub struct Scale {
      #[serde(
-@@ -319,6 +331,7 @@ pub struct Scale {
+@@ -319,6 +441,7 @@
  
  /// Supported positional scale types.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -531,7 +676,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(rename_all = "lowercase")]
  pub enum ScaleType {
      Linear,
-@@ -362,6 +375,7 @@ impl<'de> Deserialize<'de> for Mark {
+@@ -362,6 +485,7 @@
  
  /// An initialized numeric variable parameter.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -539,7 +684,7 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(deny_unknown_fields)]
  pub struct Parameter {
      pub name: String,
-@@ -370,6 +384,7 @@ pub struct Parameter {
+@@ -370,6 +494,7 @@
  
  /// The supported stack offset. Explicit null disables stacking.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -547,11 +692,10 @@ index 2db40c5c9..9f5a9f322 100644
  #[serde(rename_all = "lowercase")]
  pub enum StackOffset {
      Zero,
-diff --git a/avenger-vegalite-spec/src/transform.rs b/avenger-vegalite-spec/src/transform.rs
-index 5bf33d7b8..0d7b93b19 100644
---- a/avenger-vegalite-spec/src/transform.rs
-+++ b/avenger-vegalite-spec/src/transform.rs
-@@ -6,6 +6,7 @@ use crate::{Bin, BinOutput};
+diff -ruN -x LICENSE -x VENDORED.md -x UPSTREAM.diff -x target upstream/avenger-vegalite-spec/src/transform.rs avenger-vegalite-spec/src/transform.rs
+--- upstream/avenger-vegalite-spec/src/transform.rs	2026-09-26 14:47:16
++++ avenger-vegalite-spec/src/transform.rs	2026-09-26 20:24:09
+@@ -6,6 +6,7 @@
  
  /// Supported aggregate spellings. `mean` and `average` retain distinct representations.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -559,7 +703,7 @@ index 5bf33d7b8..0d7b93b19 100644
  #[serde(rename_all = "lowercase")]
  pub enum AggregateOp {
      Count,
-@@ -24,6 +25,7 @@ pub enum AggregateOp {
+@@ -24,6 +25,7 @@
  
  /// One aggregate output. All operations except count require a field.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -567,7 +711,7 @@ index 5bf33d7b8..0d7b93b19 100644
  #[serde(deny_unknown_fields)]
  pub struct AggregatedFieldDef {
      pub op: AggregateOp,
-@@ -39,6 +41,7 @@ pub struct AggregatedFieldDef {
+@@ -39,6 +41,7 @@
  
  /// Explicit aggregate measures and optional grouping fields.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -575,7 +719,7 @@ index 5bf33d7b8..0d7b93b19 100644
  #[serde(deny_unknown_fields)]
  pub struct AggregateTransform {
      pub aggregate: Vec<AggregatedFieldDef>,
-@@ -52,6 +55,7 @@ pub struct AggregateTransform {
+@@ -52,6 +55,7 @@
  
  /// An explicit bin transform. Validation accepts only true or a parameter object.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -583,7 +727,7 @@ index 5bf33d7b8..0d7b93b19 100644
  #[serde(deny_unknown_fields)]
  pub struct BinTransform {
      pub bin: Bin,
-@@ -140,6 +144,7 @@ impl<'de> Deserialize<'de> for Transform {
+@@ -140,6 +144,7 @@
  
  /// A structured numeric field comparison in authored transform order.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -591,7 +735,7 @@ index 5bf33d7b8..0d7b93b19 100644
  #[serde(deny_unknown_fields)]
  pub struct FilterTransform {
      pub filter: FieldPredicate,
-@@ -147,6 +152,7 @@ pub struct FilterTransform {
+@@ -147,6 +152,7 @@
  
  /// A greater-than-or-equal field predicate.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -599,7 +743,7 @@ index 5bf33d7b8..0d7b93b19 100644
  #[serde(deny_unknown_fields)]
  pub struct FieldPredicate {
      pub field: String,
-@@ -155,6 +161,7 @@ pub struct FieldPredicate {
+@@ -155,6 +161,7 @@
  
  /// A numeric literal or an expression reference resolved by the compiler.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -607,7 +751,7 @@ index 5bf33d7b8..0d7b93b19 100644
  #[serde(untagged)]
  pub enum PredicateOperand {
      Number(f64),
-@@ -163,6 +170,7 @@ pub enum PredicateOperand {
+@@ -163,6 +170,7 @@
  
  /// Authored expression text. The initial compiler accepts one parameter name.
  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -615,11 +759,78 @@ index 5bf33d7b8..0d7b93b19 100644
  #[serde(deny_unknown_fields)]
  pub struct ExpressionReference {
      pub expr: String,
-diff --git a/avenger-vegalite-spec/tests/spec.rs b/avenger-vegalite-spec/tests/spec.rs
-index cd56d57ab..53f81b235 100644
---- a/avenger-vegalite-spec/tests/spec.rs
-+++ b/avenger-vegalite-spec/tests/spec.rs
-@@ -494,3 +494,30 @@ fn numeric_parameters_filters_and_stack_options_round_trip() {
+diff -ruN -x LICENSE -x VENDORED.md -x UPSTREAM.diff -x target upstream/avenger-vegalite-spec/src/validate.rs avenger-vegalite-spec/src/validate.rs
+--- upstream/avenger-vegalite-spec/src/validate.rs	2026-09-26 14:47:16
++++ avenger-vegalite-spec/src/validate.rs	2026-09-26 20:25:43
+@@ -43,6 +43,64 @@
+                 }
+             }
+         }
++        if let Some(view) = self.config.as_ref().and_then(|c| c.view.as_ref()) {
++            for (value, name) in [
++                (view.continuous_width, "continuousWidth"),
++                (view.continuous_height, "continuousHeight"),
++                (view.step, "step"),
++                (view.stroke_width, "strokeWidth"),
++            ] {
++                number(
++                    value,
++                    &format!("config.view.{name}"),
++                    |v| v >= 0.0,
++                    "expected a nonnegative finite number",
++                )?;
++            }
++        }
++        match &self.camera {
++            Some(crate::Camera::Fisheye {
++                focus,
++                radius,
++                distortion,
++            }) => {
++                for (i, v) in focus.iter().enumerate() {
++                    number(
++                        Some(*v),
++                        &format!("camera.focus[{i}]"),
++                        |v| (0.0..=1.0).contains(&v),
++                        "expected a finite number between 0 and 1",
++                    )?;
++                }
++                number(
++                    Some(*radius),
++                    "camera.radius",
++                    |v| v > 0.0 && v <= 1.0,
++                    "expected a finite number above 0, at most 1",
++                )?;
++                number(
++                    Some(*distortion),
++                    "camera.distortion",
++                    |v| v >= 0.0,
++                    "expected a nonnegative finite number",
++                )?;
++            }
++            Some(crate::Camera::Tilt { yaw, elevation }) => {
++                number(
++                    Some(*yaw),
++                    "camera.yaw",
++                    |_| true,
++                    "expected a finite number",
++                )?;
++                number(
++                    Some(*elevation),
++                    "camera.elevation",
++                    |v| v > 0.0 && v <= 90.0,
++                    "expected a finite number above 0, at most 90",
++                )?;
++            }
++            _ => {}
++        }
+         let mut names = HashSet::new();
+         for (i, parameter) in self.params.iter().flatten().enumerate() {
+             let name = &parameter.name;
+diff -ruN -x LICENSE -x VENDORED.md -x UPSTREAM.diff -x target upstream/avenger-vegalite-spec/tests/spec.rs avenger-vegalite-spec/tests/spec.rs
+--- upstream/avenger-vegalite-spec/tests/spec.rs	2026-09-26 14:47:16
++++ avenger-vegalite-spec/tests/spec.rs	2026-09-26 20:24:09
+@@ -494,3 +494,30 @@
          .is_err());
      }
  }
@@ -650,6 +861,3 @@ index cd56d57ab..53f81b235 100644
 +        serde_json::json!({ "const": null })
 +    );
 +}
--- 
-2.48.1
-

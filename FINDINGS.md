@@ -361,8 +361,9 @@ Schema cannot state (an ordered extent, strictly increasing steps, distinct
 names and aliases) as CEL in `x-avenger-rules`, Kubernetes-style. The
 result is 18.8 KB against the 1.9 MB of Vega-Lite's schema that Altair ships, and a plain `jsonschema` run
 on it takes 155 µs where Altair's takes 705 µs. The change is
-[`crates/avenger-altair/schema/vegalite-spec-schema.patch`](crates/avenger-altair/schema/vegalite-spec-schema.patch)
-(against `f4890be`; the crate's tests pass with and without the feature).
+[`crates/avenger-vegalite-spec`](crates/avenger-vegalite-spec/VENDORED.md), a copy
+of Jon's crate at `f4890be` with the additions, with [UPSTREAM.diff](crates/avenger-vegalite-spec/UPSTREAM.diff)
+(the crate's tests pass with and without the feature).
 Not proposed upstream yet.
 
 Altair's own `generate_schema_wrapper.py` reads the result: 35 core classes

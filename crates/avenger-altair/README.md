@@ -74,10 +74,18 @@ nothing in it) on this schema, after renaming `$defs` to draft-07
 
 | Generator step | Result |
 |---|---|
-| core classes | 35 classes |
+| core classes | 38 classes |
 | channel classes | 9 (`X`, `Y`, `X2`, `Y2` and their variants), with shorthand |
-| mark mixin (`mark_bar()` …) | not generated: it looks for Vega-Lite's `MarkDef` and its `type` enum |
-| config mixin (`configure_*()`) | not generated: no `Config` in Avenger's subset |
+| mark mixin | `mark_bar()`, called with Avenger's names (`MarkType`, `BarMark`) instead of Altair's fixed Vega-Lite list |
+| config mixin | `configure()`, `configure_view()`, now that Avenger's types have `config` |
+| camera mixin (ours, after Altair's `MARK_METHOD`) | `camera_flat()`, `camera_fisheye()`, `camera_tilt()`, one per `Camera` variant in the schema |
+
+With a small `Chart` over the generated classes (the generated top-level
+class with the three mixins and an `encode()` on the generated channels),
+`Chart(df).mark_bar(opacity=0.9).encode(x="category:N", y=channels.Y("sum(amount):Q", title="total")).properties(height=300).configure_view(stroke=None)`
+validates and Avenger draws it. Two changes to the schema were needed for
+the generator: `Camera`'s variants as `anyOf` (it has no case for `oneOf`),
+and no constraint-only `anyOf` branches (below).
 
 A bar chart built with the generated classes
 (`core.TopLevelUnitSpec(data=…, mark="bar", encoding=core.Encoding(x=channels.X("category:N"), y=channels.Y("sum(amount):Q", title="total")))`)
@@ -91,8 +99,7 @@ a union of types; those rules moved into CEL, and the parity test above
 still agrees on 2,992 of 3,008.
 
 The schema comes from a change to `avenger-vegalite-spec`
-([`schema/vegalite-spec-schema.patch`](schema/vegalite-spec-schema.patch),
-against `f4890be`): a `schema` feature deriving `schemars::JsonSchema`, the
+(now carried in this repo as [`crates/avenger-vegalite-spec`](../avenger-vegalite-spec/VENDORED.md), against `f4890be`): a `schema` feature deriving `schemars::JsonSchema`, the
 schema of the five types with their own `Deserialize` written by hand, and
 `examples/json_schema.rs`, which printed the file here:
 `cargo run -p avenger-vegalite-spec --features schema --example json_schema`.
