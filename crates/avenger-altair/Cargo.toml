@@ -17,6 +17,13 @@ avenger-vegalite-compiler.workspace = true
 avenger-vegalite-spec.workspace = true
 avenger-chart.workspace = true
 avenger-scales.workspace = true
+avenger-scenegraph.workspace = true
+avenger-common.workspace = true
+avenger-wgpu.workspace = true
+lyon_path.workspace = true
+avenger-text.workspace = true
+avenger-color.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
 avenger-transform.workspace = true
 avenger-datafusion-dataflow.workspace = true
 arrow = { workspace = true, features = ["ffi"] }

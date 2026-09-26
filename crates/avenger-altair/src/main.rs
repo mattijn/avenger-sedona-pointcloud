@@ -44,6 +44,10 @@ fn main() {
                 }
             }
         }
-        _ => eprintln!("usage: avenger-altair validate spec.json | render spec.json out.svg"),
+        Some("scene") => match avenger_altair::scene_outline(&spec) {
+            Ok(o) => print!("{o}"),
+            Err(r) => println!("{r}"),
+        },
+        _ => eprintln!("usage: avenger-altair validate spec.json | render spec.json out.svg | scene spec.json"),
     }
 }

@@ -160,6 +160,34 @@ An 8-row bar chart (`x="category:N", y="sum(amount):Q"`), warm.
 | draw to PNG: validate, compile, render, export | 0.02 + 0.7 + 4.3 + 14.1 ms |
 | draw to SVG | 0.05 + 1.8 + 5.4 + 341 ms |
 
+### Camera: fisheye and tilt
+
+`camera` is grammar Avenger's spec has and Vega-Lite has not (Vega-Lite's
+`view` is the plot background): `{"type": "fisheye", "focus", "radius",
+"distortion"}` or `{"type": "tilt", "yaw", "elevation"}`, after experiment
+7's views. Enabled, Altair's `Chart` gets `camera_flat()`, `camera_fisheye()`
+and `camera_tilt()`, made from the variants in Avenger's schema, so new
+grammar there is a new method here:
+
+```python
+chart.camera_fisheye(focus=[0.35, 0.5], radius=0.45)
+chart.camera_tilt(yaw=30, elevation=35)
+```
+
+![One Altair bar chart drawn flat, through a fisheye, and tilted](images/camera.png)
+
+Avenger's compiler ignores the camera; the bridge applies it to the scene
+Avenger renders (`src/camera.rs`). The fisheye (Sarkar-Brown, in the plot's
+unit square) turns bars into polygons with subdivided edges and moves grid
+lines, ticks and labels with it; the tilt stands the bars up as shaded
+blocks on a ground plane, with the value lines on a back wall and the
+labels in front of their block, drawn back to front. Both draw to PNG in
+16–18 ms, against 14 ms flat. A camera Avenger refuses is reported by
+Avenger ("camera.elevation: expected a finite number above 0, at most 90"),
+not by Vega-Lite's schema, which does not know the property; a chart that
+falls back to Vega has its camera removed. The tilt stands up rect marks
+only, which is all the compiler draws so far.
+
 ### Live data
 
 `av.live(chart)` compiles the chart once over its DataFrame, as a

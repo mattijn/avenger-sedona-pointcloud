@@ -36,7 +36,8 @@ class AvengerRefusal(ValueError):
         self.path = refusal["path"]
         self.stage = refusal["stage"]
         self.reason = refusal["message"]
-        super().__init__(f"Avenger does not draw this chart yet: {self.path}: {self.reason}")
+        what = "refuses this chart" if self.stage == "spec" else "does not draw this chart yet"
+        super().__init__(f"Avenger {what}: {self.path}: {self.reason}")
 
 
 # What the last chart did: "avenger", or "fallback" with the refusal.
@@ -246,8 +247,14 @@ _originals: dict = {}
 
 
 def _avenger_validate(cls, instance, schema=None):
-    if schema is None and _native.validate(json.dumps(normalise(instance))) is None:
-        return None
+    if schema is None:
+        refusal = _native.validate(json.dumps(normalise(instance)))
+        if refusal is None:
+            return None
+        # Grammar only Avenger has cannot be judged by Vega-Lite's schema,
+        # which would only say the property does not exist.
+        if isinstance(instance, dict) and "camera" in instance:
+            raise AvengerRefusal(refusal)
     return _originals[cls.__name__].__func__(cls, instance, schema)
 
 
@@ -266,6 +273,47 @@ def _remove_validation() -> None:
                 cls.validate = orig
             else:
                 del cls.validate
+
+
+# --- camera ---------------------------------------------------------------
+#
+# `camera` is grammar Avenger has and Vega-Lite has not. Its methods are made
+# from the variants in Avenger's schema, as a generated API would be, and put
+# on Altair's Chart while Avenger is enabled.
+
+_camera_methods: list = []
+
+
+def _install_camera() -> None:
+    from . import portable
+
+    for variant in portable.schema()["$defs"]["Camera"]["anyOf"]:
+        kind = variant["properties"]["type"]["const"]
+        args = [p for p in variant["properties"] if p != "type"]
+
+        def method(self, _kind=kind, **kwds):
+            unknown = set(kwds) - set(_args[_kind])
+            if unknown:
+                raise TypeError(f"camera_{_kind}() has no argument {sorted(unknown)[0]!r}")
+            return self.properties(camera={"type": _kind, **kwds})
+
+        _args[kind] = args
+        method.__name__ = f"camera_{kind}"
+        method.__doc__ = (variant.get("description") or f"A {kind} camera.").splitlines()[0] + (f" Arguments: {', '.join(args)}." if args else "")
+        for cls in _TOP_LEVEL:
+            setattr(cls, method.__name__, method)
+        _camera_methods.append(method.__name__)
+
+
+_args: dict = {}
+
+
+def _remove_camera() -> None:
+    for name in _camera_methods:
+        for cls in _TOP_LEVEL:
+            if name in cls.__dict__:
+                delattr(cls, name)
+    _camera_methods.clear()
 
 
 # --- rendering --------------------------------------------------------------
@@ -314,11 +362,13 @@ def enable(format: str = "png", scale: float = 2.0, fallback: bool = True, valid
     alt.renderers.enable("avenger")
     if validation:
         _install_validation()
+    _install_camera()
 
 
 def disable() -> None:
     """Back to the renderer and validation that were active before."""
     _remove_validation()
+    _remove_camera()
     if alt.data_transformers.active == "avenger":
         alt.data_transformers.enable(_options.get("previous_data") or "default", **_options.get("previous_data_options", {}))
     if alt.renderers.active == "avenger":
