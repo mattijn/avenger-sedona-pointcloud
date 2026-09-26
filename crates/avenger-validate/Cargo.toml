@@ -1,0 +1,33 @@
+[package]
+name = "avenger-validate"
+description = "Validate a chart pipeline before it runs: arguments, step order and chart state, Vega expressions, and SQL against the schema. From Rust, Python (pyo3) and the browser (wasm), with the rules exported as CEL."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "avenger_validate"
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = ["sql"]
+# Layer 4: plan each `sql` step with DataFusion against a table with no rows.
+sql = ["dep:datafusion", "dep:futures"]
+python = ["dep:pyo3"]
+wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
+
+[dependencies]
+cel = "0.14.5"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+datafusion = { workspace = true, optional = true }
+futures = { version = "0.3", optional = true }
+pyo3 = { version = "0.25", optional = true, features = ["extension-module", "abi3-py39"] }
+wasm-bindgen = { version = "0.2", optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
+
+[[bin]]
+name = "avenger-validate"
+path = "src/main.rs"
+required-features = ["sql"]

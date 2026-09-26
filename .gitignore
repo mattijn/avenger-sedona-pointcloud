@@ -8,3 +8,5 @@
 /experiments/07-chart-decisions/.env
 /experiments/08-pipeline-validation/bench/target
 __pycache__/
+/.venv-validate/
+/crates/avenger-validate/cel/node_modules/

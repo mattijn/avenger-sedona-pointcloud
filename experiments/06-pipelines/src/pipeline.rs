@@ -79,62 +79,13 @@ pub fn err(m: impl Into<String>) -> DataFusionError {
     DataFusionError::Plan(m.into())
 }
 
-/// Split a pipeline string into steps at ` ! `, honouring quotes.
+/// Split a pipeline string into steps at ` ! `, honouring quotes. The
+/// parser is `avenger-validate`'s, so what runs and what is validated are
+/// read the same way.
 pub fn parse_pipeline(src: &str) -> Result<Vec<Call>> {
-    let mut words: Vec<(String, bool)> = vec![]; // (word, was quoted)
-    let mut cur = String::new();
-    let (mut quoted, mut in_quote) = (false, None::<char>);
-    let mut chars = src.chars().peekable();
-    while let Some(c) = chars.next() {
-        match (in_quote, c) {
-            (Some(q), c) if c == q => in_quote = None,
-            (Some(_), '\\') => {
-                if let Some(n) = chars.next() {
-                    cur.push(n)
-                }
-            }
-            (Some(_), c) => cur.push(c),
-            (None, '"' | '\'') => {
-                in_quote = Some(c);
-                quoted = true;
-            }
-            (None, c) if c.is_whitespace() => {
-                if !cur.is_empty() || quoted {
-                    words.push((std::mem::take(&mut cur), quoted));
-                }
-                quoted = false;
-            }
-            (None, c) => cur.push(c),
-        }
-    }
-    if in_quote.is_some() {
-        return Err(err("unterminated quote in pipeline"));
-    }
-    if !cur.is_empty() || quoted {
-        words.push((cur, quoted));
-    }
-    let mut calls = vec![];
-    for group in words.split(|(w, q)| w == "!" && !q) {
-        let mut it = group.iter().peekable();
-        let Some((name, _)) = it.next() else { continue };
-        let mut call = Call {
-            name: name.clone(),
-            ..Default::default()
-        };
-        while let Some((w, q)) = it.next() {
-            if let (Some(k), false) = (w.strip_prefix("--"), *q) {
-                let v = match it.peek() {
-                    Some((v, vq)) if *vq || !v.starts_with("--") => it.next().unwrap().0.clone(),
-                    _ => "true".into(),
-                };
-                call.flags.insert(k.to_string(), v);
-            } else {
-                call.args.push(w.clone());
-            }
-        }
-        calls.push(call);
-    }
-    Ok(calls)
+    avenger_validate::syntax::parse(src)
+        .map(|calls| calls.into_iter().map(|c| Call { name: c.name, args: c.args, flags: c.flags }).collect())
+        .map_err(|e| err(e.message))
 }
 
 /// A bundle of functions and steps, registered together.

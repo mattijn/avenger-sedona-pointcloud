@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.5,<2"]
+build-backend = "maturin"
+
+[project]
+name = "avenger-validate"
+description = "Validate a chart pipeline before it runs: arguments, step order and chart state, Vega expressions, and SQL against the schema."
+requires-python = ">=3.9"
+dynamic = ["version"]
+classifiers = ["Programming Language :: Rust", "Programming Language :: Python :: Implementation :: CPython"]
+
+[tool.maturin]
+features = ["python"]
+module-name = "avenger_validate"

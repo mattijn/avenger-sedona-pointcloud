@@ -29,6 +29,10 @@ without conversion is that both sides agree on Arrow 58.3 and DataFusion 54.
 | 7 | [charts driven by decisions](experiments/07-chart-decisions/) | Can a fast typed classifier (Jev) or an LLM drive a chart through the task vocabulary, from typed text and data changes, under a policy? |
 | 8 | [validating a pipeline](experiments/08-pipeline-validation/) | Can the step vocabulary be written once and validated from Rust, Python and elsewhere, how do GDAL and PDAL do it, and how fast is each layer? (research and a benchmark) |
 
+Out of experiment 8 came a crate of its own, [`crates/avenger-validate`](crates/avenger-validate/):
+a pipeline validator for Rust, Python (pyo3) and the browser (wasm), with its
+rules exported as CEL, that returns a verdict in about 10 µs.
+
 ![the class map](experiments/01-charts/images/top_class.png)
 
 ## Reviewing Avenger
@@ -53,6 +57,7 @@ the repo up cold.
 
 ```
 common/                         the LAS session and the shared palette
+crates/avenger-validate/        the pipeline validator: Rust, Python, wasm, CEL
 experiments/01-charts/          static charts, explorer, window benchmark
 experiments/02-chart-language/  the .avenger chart and its Parquet export
 experiments/03-streaming/       the Flight server and the live viewer
@@ -60,6 +65,7 @@ experiments/04-coupling-patterns/  proposals for the chart language
 experiments/05-coordinate-systems/ one coordinate-system trait for charts and maps
 experiments/06-pipelines/       Vega expressions, SQL and chained pipelines
 experiments/07-chart-decisions/ charts driven by a decider (Jev, an LLM, rules)
+experiments/08-pipeline-validation/ how to validate a pipeline, and how fast
 probes/                         re-measures everything in FINDINGS.md
 data/                           the tile (downloaded, not in git)
 scripts/download_tile.sh

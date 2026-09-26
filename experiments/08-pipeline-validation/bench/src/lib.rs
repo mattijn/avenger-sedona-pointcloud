@@ -13,7 +13,7 @@ use datafusion::datasource::MemTable;
 use datafusion::prelude::SessionContext;
 use serde_json::{json, Value};
 
-#[path = "../../../06-pipelines/src/vega/parse.rs"]
+#[path = "../../../../crates/avenger-validate/src/vega.rs"]
 #[allow(dead_code)]
 mod vega;
 

@@ -241,7 +241,11 @@ experiment's video.
 A classifier needs the option list, and an LLM the grammar; both were written
 by hand from what the layer accepts. A chart definition that could list its
 marks, channels with allowed types, and properties would let deciders,
-editors and prompts be generated, and not drift from the renderer.
+editors and prompts be generated, and not drift from the renderer. This repo now does
+that for its own pipelines: [`crates/avenger-validate`](crates/avenger-validate/)
+reads the vocabulary from one spec and checks a pipeline in about 10 µs, from
+Rust, Python and wasm, with the rules exported as CEL. The spec is still
+written by hand, not exported by the steps themselves.
 
 ### 13. Refuse unsupported properties, with a path
 

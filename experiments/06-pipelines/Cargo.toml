@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 lidar-common.workspace = true
+avenger-validate = { path = "../../crates/avenger-validate", default-features = false }
 
 arrow.workspace = true
 image.workspace = true
