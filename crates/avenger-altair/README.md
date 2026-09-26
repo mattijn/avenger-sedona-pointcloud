@@ -44,6 +44,58 @@ from Avenger, are in [experiments/08-pipeline-validation/altair-avenger.md](../.
   one config is written out as the width or height Vega-Lite would give a
   continuous axis. Any other config is left for Avenger to refuse.
 
+## Without Rust: the schema and its rules
+
+[`python/avenger_altair/avenger-vegalite.schema.json`](python/avenger_altair/avenger-vegalite.schema.json)
+(18.8 KB, JSON Schema draft 2020-12) is generated from Avenger's own spec
+types. Structure, types, choices and numeric ranges are JSON Schema; the
+rules JSON Schema cannot state are CEL over `self` in `x-avenger-rules`, on
+the definition they belong to, as Kubernetes attaches CEL to OpenAPI
+(`x-kubernetes-validations`):
+
+| Where | Rule |
+|---|---|
+| root | parameter names are distinct |
+| `BinParams` | `extent` is ordered; `steps` strictly increase |
+| `AggregateTransform` | output aliases are distinct |
+| `BinTransform` | the two boundary aliases differ |
+
+`avenger_altair.portable.validate(spec)` runs it with `jsonschema` and
+`cel-python`, and no compiled code: `jsonschema`'s validator, extended with
+the keyword `x-avenger-rules`, runs each rule on every instance node its
+subschema matches. The schema is what Altair's generator would read in place
+of Vega-Lite's (step 3 of the design).
+
+The schema comes from a change to `avenger-vegalite-spec`
+([`schema/vegalite-spec-schema.patch`](schema/vegalite-spec-schema.patch),
+against `f4890be`): a `schema` feature deriving `schemars::JsonSchema`, the
+schema of the five types with their own `Deserialize` written by hand, and
+`examples/json_schema.rs`, which printed the file here:
+`cargo run -p avenger-vegalite-spec --features schema --example json_schema`.
+
+**Does it accept what Rust accepts?** `python bench/schema_parity.py <avenger checkout at f4890be>`
+judges 3,008 specs both ways: 12 seeds (Avenger's fixtures and examples, and
+Altair bar charts), each mutated on every node (an unknown key, null, wrong
+types, out-of-range numbers, removed properties) and with each rule broken
+on purpose. 2,992 agree (99.47 %). The 16 that differ are all one thing, and
+it is Rust's: a JSON array where an object belongs (`"encoding": []`,
+`"axis": []`) is accepted by the Rust types and refused by the schema, as
+Vega-Lite refuses it (FINDINGS.md 23).
+
+| Per spec, warm | Bar chart | Histogram (`bin`) |
+|---|---|---|
+| Rust, from Python | 5.0 µs | 6.3 µs |
+| Avenger's JSON Schema only (`jsonschema`) | 155 µs | 203 µs |
+| JSON Schema + CEL (`jsonschema` + `cel-python`) | 424 µs | 13,378 µs |
+| Altair's validation, the whole Vega-Lite schema | 705 µs | |
+
+The small schema alone validates 3.5–4.5 times faster than Vega-Lite's.
+cel-python is the slow part, and it sets one bound: CEL has no loop over
+indices, so "steps strictly increase" is `all` over a literal index list;
+a chain of comparisons exceeded cel-python's recursion limit, and `all` over
+32 indices took more than 40 s where 16 took 14 ms, so the rule checks the
+first 16 steps (Vega's default has two).
+
 ## Build
 
 ```sh
@@ -129,3 +181,6 @@ is drawn.
 - The large-data comparison is a histogram; a line or scatter plot of
   millions of points waits for those marks in Avenger's compiler.
 - Interaction and the notebook widget.
+- The portable validator in JavaScript (`ajv` with cel-js) was not built;
+  cel-js was fast on the pipeline rules (3.6 µs a pipeline in `avenger-validate`).
+- The schema has not been fed to Altair's `generate_schema_wrapper.py`.

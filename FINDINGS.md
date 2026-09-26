@@ -338,6 +338,33 @@ With the budget raised, the same histogram over 1M values draws in 48 ms
 from a pandas frame passed as Arrow, and over 3M in 83 ms (matplotlib's
 `hist`: 37 and 52 ms; Altair with VegaFusion: 519 and 482 ms).
 
+### 23. The spec types accept a JSON array where an object belongs
+
+A derived serde `Deserialize` for a struct also accepts a sequence, with the
+fields in declaration order, and `deny_unknown_fields` does not stop it. So
+`UnitSpec::from_json` takes `"encoding": []` as an empty encoding, and
+`"encoding": [{"field": "category", "type": "nominal"}, {"field": "amount", "type": "quantitative"}]`
+as x and y, and the compiler draws it; the same holds for `axis`, `scale`,
+`data.format` and every other object. Vega-Lite refuses these. Found by
+checking a JSON Schema generated from the same types against them (24):
+this is the only disagreement in 3,008 specs. A `Deserialize` that calls
+`deserialize_map`, or a check on the JSON value before typing it, would
+close it. **Measure:** `python crates/avenger-altair/bench/schema_parity.py <avenger checkout>`.
+
+### 24. The spec types can export their schema, with CEL for the rest
+
+Altair generates its API from Vega-Lite's JSON Schema; to generate it from
+Avenger instead, Avenger's spec types need to export one. A `schema` feature
+on `avenger-vegalite-spec` does it with `schemars` (derives on 31 types, the
+schema of the five with their own `Deserialize` by hand), and puts what JSON
+Schema cannot state (an ordered extent, strictly increasing steps, distinct
+names and aliases) as CEL in `x-avenger-rules`, Kubernetes-style. The
+result is 18.8 KB against Vega-Lite's 1.5 MB, and a plain `jsonschema` run
+on it takes 155 µs where Altair's takes 705 µs. The change is
+[`crates/avenger-altair/schema/vegalite-spec-schema.patch`](crates/avenger-altair/schema/vegalite-spec-schema.patch)
+(against `f4890be`; the crate's tests pass with and without the feature).
+Not proposed upstream yet.
+
 Also: the compiler's `pdf` feature pulls in `krilla` 0.8.2, which needs
 rustc 1.92, so the bridge builds with `svg` and `png` only on this machine's
 1.89.

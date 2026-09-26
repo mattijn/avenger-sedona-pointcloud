@@ -81,8 +81,12 @@ The steps, each usable on its own:
    today. The bridge then stops patching a class method. This is a small PR
    to Altair, and the first one this needs.
 3. **The API generated from Avenger.** Avenger's spec types become the
-   source: they export a schema (for example with `schemars`) that
-   `generate_schema_wrapper.py` reads instead of Vega-Lite's. As long as
+   source: they export a schema that `generate_schema_wrapper.py` reads
+   instead of Vega-Lite's. The export exists as a patch to
+   `avenger-vegalite-spec` (FINDINGS.md 24): JSON Schema for structure, with
+   the rules JSON Schema cannot state as CEL in `x-avenger-rules`, so one
+   file serves the generator, validation without Rust, and a check of the
+   Rust types themselves (it found FINDINGS.md 23). As long as
    Avenger's grammar is Vega-Lite's, Altair's API does not change for its
    users; what changes is where the classes, their docstrings and their
    validation come from. The JSON Schema route stays available as an

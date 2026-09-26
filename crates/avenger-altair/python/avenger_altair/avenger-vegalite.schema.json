@@ -1,0 +1,743 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Avenger's Vega-Lite subset",
+  "description": "What avenger-vegalite-spec accepts. Rules beyond JSON Schema are CEL over `self` in `x-avenger-rules`.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "data": {
+      "$ref": "#/$defs/Data"
+    },
+    "datasets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "description": {
+      "type": "string"
+    },
+    "encoding": {
+      "$ref": "#/$defs/Encoding"
+    },
+    "height": {
+      "type": "number",
+      "format": "double",
+      "minimum": 0
+    },
+    "mark": {
+      "$ref": "#/$defs/Mark"
+    },
+    "name": {
+      "type": "string"
+    },
+    "params": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Parameter"
+      }
+    },
+    "title": {
+      "$ref": "#/$defs/Text"
+    },
+    "transform": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Transform"
+      }
+    },
+    "usermeta": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "width": {
+      "type": "number",
+      "format": "double",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "data",
+    "mark"
+  ],
+  "x-avenger-rules": [
+    {
+      "message": "duplicate parameter name",
+      "path": "params",
+      "rule": "!has(self.params) || type(self.params) != list || self.params.all(p, type(p) != map || !has(p.name) || self.params.filter(q, type(q) == map && has(q.name) && q.name == p.name).size() == 1)"
+    }
+  ],
+  "$defs": {
+    "AggregateOp": {
+      "description": "Supported aggregate spellings. `mean` and `average` retain distinct representations.",
+      "type": "string",
+      "enum": [
+        "count",
+        "valid",
+        "missing",
+        "sum",
+        "min",
+        "max",
+        "mean",
+        "average",
+        "variance",
+        "variancep",
+        "stdev",
+        "stdevp"
+      ]
+    },
+    "AggregateTransform": {
+      "description": "Explicit aggregate measures and optional grouping fields.",
+      "type": "object",
+      "properties": {
+        "aggregate": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AggregatedFieldDef"
+          },
+          "minItems": 1
+        },
+        "groupby": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "aggregate"
+      ],
+      "x-avenger-rules": [
+        {
+          "message": "aggregate output aliases must be distinct",
+          "path": "aggregate",
+          "rule": "!has(self.aggregate) || type(self.aggregate) != list || self.aggregate.all(m, type(m) != map || !('as' in m) || self.aggregate.filter(n, type(n) == map && 'as' in n && n['as'] == m['as']).size() == 1)"
+        }
+      ]
+    },
+    "AggregatedFieldDef": {
+      "description": "One aggregate output. All operations except count require a field.",
+      "type": "object",
+      "properties": {
+        "as": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "op": {
+          "$ref": "#/$defs/AggregateOp"
+        }
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "field"
+          ]
+        },
+        {
+          "properties": {
+            "op": {
+              "const": "count"
+            }
+          },
+          "required": [
+            "op"
+          ]
+        }
+      ],
+      "required": [
+        "op",
+        "as"
+      ]
+    },
+    "Axis": {
+      "description": "Axis options for the initial bar-chart subset.",
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string"
+        },
+        "grid": {
+          "type": "boolean"
+        },
+        "labelAngle": {
+          "type": "number",
+          "format": "double",
+          "maximum": 360,
+          "minimum": -360
+        },
+        "title": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Text"
+            },
+            {
+              "const": null
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "BarMark": {
+      "description": "Supported bar options. Orientation and styling defaults remain unresolved.",
+      "type": "object",
+      "properties": {
+        "color": {
+          "type": "string"
+        },
+        "opacity": {
+          "type": "number",
+          "format": "double",
+          "maximum": 1,
+          "minimum": 0
+        },
+        "orient": {
+          "$ref": "#/$defs/Orient"
+        },
+        "size": {
+          "type": "number",
+          "format": "double",
+          "minimum": 0
+        },
+        "type": {
+          "$ref": "#/$defs/MarkType"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ]
+    },
+    "Bin": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "const": "binned"
+        },
+        {
+          "$ref": "#/$defs/BinParams"
+        }
+      ]
+    },
+    "BinOutput": {
+      "description": "A bin-start alias or explicit start/end aliases. The string form stays unexpanded.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2
+        }
+      ]
+    },
+    "BinParams": {
+      "description": "Vega-Lite bin parameters, with all defaults left unresolved.",
+      "type": "object",
+      "properties": {
+        "anchor": {
+          "type": "number",
+          "format": "double"
+        },
+        "base": {
+          "type": "number",
+          "format": "double",
+          "exclusiveMinimum": 1
+        },
+        "binned": {
+          "type": "boolean"
+        },
+        "divide": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 1
+          },
+          "maxItems": 2,
+          "minItems": 1
+        },
+        "extent": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxItems": 2,
+          "minItems": 2
+        },
+        "maxbins": {
+          "type": "number",
+          "format": "double",
+          "minimum": 2
+        },
+        "minstep": {
+          "type": "number",
+          "format": "double",
+          "minimum": 0
+        },
+        "nice": {
+          "type": "boolean"
+        },
+        "step": {
+          "type": "number",
+          "format": "double",
+          "exclusiveMinimum": 0
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false,
+      "x-avenger-rules": [
+        {
+          "message": "extent must be ordered from minimum to maximum",
+          "path": "extent",
+          "rule": "!has(self.extent) || type(self.extent) != list || self.extent.size() != 2 || double(self.extent[0]) <= double(self.extent[1])"
+        },
+        {
+          "message": "steps must be strictly increasing",
+          "path": "steps",
+          "rule": "!has(self.steps) || type(self.steps) != list || [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].all(i, self.steps.size() <= i + 1 || double(self.steps[i]) < double(self.steps[i + 1]))"
+        }
+      ]
+    },
+    "BinTransform": {
+      "description": "An explicit bin transform. Validation accepts only true or a parameter object.",
+      "type": "object",
+      "properties": {
+        "as": {
+          "$ref": "#/$defs/BinOutput"
+        },
+        "bin": {
+          "anyOf": [
+            {
+              "const": true
+            },
+            {
+              "$ref": "#/$defs/BinParams"
+            }
+          ]
+        },
+        "field": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "bin",
+        "field",
+        "as"
+      ],
+      "x-avenger-rules": [
+        {
+          "message": "bin boundary aliases must be distinct",
+          "path": "as",
+          "rule": "!('as' in self) || type(self['as']) != list || self['as'].size() != 2 || self['as'][0] != self['as'][1]"
+        }
+      ]
+    },
+    "Data": {
+      "description": "Inline rows, a URL, or a name bound later; or null.",
+      "anyOf": [
+        {
+          "const": null
+        },
+        {
+          "type": "object",
+          "properties": {
+            "format": {
+              "$ref": "#/$defs/DataFormat"
+            },
+            "name": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "required": [
+                "values"
+              ]
+            },
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "name"
+              ]
+            }
+          ],
+          "not": {
+            "required": [
+              "values",
+              "url"
+            ]
+          }
+        }
+      ]
+    },
+    "DataFormat": {
+      "description": "An optional file-format hint. Parsing directives are not supported.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/FormatType"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Encoding": {
+      "description": "Positional encodings for ordinary and ranged bars.",
+      "type": "object",
+      "properties": {
+        "x": {
+          "$ref": "#/$defs/PositionFieldDef"
+        },
+        "x2": {
+          "$ref": "#/$defs/SecondaryFieldDef"
+        },
+        "y": {
+          "$ref": "#/$defs/PositionFieldDef"
+        },
+        "y2": {
+          "$ref": "#/$defs/SecondaryFieldDef"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExpressionReference": {
+      "description": "Authored expression text. The initial compiler accepts one parameter name.",
+      "type": "object",
+      "properties": {
+        "expr": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "expr"
+      ]
+    },
+    "FieldPredicate": {
+      "description": "A greater-than-or-equal field predicate.",
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "gte": {
+          "$ref": "#/$defs/PredicateOperand"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "gte"
+      ]
+    },
+    "FieldType": {
+      "description": "Authored measurement type, before data-driven inference.",
+      "type": "string",
+      "enum": [
+        "quantitative",
+        "ordinal",
+        "nominal",
+        "temporal"
+      ]
+    },
+    "FilterTransform": {
+      "description": "A structured numeric field comparison in authored transform order.",
+      "type": "object",
+      "properties": {
+        "filter": {
+          "$ref": "#/$defs/FieldPredicate"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "filter"
+      ]
+    },
+    "FormatType": {
+      "description": "Supported source-format names.",
+      "type": "string",
+      "enum": [
+        "json",
+        "csv",
+        "tsv"
+      ]
+    },
+    "Mark": {
+      "anyOf": [
+        {
+          "const": "bar"
+        },
+        {
+          "$ref": "#/$defs/BarMark"
+        }
+      ]
+    },
+    "MarkType": {
+      "description": "The supported mark object discriminator.",
+      "type": "string",
+      "enum": [
+        "bar"
+      ]
+    },
+    "Orient": {
+      "description": "Explicit bar orientation.",
+      "type": "string",
+      "enum": [
+        "horizontal",
+        "vertical"
+      ]
+    },
+    "Parameter": {
+      "description": "An initialized numeric variable parameter.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "not": {
+            "enum": [
+              "datum",
+              "event",
+              "item",
+              "parent"
+            ]
+          },
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"
+        },
+        "value": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "value"
+      ]
+    },
+    "PositionFieldDef": {
+      "description": "A primary positional field, optionally binned or aggregated.",
+      "type": "object",
+      "properties": {
+        "aggregate": {
+          "$ref": "#/$defs/AggregateOp"
+        },
+        "axis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Axis"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "bin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Bin"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "field": {
+          "type": "string"
+        },
+        "scale": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Scale"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "sort": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SortOrder"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "stack": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StackOffset"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "title": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Text"
+            },
+            {
+              "const": null
+            }
+          ]
+        },
+        "type": {
+          "$ref": "#/$defs/FieldType"
+        }
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "field"
+          ]
+        },
+        {
+          "properties": {
+            "aggregate": {
+              "const": "count"
+            }
+          },
+          "required": [
+            "aggregate"
+          ]
+        }
+      ]
+    },
+    "PredicateOperand": {
+      "description": "A numeric literal or an expression reference resolved by the compiler.",
+      "anyOf": [
+        {
+          "type": "number",
+          "format": "double"
+        },
+        {
+          "$ref": "#/$defs/ExpressionReference"
+        }
+      ]
+    },
+    "Scale": {
+      "description": "Basic scale options, with omission distinct from an explicitly disabled scale.",
+      "type": "object",
+      "properties": {
+        "nice": {
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/ScaleType"
+        },
+        "zero": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ScaleType": {
+      "description": "Supported positional scale types.",
+      "type": "string",
+      "enum": [
+        "linear",
+        "band",
+        "point"
+      ]
+    },
+    "SecondaryFieldDef": {
+      "description": "A secondary boundary field. Primary-channel options do not apply here.",
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "field"
+      ]
+    },
+    "SortOrder": {
+      "description": "Supported field sort directions.",
+      "type": "string",
+      "enum": [
+        "ascending",
+        "descending"
+      ]
+    },
+    "StackOffset": {
+      "description": "The supported stack offset. Explicit null disables stacking.",
+      "type": "string",
+      "enum": [
+        "zero"
+      ]
+    },
+    "Text": {
+      "description": "A single line or multiple title lines, preserving the JSON shape.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "Transform": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BinTransform"
+        },
+        {
+          "$ref": "#/$defs/AggregateTransform"
+        },
+        {
+          "$ref": "#/$defs/FilterTransform"
+        }
+      ]
+    }
+  }
+}
