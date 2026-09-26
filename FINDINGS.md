@@ -317,7 +317,10 @@ instead makes the charge linear and exact: 3.2 MB at 100k rows, 32 MB at 1M,
 change is [`crates/avenger-altair/bench/charge-slices.patch`](crates/avenger-altair/bench/charge-slices.patch)
 (against `f4890be`, behind an environment variable, with the logging).
 `materialize_partition` and `MaterializedValue::size` (`inputs.rs`) use
-`get_array_memory_size` the same way and were not measured.
+`get_array_memory_size` the same way and were not measured. Proposed as
+[jonmmease/avenger#141](https://github.com/jonmmease/avenger/pull/141), on
+`codex/datafusion-dataflow` (the change without the logging; the crate's
+133 tests pass).
 **Measure:** `python crates/avenger-altair/bench/budget.py 30000 100000 300000 1000000`
 bisects the smallest budget that draws, for JSON rows and for Arrow.
 
