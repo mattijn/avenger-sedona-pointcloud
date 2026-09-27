@@ -861,26 +861,39 @@ const SLIDES = [
   {
     title: "Altair from the schema",
     big: "0 / 117", bigsub: "gallery charts compile today",
-    rows: [["validation", "6.5 µs · 705 µs", 1], ["classes from the schema", "35 + 9", 1], ["1M rows", "48 ms · 2.2 s", 1],
+    rows: [["asks of Altair", "3 changes", 0], ["validation", "6.5 µs · 705 µs", 1], ["classes from the schema", "35 + 9", 1], ["1M rows", "48 ms · 2.2 s", 1],
            ["notebook frame", "22 ms", 1], ["first needs", "layer · marks", 2], ["findings", "18 · 19 · 21", 2]],
     steps: 3,
-    nerds: `<b>the five steps</b>  <em>experiments/09-altair-on-avenger/README.md</em>
+    nerds: `<b>the five steps, and what Altair needs</b>  <em>experiments/09-altair-on-avenger/README.md</em>
+<em>a validator registry beside the renderer registry · the schema source configurable in</em>
+<em>generate_schema_wrapper.py · a data path that hands Arrow to a backend instead of rows</em>
 <code>cd crates/avenger-altair &amp;&amp; maturin develop --release</code>
 <code>python crates/avenger-altair/bench/coverage.py ~/vega/altair/tests/examples_methods_syntax</code>`,
     draw() {
-      const steps = [["opt-in backend", "tried", "no change to Altair"], ["validator hook", "Altair", "a small PR"],
-        ["API from the schema", "tried", "35 + 9 classes"], ["data without JSON", "tried", "48 ms for 1M rows"], ["notebook interaction", "tried", "22 ms a frame"]];
+      // [step, tried in the spike, what it asks of Altair, detail]
+      const steps = [["opt-in backend", true, null, "a plug-in on today's Altair"],
+        ["validator hook", false, "a validator registry", "beside alt.renderers"],
+        ["API from the schema", true, "a schema-source option", "35 + 9 classes"],
+        ["data without JSON", true, "Arrow to the renderer", "a data transformer"],
+        ["notebook interaction", true, null, "an anywidget view"]];
       const g0 = layer(0);
       el("path", { d: "M140,360 C240,300 280,480 362,470 S520,300 584,360 S760,480 806,470 S1000,330 1028,360", fill: "none", stroke: C.grid, "stroke-width": 10 }, g0);
       steps.forEach((s, i) => {
-        const x = 40 + i * 222, y = i % 2 ? 470 : 250;
-        const gg = layer(i === 1 ? 0 : 1);
-        el("rect", { x, y, width: 200, height: 110, fill: "#fff", stroke: s[1] === "Altair" ? C.ink : C.accent,
-                     "stroke-width": 1.8, "stroke-dasharray": s[1] === "Altair" ? null : "5 4" }, gg);
+        const [name, tried, asks, detail] = s;
+        const x = 40 + i * 222, y = i % 2 ? 470 : 216, h = 144;
+        const gg = layer(tried ? 1 : 0);
+        el("rect", { x, y, width: 200, height: h, fill: "#fff", stroke: tried ? C.accent : C.ink,
+                     "stroke-width": 1.8, "stroke-dasharray": tried ? "5 4" : null }, gg);
         text(x + 14, y + 26, String(i + 1), "kk", { parent: gg });
-        text(x + 14, y + 56, s[0], "lab", { parent: gg, bold: true, size: 16 });
-        text(x + 14, y + 84, s[2], "sub", { parent: gg });
-        el("circle", { cx: x + 100, cy: i % 2 ? y : y + 110, r: 5, fill: s[1] === "Altair" ? C.ink : C.accent }, gg);
+        text(x + 14, y + 54, name, "lab", { parent: gg, bold: true, size: 16 });
+        text(x + 14, y + 78, detail, "sub", { parent: gg });
+        if (asks) {
+          el("rect", { x: x + 138, y: y + 10, width: 52, height: 22, fill: C.ink }, gg);
+          text(x + 164, y + 26, "Altair", "sub", { anchor: "middle", parent: gg, fill: "#fff" });
+          el("line", { x1: x + 14, y1: y + 96, x2: x + 186, y2: y + 96, stroke: C.grid }, gg);
+          text(x + 14, y + 122, asks, "lab", { parent: gg, size: 14, size: asks.length > 24 ? 13 : 14 });
+        }
+        el("circle", { cx: x + 100, cy: i % 2 ? y : y + h, r: 5, fill: tried ? C.accent : C.ink }, gg);
       });
       const g2 = layer(2);
       bars(300, 690, [["layer", 41, "41", C.accent], ["a mark other than bar", 41, "41", C.accent], ["composition", 19, "19", C.accent], ["colour", 8, "8", C.accent]],
