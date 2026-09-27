@@ -752,51 +752,6 @@ const SLIDES = [
     },
   },
 
-  // 1 ---------------------------------------------------------------- modules
-  {
-    title: "The current stack of Avenger crates",
-    big: "38", bigsub: "crates at f4890be, 32 of them on this route",
-    rows: [["on this route", "32", 0], ["not used here", "6", 0], ["carried here, with additions", "vegalite-spec", 0],
-           ["no Avenger dependencies", "11 crates", 0], ["build on common", "16 of 38", 0],
-           ["repin #120 → #124", "no code changes", 0], ["repin #124 → #130", "one line", 0]],
-    steps: 1,
-    hover: {},
-    nerds: `<b>every crate in Avenger's workspace at the pin</b>
-<code>git -C ../avenger show f4890be:Cargo.toml | sed -n '/members/,/]/p'</code>
-<b>how they build on each other</b>  <em>the avenger-* dependencies in each crate's Cargo.toml at f4890be</em>
-<code>git -C ../avenger show f4890be:avenger-common/Cargo.toml</code>
-<b>the ones this route pulls in</b>  <em>this repo's Cargo.lock: 31 from Avenger, vegalite-spec patched to crates/</em>
-<code>grep -A2 '^name = "avenger-' Cargo.lock</code>`,
-    draw() {
-      const top = 40, step = 70;
-      const g0 = layer(0);
-      // the bottom row, split in two to fit, as one band
-      el("rect", { x: 120, y: top + step * (LAYERS.length - 2) - 12, width: 1000, height: step + 58, fill: "#f4f4f4" }, g0);
-      el("path", { d: `M92,${top + 30} L92,${top + step * (LAYERS.length - 1) + 10}`, class: "edge", "marker-end": "url(#arr)" }, g0);
-      text(40, top + 20, "builds on", "kk", { parent: g0 });
-      text(40, top + step * (LAYERS.length - 1) + 44, "no Avenger", "kk", { parent: g0 });
-      text(40, top + step * (LAYERS.length - 1) + 60, "dependencies", "kk", { parent: g0 });
-      LAYERS.forEach((row, r) => {
-        const y = top + r * step;
-        let x = 130;
-        row.forEach((c, k) => {
-          const unused = c.startsWith("-"), name = unused ? c.slice(1) : c;
-          const w = Math.max(60, 28 + name.length * 7.4);
-          const kind = unused ? "ghost" : "solid";
-          box("c" + r + "_" + k, x, y, w, 32, { label: name, size: 13, kind, s: 0,
-            title: name === "common" ? "avenger-common: shared types (ScalarOrArray values, stroke and fill types, canvas size, cursor, path helpers, a cross-platform time type); it builds on color, image and text" : "avenger-" + name });
-          x += w + 9;
-        });
-        if (row[0] === "common") text(x + 8, y + 21, "shared types: values, strokes, canvas, paths", "sub", { parent: g0 });
-      });
-      const lg = layer(0);
-      el("rect", { x: 870, y: 44, width: 26, height: 18, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, lg);
-      text(906, 58, "on this route", "sub", { parent: lg });
-      el("rect", { x: 990, y: 44, width: 26, height: 18, fill: "none", stroke: C.line, "stroke-dasharray": "3 4" }, lg);
-      text(1026, 58, "not used here", "sub", { parent: lg });
-    },
-  },
-
   // 2 ---------------------------------------------------------------- compositions
   {
     title: "Our composition",
@@ -992,6 +947,51 @@ const SLIDES = [
         box(s[0], cx - 110, cy - 40, 220, 80, { s: 0, label: s[1], sub: s[2], size: 16, kind: s[0] === "alt" ? "acc" : "" });
         edge(s[0], "core", { s: 1, kind: s[0] === "alt" ? "acc" : "" });
       });
+    },
+  },
+
+  // 1 ---------------------------------------------------------------- modules
+  {
+    title: "The current stack of Avenger crates",
+    big: "38", bigsub: "crates at f4890be, 32 of them on this route",
+    rows: [["on this route", "32", 0], ["not used here", "6", 0], ["carried here, with additions", "vegalite-spec", 0],
+           ["no Avenger dependencies", "11 crates", 0], ["build on common", "16 of 38", 0],
+           ["repin #120 → #124", "no code changes", 0], ["repin #124 → #130", "one line", 0]],
+    steps: 1,
+    hover: {},
+    nerds: `<b>every crate in Avenger's workspace at the pin</b>
+<code>git -C ../avenger show f4890be:Cargo.toml | sed -n '/members/,/]/p'</code>
+<b>how they build on each other</b>  <em>the avenger-* dependencies in each crate's Cargo.toml at f4890be</em>
+<code>git -C ../avenger show f4890be:avenger-common/Cargo.toml</code>
+<b>the ones this route pulls in</b>  <em>this repo's Cargo.lock: 31 from Avenger, vegalite-spec patched to crates/</em>
+<code>grep -A2 '^name = "avenger-' Cargo.lock</code>`,
+    draw() {
+      const top = 40, step = 70;
+      const g0 = layer(0);
+      // the bottom row, split in two to fit, as one band
+      el("rect", { x: 120, y: top + step * (LAYERS.length - 2) - 12, width: 1000, height: step + 58, fill: "#f4f4f4" }, g0);
+      el("path", { d: `M92,${top + 30} L92,${top + step * (LAYERS.length - 1) + 10}`, class: "edge", "marker-end": "url(#arr)" }, g0);
+      text(40, top + 20, "builds on", "kk", { parent: g0 });
+      text(40, top + step * (LAYERS.length - 1) + 44, "no Avenger", "kk", { parent: g0 });
+      text(40, top + step * (LAYERS.length - 1) + 60, "dependencies", "kk", { parent: g0 });
+      LAYERS.forEach((row, r) => {
+        const y = top + r * step;
+        let x = 130;
+        row.forEach((c, k) => {
+          const unused = c.startsWith("-"), name = unused ? c.slice(1) : c;
+          const w = Math.max(60, 28 + name.length * 7.4);
+          const kind = unused ? "ghost" : "solid";
+          box("c" + r + "_" + k, x, y, w, 32, { label: name, size: 13, kind, s: 0,
+            title: name === "common" ? "avenger-common: shared types (ScalarOrArray values, stroke and fill types, canvas size, cursor, path helpers, a cross-platform time type); it builds on color, image and text" : "avenger-" + name });
+          x += w + 9;
+        });
+        if (row[0] === "common") text(x + 8, y + 21, "shared types: values, strokes, canvas, paths", "sub", { parent: g0 });
+      });
+      const lg = layer(0);
+      el("rect", { x: 870, y: 44, width: 26, height: 18, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, lg);
+      text(906, 58, "on this route", "sub", { parent: lg });
+      el("rect", { x: 990, y: 44, width: 26, height: 18, fill: "none", stroke: C.line, "stroke-dasharray": "3 4" }, lg);
+      text(1026, 58, "not used here", "sub", { parent: lg });
     },
   },
 
@@ -1326,9 +1326,9 @@ const E = {
      '! set title "Building points per 2 m of height above 42 m"', '! set x.title "height above 42 m"', '! set x.labelAngle -45',
      '! set fill #c44e52', '! render chart.png'], 5],
   povw: ["experiments/06-pipelines/video/overview.mp4", "pipelines, an overview", "experiments/06-pipelines/README.md"],
-  autopilot: ["experiments/07-chart-decisions/video/autopilot.mp4", "the autopilot: typed text drives the chart", "cargo run --release -p lidar-decide --bin autopilot_live -- --record …"],
-  aptour: ["experiments/07-chart-decisions/video/autopilot_tour.mp4", "one chart, many marks, keyed transitions", "cargo run --release -p lidar-decide --bin autopilot_live -- --tour out/autopilot_live/tour"],
-  ittour: ["experiments/07-chart-decisions/video/interactions_tour.mp4", "the interactions, one after another", "cargo run --release -p lidar-decide --bin autopilot_live -- --tour-interactions out/autopilot_live/tour"],
+  autopilot: ["experiments/07-chart-decisions/video/autopilot.mp4", "the autopilot, first recording: typed text drives the chart", "cargo run --release -p lidar-decide --bin autopilot_live -- --record …"],
+  aptour: ["experiments/07-chart-decisions/video/autopilot_tour.mp4", "the autopilot tour: one chart, many marks (68 s)", "cargo run --release -p lidar-decide --bin autopilot_live -- --tour out/autopilot_live/tour"],
+  ittour: ["experiments/07-chart-decisions/video/interactions_tour.mp4", "the autopilot's interactions tour (89 s)", "cargo run --release -p lidar-decide --bin autopilot_live -- --tour-interactions out/autopilot_live/tour"],
   apshot: ["experiments/07-chart-decisions/images/autopilot.png", "the autopilot window", "cargo run --release -p lidar-decide --bin autopilot_live"],
   decisions: ["experiments/07-chart-decisions/images/decisions.png", "decisions, case by case", "cargo run --release -p lidar-decide --bin decide_eval"],
   writer: ["experiments/07-chart-decisions/images/writer_nerds.png", "the writer, and why a try was refused", "cargo run --release -p lidar-decide --bin writer_eval"],
@@ -1344,16 +1344,19 @@ const E = {
   altlive: ["crates/avenger-altair/bench/live.png", "a live Altair chart as rows arrive", "python crates/avenger-altair/bench/live.py 10000 100"],
 };
 const MEDIA = {
-  2: ["explorer", "liveGif", "povw", "aptour", "watch", "notebook"],
-  3: ["altbars", "notebook"],
-  4: ["morph", "lenses", "decisions", "camera"],
-  5: ["classes", "liveGif", "watch", "tour", "hill", "pchart", "autopilot", "writer", "notebook"],
-  6: ["cbars", "morph", "maps", "glyphs", "tour", "fisheye"],
-  7: ["ittour", "magnifier", "lenses", "soft", "lasso", "series"],
-  8: ["aptour", "apshot", "decisions", "writer", "editor"],
-  10: ["notebook", "altbars", "camera", "altlive"],
-  11: ["liveMp4", "explorer", "altlive", "section"],
+  "Our composition": ["explorer", "liveGif", "povw", "aptour", "watch", "notebook"],
+  "Meeting halfway": ["altbars", "notebook"],
+  "Beyond Vega-Lite": ["ittour", "morph", "lenses", "decisions", "camera"],
+  "Scenarios as tests": ["classes", "liveGif", "watch", "tour", "hill", "pchart", "autopilot", "writer", "notebook"],
+  "Grammar of graphics": ["cbars", "morph", "maps", "glyphs", "tour", "fisheye"],
+  "Grammar of interaction": ["ittour", "magnifier", "lenses", "soft", "lasso", "series"],
+  "A chart vocabulary": ["aptour", "autopilot", "apshot", "decisions", "writer", "editor"],
+  "Altair from the schema": ["notebook", "altbars", "camera", "altlive"],
+  "Fast, streaming, independent": ["liveMp4", "explorer", "altlive", "section"],
 };
+// Which part each slide belongs to, by title.
+const PART_1 = ["Our composition", "Meeting halfway", "Beyond Vega-Lite", "Scenarios as tests"];
+const PART_3 = ["Findings", "Small steps", "One route of many"];
 
 let mList = [], mIdx = 0;
 const modal = document.getElementById("modal");
@@ -1442,7 +1445,7 @@ function render() {
   EDGE_LAYER = el("g", {});
   S.draw();
   wireHover(S.hover);
-  const part = cur === 0 ? "" : cur <= 5 ? "part 1 · " : cur <= 11 ? "part 2 · " : "part 3 · ";
+  const part = cur === 0 ? "" : PART_1.includes(S.title) ? "part 1 · " : PART_3.includes(S.title) ? "part 3 · " : "part 2 · ";
   document.getElementById("kicker").textContent = part + String(cur + 1).padStart(2, "0") + " / " + SLIDES.length;
   document.getElementById("title").textContent = S.title;
   document.getElementById("big").textContent = S.big || "";
@@ -1457,7 +1460,7 @@ function render() {
     rows.appendChild(d);
   });
   nerds.innerHTML = S.nerds || "";
-  S.media = (MEDIA[cur] || []).filter(k => E[k]);
+  S.media = (MEDIA[S.title] || []).filter(k => E[k]);
   if (!S.noList) mediaList(S); else document.getElementById("media").innerHTML = "";
   if (S.links) S.links.forEach(([id, key]) => {
     const n = NODES[id]; if (!n) return;
