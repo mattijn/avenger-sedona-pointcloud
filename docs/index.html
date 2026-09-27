@@ -517,7 +517,7 @@ const SLIDES = [
     title: "Our composition",
     big: "1", bigsub: "of many, towards the next Altair",
     rows: [["window", "scene · draw · encode", 1], ["stream", "data · encode · scene", 1], ["pipeline", "data · describe", 1],
-           ["agent vocabulary", "describe", 1], ["chart language", "describe · encode", 1], ["Vega-Lite → Altair", "describe · data · draw", 1]],
+           ["agent vocabulary", "describe", 1], ["chart language", "describe · encode", 1], ["the next Altair", "describe · data · draw", 1]],
     steps: 3,
     nerds: `<b>compositions in this repo</b>
 <code>experiments/01-charts            a native window</code>
@@ -525,7 +525,7 @@ const SLIDES = [
 <code>experiments/06-pipelines         a pipeline</code>
 <code>experiments/07-chart-decisions   a vocabulary for agents</code>
 <code>experiments/02-chart-language    the chart language</code>
-<code>crates/avenger-altair            Vega-Lite → Altair</code>`,
+<code>crates/avenger-altair            Avenger's schema → Altair</code>`,
     draw() {
       const gy = ground(820, { x: 60, w: 700, s: 0 });
       const T = [
@@ -560,13 +560,20 @@ const SLIDES = [
       text(X, 110, "in short", "kk", { parent: g2 });
       el("rect", { x: X, y: 760, width: 250, height: 60, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, g2);
       text(X + 125, 796, "Avenger", "lab", { anchor: "middle", parent: g2, bold: true });
-      ["chart-definition", "Vega-Lite spec", "the next Altair"].forEach((t, k) => {
-        const y = 640 - k * 110, top = k === 2;
-        el("line", { x1: X + 125, y1: y + 60, x2: X + 125, y2: k ? y + 110 : 760, stroke: top ? C.accent : C.ink, "stroke-width": 1.4 }, g2);
-        el("rect", { x: X + 25, y, width: 200, height: 60, fill: "#fff", stroke: top ? C.accent : C.ink,
-                     "stroke-width": top ? 2.2 : 1.4 }, g2);
-        text(X + 125, y + 36, t, "lab", { anchor: "middle", parent: g2, size: 15, bold: top, fill: top ? C.accent : null });
+      // Avenger's schema, with Vega-Lite as one part of it
+      el("line", { x1: X + 125, y1: 700, x2: X + 125, y2: 760, stroke: C.ink, "stroke-width": 1.4 }, g2);
+      el("rect", { x: X, y: 440, width: 250, height: 260, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, g2);
+      text(X + 125, 470, "Avenger's schema", "lab", { anchor: "middle", parent: g2, bold: true, size: 16 });
+      el("rect", { x: X + 18, y: 490, width: 104, height: 60, fill: "none", stroke: C.ink, "stroke-dasharray": "2 4" }, g2);
+      text(X + 70, 525, "Vega-Lite", "lab", { anchor: "middle", parent: g2, size: 14 });
+      [["camera", X + 132, 490], ["interaction", X + 18, 570], ["vocabulary", X + 132, 570], ["more", X + 18, 630]].forEach(([t, x, y]) => {
+        el("rect", { x, y, width: 104, height: 44, fill: "#fff", stroke: t === "more" ? C.line : C.ink,
+                     "stroke-width": 1.2, "stroke-dasharray": t === "more" ? "3 5" : null }, g2);
+        text(x + 52, y + 27, t, "lab", { anchor: "middle", parent: g2, size: 14, fill: t === "more" ? C.muted : null });
       });
+      el("line", { x1: X + 125, y1: 380, x2: X + 125, y2: 440, stroke: C.accent, "stroke-width": 2 }, g2);
+      el("rect", { x: X + 25, y: 320, width: 200, height: 60, fill: "#fff", stroke: C.accent, "stroke-width": 2.2 }, g2);
+      text(X + 125, 356, "the next Altair", "lab", { anchor: "middle", parent: g2, size: 15, bold: true, fill: C.accent });
     },
   },
 
@@ -806,7 +813,7 @@ const SLIDES = [
     draw() {
       bands();
       chip("k0", 60, 100, "vegalite-spec", { s: 0 });
-      text(250, 122, "typed Vega-Lite, in Rust", "sub", { s: 0 });
+      text(250, 122, "the spec types, in Rust: Vega-Lite and more", "sub", { s: 0 });
       const g = layer(1);
       G.code(60, 280, 300, ["struct Mark {", "  kind: MarkType,", "  opacity: Option<f64>,", "}"], { parent: g, hi: 0 });
       el("path", { d: "M360,340 L420,340", class: "edge acc", "marker-end": "url(#arrA)" }, g);
