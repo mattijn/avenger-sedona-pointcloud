@@ -32,6 +32,10 @@ without conversion is that both sides agree on Arrow 58.3 and DataFusion 54.
 
 ![the class map](experiments/01-charts/images/top_class.png)
 
+[ARCHITECTURE.md](ARCHITECTURE.md) draws all of it as one system: C4 context,
+containers and components, the main paths as sequence diagrams, a Wardley map
+of what evolves where, and the questions the experiments asked.
+
 ## Reviewing Avenger
 
 These experiments double as a review of the stack. [FINDINGS.md](FINDINGS.md)
