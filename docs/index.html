@@ -272,11 +272,11 @@ function box(id, x, y, w, h, o = {}) {
   const light = o.kind && o.kind.includes("dark");
   if (o.label !== undefined) {
     const hasSub = o.sub !== undefined;
-    const ly = y + h / 2 + (hasSub ? -3 : 6);
+    const ly = y + h / 2 + (hasSub ? -5 : 6);
     text(o.align === "left" ? x + 14 : cx, ly, o.label, o.labcls || "lab",
          { anchor: o.align === "left" ? "start" : "middle", parent: inner, bold: o.bold,
            fill: light ? "#fff" : (o.labfill || null), size: o.size });
-    if (hasSub) text(o.align === "left" ? x + 14 : cx, ly + 19, o.sub, "sub",
+    if (hasSub) text(o.align === "left" ? x + 14 : cx, ly + 23, o.sub, "sub",
                      { anchor: o.align === "left" ? "start" : "middle", parent: inner,
                        fill: light ? "#b8b8b8" : (o.subfill || null) });
   }
@@ -497,7 +497,7 @@ const FAMILIES = CRATES.map(c => c[0]);
 
 // A chip in the ground: what already stands, drawn heaviest.
 function chip(id, x, y, label, o = {}) {
-  const w = o.w || Math.max(64, 18 + label.length * 8.1);
+  const w = o.w || Math.max(68, 28 + label.length * 8.1);
   box(id, x, y, w, o.h || 34, { label, size: o.size || 15, kind: o.kind || "solid", s: o.s, parent: o.parent });
   return w;
 }
@@ -630,10 +630,10 @@ const SLIDES = [
         const cx = x + 46;
         if (t[2] === "win") { el("rect", { x: x + 12, y: 210, width: 68, height: 50, fill: "none", stroke: C.muted }, g); G.bars(x + 18, 222, 56, 32, [3, 5, 2, 4], { parent: g, hi: 1 }); }
         if (t[2] === "live") G.bars(x + 10, 212, 72, 50, [2, 3, 5, 4, 6, 7, 5, 8], { parent: g, hi: 7 });
-        if (t[2] === "pipe") ["read", "! sql", "! chart"].forEach((l, k) => text(x + 12, 226 + k * 18, l, "sub", { parent: g, fill: k === 2 ? C.accent : C.muted }));
-        if (t[2] === "voc") bars(x + 8, 214, [["mark", 0.9, "", C.accent], ["zoom", 0.1, ""]], { parent: g, max: 1, labelW: 36, trackW: 40, rowH: 20 });
-        if (t[2] === "lang") ["mark rect {", "  x: cx", "}"].forEach((l, k) => text(x + 12, 226 + k * 18, l, "sub", { parent: g }));
-        if (t[2] === "alt") text(x + 12, 230, "alt.Chart", "sub", { parent: g, fill: C.accent });
+        if (t[2] === "pipe") ["read", "! sql", "! chart"].forEach((l, k) => text(x + 16, 228 + k * 22, l, "sub", { parent: g, fill: k === 2 ? C.accent : C.muted }));
+        if (t[2] === "voc") bars(x + 16, 214, [["mark", 0.9, "", C.accent], ["zoom", 0.1, ""]], { parent: g, max: 1, labelW: 38, trackW: 28, rowH: 26 });
+        if (t[2] === "lang") ["mark rect {", "  x: cx", "}"].forEach((l, k) => text(x + 16, 228 + k * 22, l, "sub", { parent: g }));
+        if (t[2] === "alt") text(x + 16, 230, "alt.Chart", "sub", { parent: g, fill: C.accent });
         t[1].forEach(f => {
           el("line", { x1: cx, y1: 340, x2: cx, y2: gy(f), stroke: acc ? C.accent : C.line, "stroke-width": acc ? 2 : 1.2 }, g);
           el("circle", { cx, cy: gy(f), r: 4, fill: acc ? C.accent : C.muted }, g);
@@ -853,7 +853,8 @@ const SLIDES = [
       G.line(440, 300, 290, 170, { parent: g, series: 3, seed: 12 });
       el("rect", { x: 540, y: 300, width: 80, height: 170, fill: C.accent, opacity: 0.12 }, g);
       text(585, 510, "brush · soft selection", "sub", { anchor: "middle", parent: g });
-      G.code(780, 280, 340, ["chart line --x t --y n", "select interval --x 3..5", "lens regression --focus .4,.5", "view magnifier --zoom 3"], { parent: g, hi: 3 });
+      el("rect", { x: 780, y: 280, width: 340, height: 240, fill: "none", stroke: C.accent, "stroke-dasharray": "5 4" }, g);
+      G.code(800, 318, 300, ["chart line --x t --y n", "select interval --x 3..5", "lens regression --focus .4,.5", "view magnifier --zoom 3"], { parent: g, hi: 3 });
       text(950, 510, "gestures as a log", "sub", { anchor: "middle", parent: g });
       marker(60, 590, "1", "hit-test index is the frame", 2); marker(380, 590, "2", "interactive: false keeps it", 2);
       marker(700, 590, "3", "rebuilds always re-index", 2); marker(990, 590, "11", "no item keys", 2);
@@ -1071,7 +1072,7 @@ const SLIDES = [
         ["drawing without a hit-test index", "1–2"], ["a key per item", "11"], ["a colour scale per mark", "10"], ["layer and more marks", "21"]];
       const pts = S.map((_, i) => [100 + i * 140, 700 - i * 78]);
       const g0 = layer(0);
-      el("path", { d: "M60,740 L" + pts.map(p => p.join(",")).join(" L") + " L1050,150", fill: "none", stroke: C.grid, "stroke-width": 8, "stroke-linejoin": "round" }, g0);
+      el("path", { d: "M60,740 L" + pts.map(p => p.join(",")).join(" L") + " L1010,150", fill: "none", stroke: C.grid, "stroke-width": 8, "stroke-linejoin": "round" }, g0);
       S.forEach((s, i) => {
         const [x, y] = pts[i], g = layer(i);
         el("rect", { x: x - 16, y: y - 16, width: 32, height: 32, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, g);
@@ -1080,8 +1081,8 @@ const SLIDES = [
         text(x + 30, y + 62, "finding " + s[1], "sub", { parent: g, fill: C.accent });
       });
       const g7 = layer(7);
-      el("rect", { x: 1000, y: 90, width: 150, height: 60, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g7);
-      text(1075, 126, "the next Altair", "lab", { anchor: "middle", parent: g7, bold: true, size: 15, fill: C.accent });
+      el("rect", { x: 960, y: 90, width: 160, height: 60, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g7);
+      text(1040, 126, "the next Altair", "lab", { anchor: "middle", parent: g7, bold: true, size: 15, fill: C.accent });
     },
   },
 
