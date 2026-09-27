@@ -733,8 +733,8 @@ const SLIDES = [
       });
       // graphics: the same bars under three coordinate systems
       const g0 = layer(0);
-      G.bars(90, 170, 110, 110, [5, 3, 4, 2], { parent: g0, hi: 0 });
-      G.arc(300, 225, 55, [5, 3, 4, 2], { parent: g0 });
+      G.bars(88, 168, 112, 106, [5, 3, 4, 2], { parent: g0, hi: 0 });
+      G.arc(284, 221, 48, [5, 3, 4, 2], { parent: g0 });
       G.tilt(110, 360, 120, 120, [3, 5, 2, 4], { parent: g0, hi: 1 });
       const pg = layer(0);
       for (let k = 0; k < 6; k++) el("path", { d: `M${250 + k * 10},${370} Q${290},${420} ${250 + k * 10},${480}`, fill: "none", stroke: k === 3 ? C.accent : C.line }, pg);
@@ -766,7 +766,7 @@ const SLIDES = [
       });
       // Vega-Lite as the floor
       const gv = layer(0);
-      el("rect", { x: 70, y: 150, width: 250, height: 140, fill: "none", stroke: C.ink, "stroke-dasharray": "2 4" }, gv);
+      el("rect", { x: 72, y: 152, width: 296, height: 138, fill: "none", stroke: C.ink, "stroke-dasharray": "2 4" }, gv);
       text(80, 305, "Vega-Lite today", "sub", { parent: gv });
     },
   },
