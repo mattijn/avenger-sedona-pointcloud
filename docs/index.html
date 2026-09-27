@@ -764,7 +764,7 @@ const SLIDES = [
   // 7 ---------------------------------------------------------------- interaction
   {
     title: "Grammar of interaction",
-    big: "387 ms", bigsub: "to index 300k marks for hit testing",
+    big: "1", bigsub: "log of commands for every gesture",
     rows: [["render, 300k marks", "21 ms", 2], ["hit-test index", "387 ms", 2], ["rebuilds per 1,022 batches", "140", 1],
            ["findings", "1 · 2 · 3 · 11", 2]],
     steps: 4,
@@ -798,7 +798,7 @@ const SLIDES = [
   // 8 ---------------------------------------------------------------- vocabulary
   {
     title: "A chart vocabulary",
-    big: "290 ms", bigsub: "for a typed choice",
+    big: "19 / 19", bigsub: "requests met by typed choices",
     rows: [["typed choices", "19 / 19", 1], ["rules alone", "13 / 19", 1], ["an LLM writes, when choices end", "25 / 25", 1],
            ["findings", "12 · 13", 2]],
     steps: 4,
@@ -828,7 +828,7 @@ const SLIDES = [
   // 9 ---------------------------------------------------------------- schema everywhere
   {
     title: "The schema everywhere",
-    big: "3.6 µs", bigsub: "a check in JavaScript, from exported rules",
+    big: "4", bigsub: "languages check before Rust runs",
     rows: [["Rust", "10 µs", 1], ["Python", "13.8 µs", 1], ["wasm", "8.5 µs", 1], ["JavaScript, CEL", "3.6 µs", 1],
            ["portable agrees with Rust", "99 % of 3,330", 1], ["findings", "23 · 24", 2]],
     steps: 4,
@@ -892,7 +892,7 @@ const SLIDES = [
   // 11 --------------------------------------------------------------- data
   {
     title: "Fast, streaming, independent",
-    big: "48 ms", bigsub: "1M rows as Arrow, 2.2 s as JSON",
+    big: "Arrow", bigsub: "across every boundary",
     rows: [["fold a batch", "2–7 ms", 1], ["merge a window", "2–11 ms", 1], ["window from chunk statistics", "69 ms", 1],
            ["findings", "16 · 20 · 22", 2]],
     steps: 4,
