@@ -489,16 +489,21 @@ const T = "data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz";
 
 // ---------------------------------------------------------------- shared
 
-// Avenger's crates as used in this repo, grouped by family.
+// Every crate in Avenger's workspace at f4890be (its Cargo.toml members),
+// grouped by family. "-" marks the six this route does not use; the other
+// 32 are in this repo's Cargo.lock, with vegalite-spec carried here.
 const CRATES = [
-  ["describe", ["chart", "chart-definition", "vegalite-spec", "vegalite-compiler"]],
-  ["draw", ["wgpu", "winit-wgpu", "app", "resource"]],
-  ["scene", ["scenegraph", "eventstream", "widgets"]],
+  ["describe", ["chart", "chart-definition", "vegalite-spec", "vegalite-compiler", "-vega-scenegraph"]],
+  ["draw", ["wgpu", "winit-wgpu", "app", "svg", "image", "resource", "-pdf"]],
+  ["scene", ["scenegraph", "eventstream", "widgets", "layout", "panels", "-selection"]],
   ["shape", ["geometry", "geo", "guides"]],
-  ["encode", ["scales", "color", "format", "format-number-d3", "format-datetime-d3", "text"]],
-  ["data", ["transform", "datafusion-dataflow", "datafusion-aggregate-state"]],
+  ["scale", ["scales", "color", "-scales-datafusion"]],
+  ["format", ["format", "format-config", "format-number-d3", "format-datetime-d3", "format-datetime-chrono"]],
+  ["text", ["text", "fonts", "typst-label"]],
+  ["data", ["transform", "datafusion-dataflow", "datafusion-aggregate-state", "-datafusion-preaggregate", "-datafusion-cache"]],
 ];
-const FAMILIES = CRATES.map(c => c[0]);
+// The ground bands on other slides keep six families.
+const FAMILIES = ["describe", "draw", "scene", "shape", "encode", "data"];
 
 // A chip in the ground: what already stands, drawn heaviest.
 function chip(id, x, y, label, o = {}) {
@@ -581,27 +586,37 @@ const SLIDES = [
 
   // 1 ---------------------------------------------------------------- modules
   {
-    title: "The crates",
-    big: "24", bigsub: "crates this route stands on",
-    rows: [["families", "6", 0], ["repin #120 → #124", "no code changes", 5], ["repin #124 → #130", "one line", 5],
-           ["crates carried across", "20", 5]],
-    steps: 6,
+    title: "The current stack of Avenger crates",
+    big: "38", bigsub: "crates at f4890be, 32 of them on this route",
+    rows: [["on this route", "32", 0], ["not used here", "6", 0], ["carried here, with additions", "vegalite-spec", 0],
+           ["repin #120 → #124", "no code changes", 7], ["repin #124 → #130", "one line", 7]],
+    steps: 8,
     hover: {},
-    nerds: `<b>the pin</b>  <em>root Cargo.toml, [workspace.dependencies]</em>
-<code>avenger-* = { git = "https://github.com/jonmmease/avenger", rev = "f4890be…" }</code>
+    nerds: `<b>every crate in Avenger's workspace at the pin</b>
+<code>git -C ../avenger show f4890be:Cargo.toml | sed -n '/members/,/]/p'</code>
+<b>the ones this route pulls in</b>  <em>this repo's Cargo.lock: 31 from Avenger, vegalite-spec patched to crates/</em>
+<code>grep -A2 '^name = "avenger-' Cargo.lock</code>
 
 <b>what worked well</b>  <em>FINDINGS.md</em>
 <em>a repin across a rewritten stack of 180 commits needed one line</em>`,
     draw() {
       CRATES.forEach(([fam, list], r) => {
-        const y = 80 + r * 118, s = CRATES.length - r - 1;
-        text(60, y + 23, fam, "kk", { s });
-        let x = 180;
-        list.forEach((c, k) => { x += chip("c" + r + k, x, y, c, { s }) + 12; });
+        const y = 56 + r * 90, s = CRATES.length - r - 1;
+        text(40, y + 22, fam, "kk", { s });
+        let x = 150;
+        list.forEach((c, k) => {
+          const unused = c.startsWith("-"), name = unused ? c.slice(1) : c;
+          x += chip("c" + r + k, x, y, name, { s, size: 14, kind: unused ? "ghost" : "solid" }) + 10;
+        });
       });
       const g = layer(0);
-      el("rect", { x: 180, y: 790, width: 900, height: 30, fill: C.ink }, g);
-      text(630, 810, "common", "lab", { anchor: "middle", parent: g, fill: "#fff", size: 15 });
+      el("rect", { x: 150, y: 790, width: 780, height: 28, fill: C.ink }, g);
+      text(540, 809, "common", "lab", { anchor: "middle", parent: g, fill: "#fff", size: 14 });
+      const lg = layer(0);
+      el("rect", { x: 960, y: 772, width: 26, height: 18, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, lg);
+      text(996, 786, "on this route", "sub", { parent: lg });
+      el("rect", { x: 960, y: 800, width: 26, height: 18, fill: "none", stroke: C.line, "stroke-dasharray": "3 4" }, lg);
+      text(996, 814, "not used here", "sub", { parent: lg });
     },
   },
 
