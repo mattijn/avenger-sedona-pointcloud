@@ -534,7 +534,7 @@ function ground(y, o = {}) {
 // Part 2's template: three bands and a fork.
 function bands() {
   const g = layer(0);
-  [["in the crates", 70], ["tried", 250], ["found · each number opens its finding", 560], ["a choice", 700]].forEach(([t, y]) => {
+  [["in the crates", 70], ["tried", 250], ["found · each opens", 560], ["a choice", 700]].forEach(([t, y]) => {
     text(40, y, t, "kk", { parent: g });
     el("line", { x1: 40, y1: y + 10, x2: 1140, y2: y + 10, stroke: C.grid }, g);
   });
@@ -548,8 +548,7 @@ function marker(x, y, n, label, s) {
   g.classList.add("media-link");
   g.addEventListener("click", () => openMedia(CURF, CURF.indexOf(key)));
   el("title", { text: FIND[n] ? FIND[n].t : "" }, g);
-  el("circle", { cx: x + 16, cy: y + 16, r: 16, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g);
-  text(x + 16, y + 21, n, "val", { anchor: "middle", parent: g, fill: C.accent });
+  swatch(x + 4, y + 5, FIND[n] ? FIND[n].s : "open", g, 22);
   const t = FIND[n] ? FIND[n].t : label, words = t.split(" "), lines = [""];
   words.forEach(w => { if ((lines[lines.length - 1] + " " + w).trim().length > 22) lines.push(w); else lines[lines.length - 1] = (lines[lines.length - 1] + " " + w).trim(); });
   lines.slice(0, 2).forEach((l, j) => text(x + 42, y + (lines.length > 1 ? 12 + j * 20 : 21), l, "lab", { parent: g, size: 14, fill: C.muted }));
@@ -570,6 +569,136 @@ function fork(x, y, taken, alts, s) {
 }
 
 // ---------------------------------------------------------------- slides
+
+// The findings, condensed from FINDINGS.md: a title a reader can follow,
+// what was seen, why it matters on this route, a question where the ledger
+// asks one, and the command that measures it again.
+const FIND = {
+  1: { t: "Hit-testing sets the frame budget", s: "open", f: "scene · draw",
+       saw: "Drawing 300k marks takes 28 ms; building the hit-test index for them takes 387 ms, about 1.2 µs a mark.",
+       why: "Live and animated charts rebuild the index every frame, so it sets the frame rate: 4.3 frames a second at ~156k cells.",
+       q: "Could the index be built lazily, on the first hit-test after a change?",
+       m: "cargo run --release -p lidar-probes --bin probe_render" },
+  2: { t: "interactive: false still builds the index", s: "open", f: "scene · draw",
+       saw: "With the group marked non-interactive, 300k marks still cost 365 ms against 387 ms.",
+       why: "A mark that can never be hit still pays for hit-test geometry.",
+       q: "Could interactive: false skip that geometry, not only index membership?",
+       m: "cargo run --release -p lidar-probes --bin probe_render" },
+  3: { t: "Every data push rebuilds geometry", s: "open", f: "scene · draw",
+       saw: "A redraw requested from a data thread always rebuilds the scene's geometry, even when only colours or positions changed.",
+       why: "Every batch of a live stream pays for finding 1.",
+       q: "Could an invalidation say whether geometry changed, as UpdateStatus does for events?",
+       m: "cargo run --release -p lidar-stream --bin stream_live -- --speed 8 --window 12" },
+  4: { t: "Gradient fills draw flat or not at all", s: "open", f: "scene · draw",
+       saw: "A rect with a gradient fill renders nothing; a colorbar with the right stops renders as one colour, its last stop.",
+       why: "Colour legends for continuous data need a workaround: stacked solid rects.",
+       m: "cargo run --release -p lidar-probes --bin probe_render" },
+  5: { t: "The colorbar ignores its origin", s: "open", f: "shape",
+       saw: "make_colorbar_marks returns its group at [0, 0] whatever origin it gets; the source marks the parameter unused.",
+       why: "Callers wrap it to place it. Dropping the parameter would state the contract.",
+       m: "cargo run --release -p lidar-probes --bin probe_guides" },
+  6: { t: "The legend title lands inside the plot", s: "open", f: "shape",
+       saw: "For a 300-wide plot the entries sit at x = 308 and the title at x = 8, on top of the chart.",
+       why: "Charts here pass no title and draw it themselves.",
+       m: "cargo run --release -p lidar-probes --bin probe_guides" },
+  7: { t: "Linear domains take exactly two stops", s: "open", f: "encode",
+       saw: "A numeric domain of more than two values is refused.",
+       why: "A colour ramp with uneven stops, common for elevation, has to be resampled first.",
+       m: "cargo run --release -p lidar-probes --bin probe_guides" },
+  8: { t: "Fixed: the axis band option", s: "fixed", f: "shape",
+       saw: "Axes set a band option that linear scales rejected; now only when the scale has one.",
+       why: "Kept so the ledger records what got better.",
+       m: "cargo run --release -p lidar-probes --bin probe_guides" },
+  9: { t: "A format signature got simpler", s: "adapted", f: "encode",
+       saw: "PreparedNumberFormat::new takes the locale directly; NumberFormatContext is gone.",
+       why: "One call site changed here. Recorded as drift, not as a defect.",
+       m: "cargo build --release --workspace" },
+  10: { t: "One fill per mark, no colour scale", s: "suggestion", f: "describe",
+       saw: "A chart definition takes one constant fill per mark, and linear, band and point scales; no line or arc marks.",
+       why: "A pie, a line per series or a heatmap had to be drawn on the scenegraph directly, although avenger-scales has log and pow.",
+       m: "read avenger-chart-definition/src/model.rs" },
+  11: { t: "No key per item", s: "suggestion", f: "describe",
+       saw: "avenger-chart keeps an identity per plot, not per item.",
+       why: "A key carried into the rendered frame would let any host animate between two frames, as experiment 7 does by hand.",
+       m: "cargo run --release -p lidar-decide --bin autopilot_live" },
+  12: { t: "The vocabulary is not available as data", s: "suggestion", f: "describe",
+       saw: "The marks, channels and properties a chart accepts cannot be listed from the crates; deciders and prompts were written by hand.",
+       why: "Listed as data, they could be generated and would not drift from the renderer. avenger-validate does this for pipelines, from a hand-written spec.",
+       m: "cargo run --release -p avenger-validate -- corpus experiments/07-chart-decisions/results 20" },
+  13: { t: "Refusals should name their place", s: "suggestion", f: "describe",
+       saw: "An LLM fixed its pipelines from the reasons they were refused; the Vega-Lite compiler's CompileError::path() gives such a place.",
+       why: "Not checked: what ChartDefinition::finish() does with a property it cannot honour.",
+       m: "cargo run --release -p lidar-decide --bin writer_eval" },
+  14: { t: "Number formatting fails only at run time", s: "adapted", f: "encode",
+       saw: "The workspace built cleanly, then seven binaries failed when drawing an axis: “number formatting is not configured”.",
+       why: "A default that compiles and cannot draw a number is a trap.",
+       q: "Could the requirement show at compile time, or the default text engine come with D3 formatting?",
+       m: "run every binary in the cycle (CLAUDE.md)" },
+  15: { t: "The format crates split", s: "adapted", f: "encode",
+       saw: "avenger-format-number and -datetime became avenger-format plus -number-d3 and -datetime-d3.",
+       why: "Three small changes here, all found by the compiler.",
+       m: "cargo build --release --workspace" },
+  16: { t: "geo 0.29 blocks SedonaDB's predicates", s: "open", f: "shape",
+       saw: "sedona-geo needs geo 0.33; avenger-geo, -geometry and -guides need geo 0.29, and their i_float versions cannot resolve together.",
+       why: "With geo 0.33, spatial predicates such as st_contains could sit next to Avenger in one DataFusion session.",
+       m: "add sedona-geo to experiments/06-pipelines/Cargo.toml, then cargo metadata" },
+  17: { t: "Formatting moved; scales carry it too", s: "adapted", f: "encode",
+       saw: "A scale now needs its own formatting; a formatted text engine with an unformatted scale fails.",
+       why: "Two places must agree on formatting for one axis.",
+       m: "cargo run --release -p lidar-probes --bin probe_guides" },
+  18: { t: "Default options fail on axis labels", s: "open", f: "Vega-Lite",
+       saw: "Altair's plain bar chart fails with the default options; with D3 formatting set, it draws.",
+       why: "Finding 14, reached through the Vega-Lite front end. A Vega-Lite compiler could default to Vega-Lite's formatting.",
+       m: "avenger-altair render <spec> out.png, without the chart option" },
+  19: { t: "Altair's config is refused", s: "local", f: "Vega-Lite",
+       saw: "Every Altair chart carries config.view; the spec types refuse the key, so no Altair chart passes as written.",
+       why: "Reading config.view, and reporting the rest, would let Altair's output through unchanged. Written out by the bridge for now.",
+       m: "python crates/avenger-altair/bench/coverage.py <altair>/tests/examples_methods_syntax" },
+  20: { t: "SVG export spends 340 ms on the font", s: "open", f: "encode",
+       saw: "For an 8-bar chart, PNG export takes 14 ms and SVG 341 ms; 139 KB of the 148 KB SVG is one embedded font.",
+       why: "Referencing fonts, or caching the subset, would make SVG as cheap as it is in Vega.",
+       m: "avenger-altair render <spec> out.svg 10" },
+  21: { t: "What Altair's gallery needs first", s: "open", f: "Vega-Lite",
+       saw: "None of 117 gallery examples compiles yet. First refusals: layer 41, a mark other than bar 41, composition 19, colour 8.",
+       why: "That order, marks and layering first, then colour, then composition, opens the most of Altair soonest.",
+       m: "python crates/avenger-altair/bench/coverage.py <altair>/tests/examples_methods_syntax" },
+  22: { t: "Shared buffers charged once per batch", s: "local", f: "data",
+       saw: "The materialisation budget charges each sliced batch for the whole buffers it shares, so a histogram's charge grows quadratically: 1M rows exceed the 256 MB default.",
+       why: "Charging each slice's own size makes it linear, 32 bytes a row. Proposed as jonmmease/avenger#141, with a regression test.",
+       m: "python crates/avenger-altair/bench/budget.py 30000 100000 300000 1000000" },
+  23: { t: "Arrays accepted where objects belong", s: "open", f: "Vega-Lite",
+       saw: "The spec types take \"encoding\": [ … ] as an object, field by field in declaration order; Vega-Lite refuses it.",
+       why: "Found by checking the exported schema against the types: the only disagreement in 3,008 specs.",
+       m: "python crates/avenger-altair/bench/schema_parity.py <avenger checkout>" },
+  24: { t: "The spec types can export their schema", s: "local", f: "Vega-Lite",
+       saw: "A schema feature exports JSON Schema from the types, with CEL for what JSON Schema cannot state: 18.8 KB against Vega-Lite's 1.9 MB.",
+       why: "Altair's own generator reads it: 35 core and 9 channel classes. Not proposed upstream yet.",
+       m: "python crates/avenger-altair/bench/altair_generator.py <altair checkout> <out>" },
+};
+// The findings by what they stand in the way of, most pressing first.
+const THEMES = [
+  ["reach Altair's output", [19, 21, 18, 23]],
+  ["say more than Vega-Lite", [10, 11, 7, 4, 6, 5]],
+  ["keep live charts fast", [1, 2, 3, 22, 20]],
+  ["the vocabulary as data", [12, 13, 24]],
+  ["sit next to other crates", [16]],
+  ["settled along the way", [8, 17, 14, 15, 9]],
+];
+const THEME_OF = {};
+THEMES.forEach(([t, ns]) => ns.forEach(n => { THEME_OF[n] = t; }));
+function fstyle(s) {
+  return s === "open" ? { fill: "#fff", stroke: C.accent, sw: 2, dash: null }
+    : s === "suggestion" ? { fill: "#fff", stroke: C.accent, sw: 1.6, dash: "4 3" }
+    : s === "local" ? { fill: C.tint, stroke: C.accent, sw: 1.6, dash: null }
+    : s === "adapted" ? { fill: "#f2f2f2", stroke: C.line, sw: 1, dash: null }
+    : { fill: C.accent, stroke: C.accent, sw: 1, dash: null };
+}
+function swatch(x, y, s, parent, size = 18) {
+  const st = fstyle(s);
+  return el("rect", { x, y, width: size, height: size, fill: st.fill, stroke: st.stroke, "stroke-width": st.sw, "stroke-dasharray": st.dash }, parent);
+}
+const STATUS = { open: "open", suggestion: "suggestion", local: "worked around here", adapted: "API change, adapted", fixed: "fixed" };
+
 
 const SLIDES = [
   // 0 ---------------------------------------------------------------- title
@@ -838,7 +967,7 @@ const SLIDES = [
     title: "Grammar of graphics",
     big: "≈ 20", bigsub: "lines to resolve a coordinate system",
     rows: [["cartesian · polar · 3D · map · fisheye", "5", 1], ["Lambert-93 against a conic map", "0.27 px", 1],
-           ["findings", "4 · 5 · 6 · 7 · 10", 2]],
+           ["findings", "5", 2]],
     steps: 4,
     nerds: `<b>the coordinate trait</b>  <em>experiments/05-coordinate-systems</em>
 <code>cargo run --release -p lidar-coords --bin coords -- ${T} experiments/05-coordinate-systems/images</code>
@@ -867,7 +996,7 @@ const SLIDES = [
     title: "Grammar of interaction",
     big: "1", bigsub: "pipeline that records every interaction",
     rows: [["render, 300k marks", "21 ms", 2], ["hit-test index", "387 ms", 2], ["rebuilds per 1,022 batches", "140", 1],
-           ["findings", "1 · 2 · 3 · 11", 2]],
+           ["findings", "4", 2]],
     steps: 4,
     nerds: `<b>interaction as commands</b>  <em>experiments/06-pipelines, 07-chart-decisions</em>
 <code>cargo run --release -p lidar-pipeline --bin cqrs_check -- ${T} out</code>
@@ -902,7 +1031,7 @@ const SLIDES = [
     title: "A chart vocabulary",
     big: "19 / 19", bigsub: "requests met by typed choices",
     rows: [["typed choices", "19 / 19", 1], ["rules alone", "13 / 19", 1], ["an LLM writes, when choices end", "25 / 25", 1],
-           ["findings", "12 · 13", 2]],
+           ["findings", "2", 2]],
     steps: 4,
     nerds: `<b>choices and writing</b>  <em>experiments/07-chart-decisions</em>
 <code>cargo run --release -p lidar-decide --bin decide_eval</code>
@@ -932,7 +1061,7 @@ const SLIDES = [
     title: "The schema everywhere",
     big: "1", bigsub: "exported schema, read before any Rust runs",
     rows: [["validate in Rust", "6.5 µs", 1], ["from Python", "13.5 µs", 1], ["Python module", "1 MB", 1],
-           ["portable agrees with Rust", "99 % of 3,330", 1], ["findings", "23 · 24", 2]],
+           ["portable agrees with Rust", "99 % of 3,330", 1], ["findings", "2", 2]],
     steps: 4,
     nerds: `<b>the export</b>
 <code>cargo run -p avenger-vegalite-spec --features schema --example json_schema</code>
@@ -966,7 +1095,7 @@ const SLIDES = [
     title: "Altair from the schema",
     big: "5", bigsub: "steps, three of them ask of Altair",
     rows: [["gallery compiling today", "0 / 117", 2], ["validation", "6.5 µs · 705 µs", 1], ["classes from the schema", "35 + 9", 1], ["1M rows", "48 ms · 2.2 s", 1],
-           ["notebook frame", "22 ms", 1], ["first needs", "layer · marks", 2], ["findings", "18 · 19 · 21", 2]],
+           ["notebook frame", "22 ms", 1], ["first needs", "layer · marks", 2], ["findings", "3", 2]],
     steps: 3,
     nerds: `<b>the five steps, and what Altair needs</b>  <em>experiments/09-altair-on-avenger/README.md</em>
 <em>a validator registry beside the renderer registry · the schema source configurable in</em>
@@ -1010,7 +1139,7 @@ const SLIDES = [
     title: "Fast, streaming, independent",
     big: "Arrow", bigsub: "across every boundary",
     rows: [["fold a batch", "2–7 ms", 1], ["merge a window", "2–11 ms", 1], ["window from chunk statistics", "69 ms", 1],
-           ["findings", "16 · 20 · 22", 2]],
+           ["findings", "3", 2]],
     steps: 4,
     nerds: `<b>Arrow across the boundary</b>
 <code>LARGE_ALL=1 python crates/avenger-altair/bench/large.py 1000000</code>
@@ -1042,41 +1171,33 @@ const SLIDES = [
   // 12 --------------------------------------------------------------- findings
   {
     title: "Findings",
-    big: "24", bigsub: "each opens to what it means, and can be measured again",
-    rows: [["open", "12", 0], ["suggestion", "4", 0], ["worked around here", "3", 0], ["API change, adapted", "4", 0], ["fixed", "1", 0]],
+    big: "6", bigsub: "things the findings stand in the way of",
+    rows: THEMES.map(([t, ns]) => [t, String(ns.length), 0]),
     steps: 1,
     nerds: `<b>measure again</b>  <em>FINDINGS.md</em>
 <code>cargo run --release -p lidar-probes --bin probe_guides</code>
 <code>cargo run --release -p lidar-probes --bin probe_render</code>
-<em>every entry carries the command that measures it</em>`,
+<em>every entry carries the command that measures it; each one here opens to it</em>`,
     draw() {
-      const rows = [["scene · draw", [1, 2, 3, 4]], ["encode", [7, 9, 14, 15, 17, 20]], ["shape", [5, 6, 8, 16]],
-        ["describe", [10, 11, 12, 13]], ["Vega-Lite", [18, 19, 21, 23, 24]], ["data", [22]]];
-      const style = s => s === "open" ? { fill: "#fff", stroke: C.accent, sw: 2, dash: null, tc: C.accent }
-        : s === "suggestion" ? { fill: "#fff", stroke: C.accent, sw: 1.6, dash: "4 3", tc: C.accent }
-        : s === "local" ? { fill: C.tint, stroke: C.accent, sw: 1.6, dash: null, tc: C.accent }
-        : s === "adapted" ? { fill: "#f2f2f2", stroke: C.line, sw: 1, dash: null, tc: C.muted }
-        : { fill: C.accent, stroke: C.accent, sw: 1, dash: null, tc: "#fff" };
-      const all = rows.flatMap(r => r[1]).map(n => "f:" + n);
-      const wrap = (t, n) => { const w = t.split(" "), out = [""]; w.forEach(x => { if ((out[out.length - 1] + " " + x).trim().length > n) out.push(x); else out[out.length - 1] = (out[out.length - 1] + " " + x).trim(); }); return out; };
-      rows.forEach((r, i) => {
-        const y = 48 + i * 124;
-        text(44, y + 12, r[0], "kk");
-        r[1].forEach((n, k) => {
-          const x = 44 + k * 184, st = style(FIND[n].s), g = layer(0);
-          const inner = el("g", { class: "dim hot media-link" }, g);
-          el("rect", { x, y: y + 24, width: 170, height: 82, fill: st.fill, stroke: st.stroke, "stroke-width": st.sw, "stroke-dasharray": st.dash }, inner);
-          text(x + 12, y + 50, String(n), "lab", { parent: inner, bold: true, size: 18, fill: st.tc === "#fff" ? "#fff" : st.tc });
-          wrap(FIND[n].t, 22).slice(0, 2).forEach((l, j) => text(x + 12, y + 71 + j * 20, l, "sub", { parent: inner, fill: st.tc === "#fff" ? "#fff" : C.ink }));
-          el("title", { text: `${n} · ${FIND[n].t}` }, inner);
+      const all = THEMES.flatMap(t => t[1]).map(n => "f:" + n);
+      THEMES.forEach(([t, ns], i) => {
+        const x = 40 + (i % 3) * 372, y = 44 + Math.floor(i / 3) * 386, g = layer(0);
+        el("rect", { x, y, width: 352, height: 360, fill: "#fff", stroke: i === 5 ? C.line : C.ink, "stroke-width": i === 5 ? 1 : 1.4 }, g);
+        text(x + 20, y + 36, t, "lab", { parent: g, bold: true, size: 17, fill: i === 5 ? C.muted : null });
+        ns.forEach((n, k) => {
+          const yy = y + 66 + k * 46, inner = el("g", { class: "dim hot media-link" }, g);
+          el("rect", { x: x + 10, y: yy - 6, width: 332, height: 40, fill: "transparent" }, inner);
+          swatch(x + 20, yy + 4, FIND[n].s, inner);
+          text(x + 50, yy + 19, FIND[n].t, "lab", { parent: inner, size: 14.5, fill: FIND[n].s === "adapted" || FIND[n].s === "fixed" ? C.muted : C.ink });
+          el("title", { text: FIND[n].t }, inner);
           inner.addEventListener("click", () => openMedia(all, all.indexOf("f:" + n)));
         });
       });
       const lg = layer(0);
       [["open", "open"], ["suggestion", "suggestion"], ["local", "worked around here"], ["adapted", "adapted"], ["fixed", "fixed"]].forEach((s2, i) => {
-        const st = style(s2[0]), x = 44 + i * 190, y = 812;
-        el("rect", { x, y, width: 20, height: 20, fill: st.fill, stroke: st.stroke, "stroke-width": st.sw, "stroke-dasharray": st.dash }, lg);
-        text(x + 30, y + 15, s2[1], "sub", { parent: lg });
+        const x = 40 + i * 190, y = 826;
+        swatch(x, y, s2[0], lg);
+        text(x + 30, y + 14, s2[1], "sub", { parent: lg });
       });
     },
   },
@@ -1088,19 +1209,22 @@ const SLIDES = [
     rows: [["each step", "stands on its own", 0], ["each step", "useful beyond Altair", 0], ["the order", "a suggestion", 0]],
     steps: 8,
     nerds: `<b>where each step comes from</b>  <em>FINDINGS.md</em>
-<em>13 · 12 · 24 · 1–2 · 11 · 10 · 21</em>`,
+<em>each step opens the finding it answers</em>`,
     draw() {
-      const S = [["errors that name their place", "13"], ["the vocabulary as data", "12"], ["the schema exported", "24"],
-        ["drawing without a hit-test index", "1–2"], ["a key per item", "11"], ["a colour scale per mark", "10"], ["layer and more marks", "21"]];
+      const S = [["errors that name their place", 13], ["marks and channels, listed as data", 12], ["the schema exported", 24],
+        ["drawing without a hit-test index", 1], ["a key per item", 11], ["a colour scale per mark", 10], ["layer and more marks", 21]];
+      const keys = S.map(x => "f:" + x[1]);
       const pts = S.map((_, i) => [100 + i * 140, 700 - i * 78]);
       const g0 = layer(0);
       el("path", { d: "M60,740 L" + pts.map(p => p.join(",")).join(" L") + " L1010,150", fill: "none", stroke: C.grid, "stroke-width": 8, "stroke-linejoin": "round" }, g0);
       S.forEach((s, i) => {
         const [x, y] = pts[i], g = layer(i);
+        g.classList.add("media-link");
+        g.addEventListener("click", () => openMedia(keys, i));
         el("rect", { x: x - 16, y: y - 16, width: 32, height: 32, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, g);
         text(x, y + 6, String(i + 1), "val", { anchor: "middle", parent: g });
         text(x + 30, y + 40, s[0], "lab", { parent: g, size: 15 });
-        text(x + 30, y + 62, "finding " + s[1], "sub", { parent: g, fill: C.accent });
+        text(x + 30, y + 62, THEME_OF[s[1]], "sub", { parent: g, fill: C.accent });
       });
       const g7 = layer(7);
       el("rect", { x: 960, y: 90, width: 160, height: 60, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g7);
@@ -1135,113 +1259,6 @@ const SLIDES = [
     },
   },
 ];
-
-// The findings, condensed from FINDINGS.md: a title a reader can follow,
-// what was seen, why it matters on this route, a question where the ledger
-// asks one, and the command that measures it again.
-const FIND = {
-  1: { t: "Hit-testing sets the frame budget", s: "open", f: "scene · draw",
-       saw: "Drawing 300k marks takes 28 ms; building the hit-test index for them takes 387 ms, about 1.2 µs a mark.",
-       why: "Live and animated charts rebuild the index every frame, so it sets the frame rate: 4.3 frames a second at ~156k cells.",
-       q: "Could the index be built lazily, on the first hit-test after a change?",
-       m: "cargo run --release -p lidar-probes --bin probe_render" },
-  2: { t: "interactive: false still builds the index", s: "open", f: "scene · draw",
-       saw: "With the group marked non-interactive, 300k marks still cost 365 ms against 387 ms.",
-       why: "A mark that can never be hit still pays for hit-test geometry.",
-       q: "Could interactive: false skip that geometry, not only index membership?",
-       m: "cargo run --release -p lidar-probes --bin probe_render" },
-  3: { t: "Every data push rebuilds geometry", s: "open", f: "scene · draw",
-       saw: "A redraw requested from a data thread always rebuilds the scene's geometry, even when only colours or positions changed.",
-       why: "Every batch of a live stream pays for finding 1.",
-       q: "Could an invalidation say whether geometry changed, as UpdateStatus does for events?",
-       m: "cargo run --release -p lidar-stream --bin stream_live -- --speed 8 --window 12" },
-  4: { t: "Gradient fills draw flat or not at all", s: "open", f: "scene · draw",
-       saw: "A rect with a gradient fill renders nothing; a colorbar with the right stops renders as one colour, its last stop.",
-       why: "Colour legends for continuous data need a workaround: stacked solid rects.",
-       m: "cargo run --release -p lidar-probes --bin probe_render" },
-  5: { t: "The colorbar ignores its origin", s: "open", f: "shape",
-       saw: "make_colorbar_marks returns its group at [0, 0] whatever origin it gets; the source marks the parameter unused.",
-       why: "Callers wrap it to place it. Dropping the parameter would state the contract.",
-       m: "cargo run --release -p lidar-probes --bin probe_guides" },
-  6: { t: "The legend title lands inside the plot", s: "open", f: "shape",
-       saw: "For a 300-wide plot the entries sit at x = 308 and the title at x = 8, on top of the chart.",
-       why: "Charts here pass no title and draw it themselves.",
-       m: "cargo run --release -p lidar-probes --bin probe_guides" },
-  7: { t: "Linear domains take exactly two stops", s: "open", f: "encode",
-       saw: "A numeric domain of more than two values is refused.",
-       why: "A colour ramp with uneven stops, common for elevation, has to be resampled first.",
-       m: "cargo run --release -p lidar-probes --bin probe_guides" },
-  8: { t: "Fixed: the axis band option", s: "fixed", f: "shape",
-       saw: "Axes set a band option that linear scales rejected; now only when the scale has one.",
-       why: "Kept so the ledger records what got better.",
-       m: "cargo run --release -p lidar-probes --bin probe_guides" },
-  9: { t: "A format signature got simpler", s: "adapted", f: "encode",
-       saw: "PreparedNumberFormat::new takes the locale directly; NumberFormatContext is gone.",
-       why: "One call site changed here. Recorded as drift, not as a defect.",
-       m: "cargo build --release --workspace" },
-  10: { t: "One fill per mark, no colour scale", s: "suggestion", f: "describe",
-       saw: "A chart definition takes one constant fill per mark, and linear, band and point scales; no line or arc marks.",
-       why: "A pie, a line per series or a heatmap had to be drawn on the scenegraph directly, although avenger-scales has log and pow.",
-       m: "read avenger-chart-definition/src/model.rs" },
-  11: { t: "No key per item", s: "suggestion", f: "describe",
-       saw: "avenger-chart keeps an identity per plot, not per item.",
-       why: "A key carried into the rendered frame would let any host animate between two frames, as experiment 7 does by hand.",
-       m: "cargo run --release -p lidar-decide --bin autopilot_live" },
-  12: { t: "The vocabulary is not available as data", s: "suggestion", f: "describe",
-       saw: "The marks, channels and properties a chart accepts cannot be listed from the crates; deciders and prompts were written by hand.",
-       why: "Listed as data, they could be generated and would not drift from the renderer. avenger-validate does this for pipelines, from a hand-written spec.",
-       m: "cargo run --release -p avenger-validate -- corpus experiments/07-chart-decisions/results 20" },
-  13: { t: "Refusals should name their place", s: "suggestion", f: "describe",
-       saw: "An LLM fixed its pipelines from the reasons they were refused; the Vega-Lite compiler's CompileError::path() gives such a place.",
-       why: "Not checked: what ChartDefinition::finish() does with a property it cannot honour.",
-       m: "cargo run --release -p lidar-decide --bin writer_eval" },
-  14: { t: "Number formatting fails only at run time", s: "adapted", f: "encode",
-       saw: "The workspace built cleanly, then seven binaries failed when drawing an axis: “number formatting is not configured”.",
-       why: "A default that compiles and cannot draw a number is a trap.",
-       q: "Could the requirement show at compile time, or the default text engine come with D3 formatting?",
-       m: "run every binary in the cycle (CLAUDE.md)" },
-  15: { t: "The format crates split", s: "adapted", f: "encode",
-       saw: "avenger-format-number and -datetime became avenger-format plus -number-d3 and -datetime-d3.",
-       why: "Three small changes here, all found by the compiler.",
-       m: "cargo build --release --workspace" },
-  16: { t: "geo 0.29 blocks SedonaDB's predicates", s: "open", f: "shape",
-       saw: "sedona-geo needs geo 0.33; avenger-geo, -geometry and -guides need geo 0.29, and their i_float versions cannot resolve together.",
-       why: "With geo 0.33, spatial predicates such as st_contains could sit next to Avenger in one DataFusion session.",
-       m: "add sedona-geo to experiments/06-pipelines/Cargo.toml, then cargo metadata" },
-  17: { t: "Formatting moved; scales carry it too", s: "adapted", f: "encode",
-       saw: "A scale now needs its own formatting; a formatted text engine with an unformatted scale fails.",
-       why: "Two places must agree on formatting for one axis.",
-       m: "cargo run --release -p lidar-probes --bin probe_guides" },
-  18: { t: "Default options fail on axis labels", s: "open", f: "Vega-Lite",
-       saw: "Altair's plain bar chart fails with the default options; with D3 formatting set, it draws.",
-       why: "Finding 14, reached through the Vega-Lite front end. A Vega-Lite compiler could default to Vega-Lite's formatting.",
-       m: "avenger-altair render <spec> out.png, without the chart option" },
-  19: { t: "Altair's config is refused", s: "local", f: "Vega-Lite",
-       saw: "Every Altair chart carries config.view; the spec types refuse the key, so no Altair chart passes as written.",
-       why: "Reading config.view, and reporting the rest, would let Altair's output through unchanged. Written out by the bridge for now.",
-       m: "python crates/avenger-altair/bench/coverage.py <altair>/tests/examples_methods_syntax" },
-  20: { t: "SVG export spends 340 ms on the font", s: "open", f: "encode",
-       saw: "For an 8-bar chart, PNG export takes 14 ms and SVG 341 ms; 139 KB of the 148 KB SVG is one embedded font.",
-       why: "Referencing fonts, or caching the subset, would make SVG as cheap as it is in Vega.",
-       m: "avenger-altair render <spec> out.svg 10" },
-  21: { t: "What Altair's gallery needs first", s: "open", f: "Vega-Lite",
-       saw: "None of 117 gallery examples compiles yet. First refusals: layer 41, a mark other than bar 41, composition 19, colour 8.",
-       why: "That order, marks and layering first, then colour, then composition, opens the most of Altair soonest.",
-       m: "python crates/avenger-altair/bench/coverage.py <altair>/tests/examples_methods_syntax" },
-  22: { t: "Shared buffers charged once per batch", s: "local", f: "data",
-       saw: "The materialisation budget charges each sliced batch for the whole buffers it shares, so a histogram's charge grows quadratically: 1M rows exceed the 256 MB default.",
-       why: "Charging each slice's own size makes it linear, 32 bytes a row. Proposed as jonmmease/avenger#141, with a regression test.",
-       m: "python crates/avenger-altair/bench/budget.py 30000 100000 300000 1000000" },
-  23: { t: "Arrays accepted where objects belong", s: "open", f: "Vega-Lite",
-       saw: "The spec types take \"encoding\": [ … ] as an object, field by field in declaration order; Vega-Lite refuses it.",
-       why: "Found by checking the exported schema against the types: the only disagreement in 3,008 specs.",
-       m: "python crates/avenger-altair/bench/schema_parity.py <avenger checkout>" },
-  24: { t: "The spec types can export their schema", s: "local", f: "Vega-Lite",
-       saw: "A schema feature exports JSON Schema from the types, with CEL for what JSON Schema cannot state: 18.8 KB against Vega-Lite's 1.9 MB.",
-       why: "Altair's own generator reads it: 35 core and 9 channel classes. Not proposed upstream yet.",
-       m: "python crates/avenger-altair/bench/altair_generator.py <altair checkout> <out>" },
-};
-const STATUS = { open: "open", suggestion: "suggestion", local: "worked around here", adapted: "API change, adapted", fixed: "fixed" };
 
 // ---------------------------------------------------------------- evidence
 
@@ -1320,7 +1337,7 @@ function openFinding(list, i) {
   d.className = "finding";
   d.innerHTML = `<div class="fk"></div><h2></h2><div class="lbl">what we saw</div><p class="saw"></p>
     <div class="lbl">why it matters on this route</div><p class="why"></p>` + (F.q ? `<div class="lbl">a question</div><p class="q"></p>` : "");
-  d.querySelector(".fk").textContent = `finding ${n} · ${F.f}`;
+  d.querySelector(".fk").textContent = THEME_OF[n] + " · " + F.f;
   const st = document.createElement("span"); st.className = "st"; st.textContent = STATUS[F.s];
   d.querySelector(".fk").appendChild(st);
   d.querySelector("h2").textContent = F.t;
