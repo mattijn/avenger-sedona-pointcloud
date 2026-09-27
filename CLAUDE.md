@@ -65,6 +65,8 @@ cargo run --release -p lidar-coords --bin coords -- $T experiments/05-coordinate
 cargo run --release -p lidar-coords --bin coords_live -- $T --snapshots out/coords_live
 cargo run --release -p lidar-pipeline --bin pipeline_bench -- $T
 cargo run --release -p lidar-pipeline --bin cqrs_check -- $T out
+cargo run --release -p avenger-validate -- corpus experiments/07-chart-decisions/results 20
+cargo test --release -p avenger-validate
 
 cargo run --release -p lidar-stream --bin stream_server -- $T          # terminal 1
 cargo run --release -p lidar-stream --bin stream_live -- --speed 8 --window 12 --snapshots out

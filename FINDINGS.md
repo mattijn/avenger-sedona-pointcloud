@@ -4,8 +4,8 @@ What this repo has run into while building real charts on the Avenger stack,
 kept as a ledger so it can be rechecked when the stack moves. Every entry says
 how it was measured, so a recheck is a command rather than an opinion.
 
-- **Checked against:** `jonmmease/avenger` `3065e2a` ([#130](https://github.com/jonmmease/avenger/pull/130), `codex/portable-dataflow-inputs`, the top of the stack after the rebase of 25 Sep 2026, 19:17 CEST).
-  Previous rounds: `602b99c` (#130, before that rebase), 25 Sep 2026; `5f31c58` (#124), 20 Sep 2026.
+- **Checked against:** `jonmmease/avenger` `f4890be` ([#130](https://github.com/jonmmease/avenger/pull/130), `codex/portable-dataflow-inputs`, the top of the stack after the rebase of 26 Sep 2026, 02:57 CEST), on 26 Sep 2026.
+  Previous rounds: `3065e2a` (#130, rebased 25 Sep 19:17 CEST); `602b99c` (#130), 25 Sep 2026; `5f31c58` (#124), 20 Sep 2026.
 - **Machine:** Apple Silicon, macOS, wgpu/Metal, Rust 1.89
 - **Recheck:** `cargo run --release -p lidar-probes --bin probe_guides` and
   `cargo run --release -p lidar-probes --bin probe_render` print everything
@@ -212,6 +212,173 @@ All other findings were re-measured on `3065e2a` and are unchanged: the index
 costs 392 ms for 300k symbols (`interactive: false` the same), gradients draw
 flat, and the guide pitfalls remain.
 
+## From the repin to `f4890be`, and Altair on Avenger
+
+Findings 1–7 re-measured on `f4890be` are unchanged: the geometry index
+costs 383 ms for 300k symbols (392 ms before; `interactive: false` the
+same), gradients draw flat, and the three guide pitfalls remain.
+
+### 17. Number formatting moved again, and scales now carry it
+
+Three changes, found by the compiler. `avenger_text::NumberFormatRegistry`
+and `NumberFormatConfig` are gone; the idiom is
+`ScaleFormatting::d3(Default::default(), Default::default())`, applied to a
+text engine with `configure_text_engine` and to chart options with
+`ChartOptions::with_formatting` (which also gained a `scale_formatting`
+field). `PreparedNumberFormat::new` and `PreparedDateTimeFormat::new` each
+lost one argument. And a scale now needs its own `with_formatting`: a
+colorbar built with a formatted text engine but an unformatted scale fails
+with `InvalidAxisLabelFormat("number formatting is not configured")`
+(`probe_guides` did, until `lidar_common` formatted the scale too). Two
+places must now agree on formatting for one axis. **Measure:**
+`cargo run --release -p lidar-probes --bin probe_guides`.
+
+### 18. The Vega-Lite front end fails on axis labels with default options
+
+`Chart::from_vegalite(&spec, &datasets, VegaLiteOptions::default())`, then
+`render`, fails for Altair's plain bar chart with "Invalid axis label format:
+number formatting is not configured"; with
+`VegaLiteOptions { chart: ChartOptions::default().with_formatting(ScaleFormatting::d3(..)), .. }`
+it draws. This is finding 14 reached through the Vega-Lite front end; a
+default that formats numbers the way Vega-Lite does would suit a Vega-Lite
+compiler. The compiler README's example uses the default options; that
+example itself was not run here. **Measure:** in
+`crates/avenger-altair/src/lib.rs`, drop the `chart:` option and run
+`avenger-altair render <spec> out.png`.
+
+### 19. Every Altair chart carries `config`, which the spec types refuse
+
+Altair's default theme adds `"config": {"view": {"continuousWidth": 300,
+"continuousHeight": 300}}` to every chart, and `avenger-vegalite-spec`
+refuses the key (`config: unknown field`), so no Altair chart passes as
+written. `avenger-altair` writes that one config out as Vega-Lite applies it
+(a width or height of 300 for a continuous axis) and leaves any other config
+to be refused. Reading `config.view` (and ignoring, or reporting, the rest)
+would let Altair's output through unchanged. **Measure:**
+`python crates/avenger-altair/bench/coverage.py ~/vega/altair/tests/examples_methods_syntax`
+(19 of 117 gallery examples stop at `config` even after the default theme is
+written out).
+
+### 20. SVG export spends 340 ms on the font
+
+For an 8-bar chart, validating takes 0.05 ms, compiling 0.7–1.8 ms,
+rendering 4–5 ms, PNG export 14 ms, and SVG export 341 ms. The SVG is 148 KB,
+of which 139 KB is one embedded font, subset and encoded as WOFF2 in
+`avenger-svg`'s `font_face_css`; the time is most likely there (not
+profiled). An option to reference fonts instead of embedding them, or a
+cached subset, would make SVG the cheap format it is in Vega. **Measure:**
+`avenger-altair render <spec> out.svg 10` and `… out.png 10` print the
+stages.
+
+### 21. What Altair's gallery needs first
+
+Of Altair's 120 gallery examples (`tests/examples_methods_syntax`), 117 run
+here and none compiles to Avenger yet. The first refusal of each, with the
+default theme written out and `config` set aside: `layer` 41, `mark.type`
+41 (marks other than bar), `encoding.color` 8, composition (`vconcat`,
+`hconcat`, `concat`, `facet`, `repeat`) 19, sorting by another channel
+(`sort: "-x"`) 3, and one each of `joinaggregate`, `mark.binSpacing`,
+`mark.cursor`, `data.format.parse`, `encoding.row`. By this measure the
+order that opens the most of Altair is: other marks and layering, then
+colour, then composition. The same script reruns it; `coverage.json` has
+every example.
+
+### 22. The materialisation charge counts shared buffers once per batch
+
+`ExecutionConfig::max_materialized_bytes` (256 MB by default) is charged by
+what active queries produce. For a Vega-Lite histogram (`bin`, `count()`) over
+one float column, the smallest budget that draws grows roughly quadratically:
+83 bytes a row at 30k rows, 216 at 100k, 628 at 300k, about 2,000 at 1M and
+about 5,900 at 3M (17.7 GB, while the process peaks 121 MB above where it
+started). So the default refuses a histogram over 1M rows ("active
+materialization exceeds the 268435456 byte budget").
+
+**Where.** `avenger-datafusion-dataflow/src/runtime.rs`, where each batch a
+query streams is charged:
+
+```rust
+self.reservation.charge(
+    batch.get_array_memory_size().saturating_add(std::mem::size_of::<RecordBatch>()),
+)?;
+```
+
+`get_array_memory_size` counts the whole buffers a column refers to, and a
+batch that is a slice of a larger array shares them. Logged per node (a
+scratch copy with a counter at that line): at 1M rows every byte of the
+1,968 MB is charged by one node, `__vl_bins_5`, the compiler's bin
+assignment, whose 123 batches of about 8,192 rows each hold 0.26 MB and are
+charged about 16 MB, the buffers of all 1M rows. Handing the input over in
+8,192-row batches only shrinks it (524 MB at 1M, 4.5 GB at 3M): the bin
+node's batches still share buffers of 3.6 to 7.6 MB each.
+
+**Measured fix.** Charging each column's `to_data().get_slice_memory_size()`
+instead makes the charge linear and exact: 3.2 MB at 100k rows, 32 MB at 1M,
+97 MB at 3M, 32 bytes a row, which is the bin node's four 8-byte columns. The
+change is [`crates/avenger-altair/bench/charge-slices.patch`](crates/avenger-altair/bench/charge-slices.patch)
+(against `f4890be`, behind an environment variable, with the logging).
+`materialize_partition` and `MaterializedValue::size` (`inputs.rs`) use
+`get_array_memory_size` the same way and were not measured. Proposed as
+[jonmmease/avenger#141](https://github.com/jonmmease/avenger/pull/141), on
+`codex/datafusion-dataflow`, with a regression test in Avenger itself:
+`cargo test -p avenger-datafusion-dataflow --test materialization_budget`
+(a projection over one 100k-row batch, with a budget of four times the
+column, fails with `ResourceExhausted` without the change and passes with
+it; the crate's 134 tests pass).
+**Measure:** `python crates/avenger-altair/bench/budget.py 30000 100000 300000 1000000`
+bisects the smallest budget that draws, for JSON rows and for Arrow.
+
+With the fix on `f4890be` (the Python bridge built against it), Avenger's
+own 256 MB default draws the histogram over 1M and 3M rows, as JSON rows and
+as Arrow, and the times are the same as with the budget raised (51 and 88 ms
+with Arrow); the fix changes the accounting, not the work.
+`LARGE_ALL=1 python crates/avenger-altair/bench/large.py 1000000 3000000`
+with `AVENGER_MAX_MATERIALIZED_BYTES=268435456`.
+
+With the budget raised, the same histogram over 1M values draws in 48 ms
+from a pandas frame passed as Arrow, and over 3M in 83 ms (matplotlib's
+`hist`: 37 and 52 ms; Altair with VegaFusion: 519 and 482 ms).
+
+### 23. The spec types accept a JSON array where an object belongs
+
+A derived serde `Deserialize` for a struct also accepts a sequence, with the
+fields in declaration order, and `deny_unknown_fields` does not stop it. So
+`UnitSpec::from_json` takes `"encoding": []` as an empty encoding, and
+`"encoding": [{"field": "category", "type": "nominal"}, {"field": "amount", "type": "quantitative"}]`
+as x and y, and the compiler draws it; the same holds for `axis`, `scale`,
+`data.format` and every other object. Vega-Lite refuses these. Found by
+checking a JSON Schema generated from the same types against them (24):
+this is the only disagreement in 3,008 specs. A `Deserialize` that calls
+`deserialize_map`, or a check on the JSON value before typing it, would
+close it. **Measure:** `python crates/avenger-altair/bench/schema_parity.py <avenger checkout>`.
+
+### 24. The spec types can export their schema, with CEL for the rest
+
+Altair generates its API from Vega-Lite's JSON Schema; to generate it from
+Avenger instead, Avenger's spec types need to export one. A `schema` feature
+on `avenger-vegalite-spec` does it with `schemars` (derives on 31 types, the
+schema of the five with their own `Deserialize` by hand), and puts what JSON
+Schema cannot state (an ordered extent, strictly increasing steps, distinct
+names and aliases) as CEL in `x-avenger-rules`, Kubernetes-style. The
+result is 18.8 KB against the 1.9 MB of Vega-Lite's schema that Altair ships, and a plain `jsonschema` run
+on it takes 155 µs where Altair's takes 705 µs. The change is
+[`crates/avenger-vegalite-spec`](crates/avenger-vegalite-spec/VENDORED.md), a copy
+of Jon's crate at `f4890be` with the additions, with [UPSTREAM.diff](crates/avenger-vegalite-spec/UPSTREAM.diff)
+(the crate's tests pass with and without the feature).
+Not proposed upstream yet.
+
+Altair's own `generate_schema_wrapper.py` reads the result: 35 core classes
+and 9 channel classes, with shorthand, and a chart built with them is
+validated against Avenger's schema and drawn by Avenger, the same PNG byte
+for byte as from Altair's API. Two names had to be Vega-Lite's
+(`FacetedEncoding`, `RepeatRef`), and the mark and config mixins need
+Vega-Lite's `MarkDef` and `Config`. Rules between fields must be CEL, not
+constraint-only `anyOf` branches, which the generator reads as a union of
+types. **Measure:** `python crates/avenger-altair/bench/altair_generator.py <altair checkout> <out>`.
+
+Also: the compiler's `pdf` feature pulls in `krilla` 0.8.2, which needs
+rustc 1.92, so the bridge builds with `svg` and `png` only on this machine's
+1.89.
+
 ## From experiment 7: charts driven by typed decisions
 
 Experiment 7 drives one chart from typed text (a classifier, and an LLM that
@@ -241,7 +408,11 @@ experiment's video.
 A classifier needs the option list, and an LLM the grammar; both were written
 by hand from what the layer accepts. A chart definition that could list its
 marks, channels with allowed types, and properties would let deciders,
-editors and prompts be generated, and not drift from the renderer.
+editors and prompts be generated, and not drift from the renderer. This repo now does
+that for its own pipelines: [`crates/avenger-validate`](crates/avenger-validate/)
+reads the vocabulary from one spec and checks a pipeline in about 10 µs, from
+Rust, Python and wasm, with the rules exported as CEL. The spec is still
+written by hand, not exported by the steps themselves.
 
 ### 13. Refuse unsupported properties, with a path
 
@@ -250,22 +421,22 @@ a reason, and the model fixed its tries from that text. The Vega-Lite
 compiler's `CompileError::path()` does this. **Not checked:** what
 `ChartDefinition::finish()` does with a property it cannot honour.
 
-### 16. \`geo\` 0.29 keeps SedonaDB's spatial predicates out
+### 16. `geo` 0.29 keeps SedonaDB's spatial predicates out
 
-A structure-aware lasso (CloudLasso) on the tile wanted \`st_contains\` from
-SedonaDB. The predicates (\`st_contains\`, \`st_within\`, \`st_intersects\`) are
-in \`sedona-geo\` only; \`sedona-functions\`, which this repo links, has
-constructors, accessors and affine transforms but no predicate. \`sedona-geo\`
-cannot join the workspace: it needs \`geo\` 0.33 → \`i_overlay\` 4.5 →
-\`i_float ~1.16\`, while \`avenger-geo\`, \`avenger-geometry\` and
-\`avenger-guides\` at \`3065e2a\` need \`geo\` 0.29 → \`i_overlay\` 1.9 →
-\`i_float ~1.6\`. Two \`geo\` versions could coexist, but not two 1.x versions
-of \`i_float\`, so resolution fails. Moving Avenger to \`geo\` 0.33 would let a
+A structure-aware lasso (CloudLasso) on the tile wanted `st_contains` from
+SedonaDB. The predicates (`st_contains`, `st_within`, `st_intersects`) are
+in `sedona-geo` only; `sedona-functions`, which this repo links, has
+constructors, accessors and affine transforms but no predicate. `sedona-geo`
+cannot join the workspace: it needs `geo` 0.33 → `i_overlay` 4.5 →
+`i_float ~1.16`, while `avenger-geo`, `avenger-geometry` and
+`avenger-guides` at `3065e2a` need `geo` 0.29 → `i_overlay` 1.9 →
+`i_float ~1.6`. Two `geo` versions could coexist, but not two 1.x versions
+of `i_float`, so resolution fails. Moving Avenger to `geo` 0.33 would let a
 host put SedonaDB's spatial SQL next to it; the lasso now tests the polygon in
 Rust on the drawn cells instead. **Measure:** add
-\`sedona-geo = { git = "https://github.com/apache/sedona-db", rev = "2f3e378…" }\`
-to \`experiments/06-pipelines/Cargo.toml\` and run \`cargo metadata --format-version 1 >/dev/null\`
-(it fails on \`i_float\`); \`cargo tree -i geo@0.29.3 --depth 1\` lists the
+`sedona-geo = { git = "https://github.com/apache/sedona-db", rev = "2f3e378…" }`
+to `experiments/06-pipelines/Cargo.toml` and run `cargo metadata --format-version 1 >/dev/null`
+(it fails on `i_float`); `cargo tree -i geo@0.29.3 --depth 1` lists the
 Avenger crates.
 
 Also from experiment 7, as things that worked well: `RequestWakeup` with
@@ -316,6 +487,9 @@ From an earlier round, **not re-verified on the current branch**:
   moved past.
 
 ## What this round did not check
+
+- After the repin to `f4890be`: the renders of experiments 1–3 ran, but were
+  not compared with the committed images; the live viewers were not opened.
 
 - The live frame rates (`stream_live` without `--snapshots`); the headless
   snapshots ran and look the same.

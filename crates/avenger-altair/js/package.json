@@ -1,0 +1,10 @@
+{
+  "name": "avenger-vegalite-portable",
+  "private": true,
+  "description": "Validate a spec against Avenger's Vega-Lite subset in JavaScript: JSON Schema (ajv) plus the CEL rules in x-avenger-rules (cel-js).",
+  "type": "module",
+  "dependencies": {
+    "@marcbachmann/cel-js": "^8.0.0",
+    "ajv": "^8.17.1"
+  }
+}

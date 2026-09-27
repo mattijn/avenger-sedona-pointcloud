@@ -226,6 +226,32 @@ For a validator that runs on every keystroke in an editor, or between an LLM
 writer and the chart as in experiment 7, the Rust core is the fast option,
 and pyo3 keeps it fast from Python. wasm, for the browser, was not measured.
 
+## Follow-up: the crate
+
+The Rust validator is now a crate of its own,
+[`crates/avenger-validate`](../../crates/avenger-validate/), with Python (pyo3)
+and wasm bindings and the rules exported as CEL. Experiment 6's parsers moved
+into it, so the pipeline that runs and the validator read the text the same
+way. On the same corpus and one machine (Apple Silicon), this experiment's
+benchmark takes 205 µs a pipeline and the crate 22 µs on a first pass, 10 µs
+warm, with the same verdicts; the crate's README has the measurements and
+where the difference comes from. The benchmark here now reads the Vega parser
+from the crate.
+
+## Follow-up: Altair on Avenger
+
+The same question, a fast check with an error that names its place, applies
+to Altair: it validates every chart against the whole Vega-Lite JSON Schema
+(705 µs for an 8-row bar chart) before anything is drawn.
+[`crates/avenger-altair`](../../crates/avenger-altair/), a spike, makes
+Avenger an opt-in backend: `avenger_altair.enable()` has Altair's validation ask
+Avenger's own Vega-Lite types first (13.5 µs for the same chart) and draws
+with Avenger, falling back to the JSON Schema and the usual renderer for a
+chart Avenger does not draw yet. [`altair-avenger.md`](altair-avenger.md)
+lays out the steps from there to an Altair whose API and validation come
+from Avenger; [FINDINGS.md](../../FINDINGS.md) 19–21 has what Avenger needs
+for it, measured on Altair's gallery.
+
 ## Not built, not checked
 
 - A wasm build. DataFusion compiles to wasm (the survey cites about 30 MB raw,

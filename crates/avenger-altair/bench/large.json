@@ -1,0 +1,28 @@
+[
+ {
+  "n": 1000000,
+  "to_dict": 984.3489999184385,
+  "json.dumps": 554.2667499976233,
+  "avenger (Rust)": 624.9986250186339,
+  "avenger total": 2163.6143749346957,
+  "arrow: to_dict": 1.8565409118309617,
+  "arrow: avenger (Rust)": 47.449707984924316,
+  "arrow: avenger total": 49.30624889675528,
+  "vl-convert total": 3184.574417071417,
+  "vegafusion total": 518.745040986687,
+  "matplotlib total": 53.358750068582594
+ },
+ {
+  "n": 3000000,
+  "to_dict": 2874.1605830146,
+  "json.dumps": 1653.967999969609,
+  "avenger (Rust)": 1782.4134160764515,
+  "avenger total": 6310.541999060661,
+  "arrow: to_dict": 2.189000020734966,
+  "arrow: avenger (Rust)": 86.06104110367596,
+  "arrow: avenger total": 88.25004112441093,
+  "vl-convert total": 8396.323457942344,
+  "vegafusion total": 765.2599170105532,
+  "matplotlib total": 53.7021670024842
+ }
+]

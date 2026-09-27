@@ -190,7 +190,7 @@ system did in experiment 5:
   plot or the empty margin beside a map, on the side with the least data, up
   and to the right when it can) and kept still until the source has moved a
   callout radius. `--offset none` puts it in place, at 2×. The defaults come
-  from the lens studies in [docs/interactions.md](../../docs/interactions.md);
+  from the lens studies in [interactions.md](interactions.md);
 - **tilt**, the map in 3D (experiment 5's `Cartesian3d`), with each cell's
   highest point as z, painter's order by depth, and the grid on the floor;
   what a zoom leaves outside the square is left out, since a tilted plot has
@@ -211,7 +211,7 @@ checked with a real mouse: only headless.
 
 ## Interactions: the ordinary ones, done well
 
-Following the lessons of vega/altair#3394 (in [docs/interactions.md](../../docs/interactions.md)):
+Following the lessons of vega/altair#3394 (in [interactions.md](interactions.md)):
 
 | Gesture | Does |
 |---|---|
@@ -246,7 +246,7 @@ Following the lessons of vega/altair#3394 (in [docs/interactions.md](../../docs/
 
 ## Interactions: series predicates
 
-The first of the research-grade techniques in [docs/interactions.md](../../docs/interactions.md),
+The first of the research-grade techniques in [interactions.md](interactions.md),
 on the time series:
 
 | Gesture | Command | Selects |
@@ -294,7 +294,7 @@ them: `select point --keys "label|band"`"; then every writing way selected
 the cell. w13 expected "unchanged" until the layer had selections, and now
 expects a selection.
 
-[docs/interactions.md](../../docs/interactions.md) catalogues interaction
+[interactions.md](interactions.md) catalogues interaction
 techniques as of September 2026: what doing the ordinary ones well takes
 (from vega/altair#3394), research-grade ones not in any mainstream library
 (line and crossing brushes, timeboxes, smooth brushing, lenses, CloudLasso,

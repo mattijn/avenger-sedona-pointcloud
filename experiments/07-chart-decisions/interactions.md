@@ -96,7 +96,7 @@ match).
 ## Magnifying: a projection or a nested view
 
 Two ways to implement it, and experiment 7 now has both
-([README](../experiments/07-chart-decisions/README.md)):
+([README](README.md)):
 
 - **As a coordinate transform (fisheye).** The Sarkar–Brown graphical
   fisheye ([10.1145/142750.142763](https://doi.org/10.1145/142750.142763)),

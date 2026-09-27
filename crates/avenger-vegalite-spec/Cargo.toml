@@ -1,0 +1,23 @@
+[package]
+name = "avenger-vegalite-spec"
+version = "0.1.0"
+edition = "2021"
+description = "Handwritten Serde types for a subset of Vega-Lite specifications (jonmmease/avenger at f4890be, with a schema export, config, and camera; see VENDORED.md)"
+license = "BSD-3-Clause"
+readme = "README.md"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_path_to_error = "0.1"
+thiserror = "2"
+schemars = { version = "1.2", optional = true }
+
+[features]
+# A JSON Schema of the supported subset, with the rules JSON Schema cannot
+# state as CEL (`x-avenger-rules`); see `examples/json_schema.rs`.
+schema = ["dep:schemars"]
+
+[[example]]
+name = "json_schema"
+required-features = ["schema"]

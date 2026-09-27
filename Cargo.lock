@@ -121,6 +121,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "antlr4rust"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "093d520274bfff7278d776f7ea12981a0a0a6f96db90964658e0f38fc6e9a6a6"
+dependencies = [
+ "better_any",
+ "bit-set",
+ "byteorder",
+ "lazy_static 1.5.0",
+ "murmur3",
+ "once_cell",
+ "parking_lot",
+ "typed-arena",
+ "uuid",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -400,6 +417,7 @@ version = "58.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "21ca356ad6425cecb6eb7b28e4f659f1ee7880fbb1a16127de7dd62901efee9e"
 dependencies = [
+ "bitflags 2.13.2",
  "serde",
  "serde_core",
  "serde_json",
@@ -560,7 +578,7 @@ dependencies = [
  "log",
  "num-rational",
  "num-traits",
- "pastey",
+ "pastey 0.1.1",
  "rayon",
  "thiserror 2.0.21",
  "v_frame",
@@ -576,15 +594,38 @@ dependencies = [
  "anyhow",
  "arrayvec",
  "log",
- "nom",
+ "nom 8.0.0",
  "num-rational",
  "v_frame",
 ]
 
 [[package]]
+name = "avenger-altair"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "avenger-chart",
+ "avenger-color",
+ "avenger-common",
+ "avenger-datafusion-dataflow",
+ "avenger-scales",
+ "avenger-scenegraph",
+ "avenger-text",
+ "avenger-transform",
+ "avenger-vegalite-compiler",
+ "avenger-vegalite-spec",
+ "avenger-wgpu",
+ "image",
+ "lyon_path",
+ "pyo3",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "avenger-app"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "async-trait",
  "avenger-common",
@@ -600,7 +641,7 @@ dependencies = [
 [[package]]
 name = "avenger-chart"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "async-trait",
  "avenger-app",
@@ -616,6 +657,7 @@ dependencies = [
  "avenger-panels",
  "avenger-scales",
  "avenger-scenegraph",
+ "avenger-svg",
  "avenger-text",
  "avenger-transform",
  "avenger-wgpu",
@@ -629,7 +671,7 @@ dependencies = [
 [[package]]
 name = "avenger-chart-definition"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-datafusion-dataflow",
  "avenger-layout",
@@ -644,7 +686,7 @@ dependencies = [
 [[package]]
 name = "avenger-color"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "css-color-parser",
  "ordered-float 5.4.0",
@@ -655,7 +697,7 @@ dependencies = [
 [[package]]
 name = "avenger-common"
 version = "0.0.8"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-color",
  "avenger-image",
@@ -671,7 +713,7 @@ dependencies = [
 [[package]]
 name = "avenger-datafusion-aggregate-state"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "arrow-schema",
  "datafusion",
@@ -683,7 +725,7 @@ dependencies = [
 [[package]]
 name = "avenger-datafusion-dataflow"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "async-trait",
  "chrono",
@@ -703,7 +745,7 @@ dependencies = [
 [[package]]
 name = "avenger-eventstream"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "async-trait",
  "avenger-common",
@@ -717,23 +759,44 @@ dependencies = [
 [[package]]
 name = "avenger-fonts"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 
 [[package]]
 name = "avenger-format"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "chrono",
- "serde",
- "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "avenger-format-config"
+version = "0.1.0"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
+dependencies = [
+ "avenger-format",
+ "avenger-format-datetime-chrono",
+ "avenger-format-datetime-d3",
+ "avenger-format-number-d3",
+ "serde",
+]
+
+[[package]]
+name = "avenger-format-datetime-chrono"
+version = "0.1.0"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
+dependencies = [
+ "avenger-format",
+ "chrono",
+ "chrono-tz",
+ "serde",
 ]
 
 [[package]]
 name = "avenger-format-datetime-d3"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-format",
  "chrono",
@@ -746,7 +809,7 @@ dependencies = [
 [[package]]
 name = "avenger-format-number-d3"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-format",
  "num-bigint",
@@ -760,7 +823,7 @@ dependencies = [
 [[package]]
 name = "avenger-geo"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "geo",
  "geo-traits",
@@ -776,7 +839,7 @@ dependencies = [
 [[package]]
 name = "avenger-geometry"
 version = "0.0.8"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-common",
  "avenger-scenegraph",
@@ -795,12 +858,13 @@ dependencies = [
 [[package]]
 name = "avenger-guides"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "arrow",
  "avenger-color",
  "avenger-common",
  "avenger-format",
+ "avenger-format-config",
  "avenger-geometry",
  "avenger-scales",
  "avenger-scenegraph",
@@ -818,7 +882,7 @@ dependencies = [
 [[package]]
 name = "avenger-image"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-resource",
  "base64 0.22.1",
@@ -839,12 +903,12 @@ dependencies = [
 [[package]]
 name = "avenger-layout"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 
 [[package]]
 name = "avenger-panels"
 version = "0.0.1"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-layout",
 ]
@@ -852,7 +916,7 @@ dependencies = [
 [[package]]
 name = "avenger-resource"
 version = "0.0.1"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "serde",
 ]
@@ -860,12 +924,16 @@ dependencies = [
 [[package]]
 name = "avenger-scales"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "arrow",
  "avenger-color",
  "avenger-common",
  "avenger-format",
+ "avenger-format-config",
+ "avenger-format-datetime-chrono",
+ "avenger-format-datetime-d3",
+ "avenger-format-number-d3",
  "avenger-image",
  "avenger-text",
  "chrono",
@@ -890,10 +958,11 @@ dependencies = [
 [[package]]
 name = "avenger-scenegraph"
 version = "0.0.8"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-color",
  "avenger-common",
+ "avenger-format-config",
  "avenger-image",
  "avenger-resource",
  "avenger-text",
@@ -910,9 +979,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "avenger-svg"
+version = "0.0.8"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
+dependencies = [
+ "avenger-color",
+ "avenger-common",
+ "avenger-image",
+ "avenger-scenegraph",
+ "avenger-text",
+ "base64 0.22.1",
+ "font-subset",
+ "image",
+ "itertools 0.14.0",
+ "lyon_algorithms",
+ "lyon_path",
+ "thiserror 2.0.21",
+ "ttf-parser",
+]
+
+[[package]]
 name = "avenger-text"
 version = "0.0.8"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-fonts",
  "avenger-format",
@@ -924,7 +1013,6 @@ dependencies = [
  "lyon_path",
  "ordered-float 5.4.0",
  "serde",
- "serde_json",
  "strum",
  "thiserror 2.0.21",
  "tracing",
@@ -935,7 +1023,7 @@ dependencies = [
 [[package]]
 name = "avenger-transform"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "datafusion",
  "datafusion-proto",
@@ -944,7 +1032,7 @@ dependencies = [
 [[package]]
 name = "avenger-typst-label"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-format",
  "chrono",
@@ -973,9 +1061,60 @@ dependencies = [
 ]
 
 [[package]]
+name = "avenger-validate"
+version = "0.1.0"
+dependencies = [
+ "cel",
+ "datafusion",
+ "futures",
+ "pyo3",
+ "regex",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "avenger-vegalite-compiler"
+version = "0.1.0"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
+dependencies = [
+ "avenger-chart",
+ "avenger-chart-definition",
+ "avenger-datafusion-dataflow",
+ "avenger-transform",
+ "avenger-vegalite-spec",
+ "css-color-parser",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "avenger-vegalite-py"
+version = "0.1.0"
+dependencies = [
+ "avenger-vegalite-spec",
+ "pyo3",
+]
+
+[[package]]
+name = "avenger-vegalite-spec"
+version = "0.1.0"
+dependencies = [
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "avenger-wgpu"
 version = "0.0.8"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-color",
  "avenger-common",
@@ -1005,7 +1144,7 @@ dependencies = [
 [[package]]
 name = "avenger-widgets"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "avenger-color",
  "avenger-common",
@@ -1020,7 +1159,7 @@ dependencies = [
 [[package]]
 name = "avenger-winit-wgpu"
 version = "0.1.0"
-source = "git+https://github.com/jonmmease/avenger?rev=3065e2ae6854b458ff8f944a3292c590a6f49256#3065e2ae6854b458ff8f944a3292c590a6f49256"
+source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
 dependencies = [
  "arboard",
  "avenger-app",
@@ -1105,6 +1244,12 @@ name = "base64"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
+name = "better_any"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4372b9543397a4b86050cc5e7ee36953edf4bac9518e8a774c2da694977fb6e4"
 
 [[package]]
 name = "bigdecimal"
@@ -1350,6 +1495,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cel"
+version = "0.14.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ae7daebcd4d032c9a5288790c2facde6fab3f9a9ff8d5028765e8b48a36eeb2"
+dependencies = [
+ "antlr4rust",
+ "chrono",
+ "lazy_static 1.5.0",
+ "nom 7.1.3",
+ "pastey 0.2.3",
+ "regex",
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1381,6 +1542,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "pure-rust-locales",
  "serde",
  "wasm-bindgen",
  "windows-link",
@@ -2776,6 +2938,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
+name = "font-subset"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e47922b9d737f16d425c10ec7b9b9751590cf8908270b5f9647bdad960b4b979"
+dependencies = [
+ "brotli",
+]
+
+[[package]]
 name = "fontconfig-parser"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3771,6 +3942,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "indoc"
+version = "2.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "inotify"
 version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4350,6 +4530,7 @@ dependencies = [
  "avenger-format-datetime-d3",
  "avenger-format-number-d3",
  "avenger-transform",
+ "avenger-validate",
  "chrono",
  "chrono-tz",
  "datafusion",
@@ -4604,6 +4785,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "memoffset"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "metal"
 version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4623,6 +4813,12 @@ name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+
+[[package]]
+name = "minimal-lexical"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "miniz_oxide"
@@ -4671,6 +4867,15 @@ name = "multimap"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
+
+[[package]]
+name = "murmur3"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a198f9589efc03f544388dfc4a19fe8af4323662b62f598b8dcfdac62c14771c"
+dependencies = [
+ "byteorder",
+]
 
 [[package]]
 name = "naga"
@@ -4741,6 +4946,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "418abd1b6d34fbf6cae440dc874771b0525a604428704c76e48b29a5e67b8003"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "nom"
+version = "7.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
+dependencies = [
+ "memchr",
+ "minimal-lexical",
 ]
 
 [[package]]
@@ -5346,6 +5561,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "35fb2e5f958ec131621fdd531e9fc186ed768cbe395337403ae56c17a74c68ec"
 
 [[package]]
+name = "pastey"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
+
+[[package]]
 name = "pdqselect"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5744,10 +5965,78 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d8f70e07b9c3962945a74e59ca1c511bba65b6419468acc217c457d93f3c740"
 
 [[package]]
+name = "pure-rust-locales"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "869675ad2d7541aea90c6d88c81f46a7f4ea9af8cd0395d38f11a95126998a0d"
+
+[[package]]
 name = "pxfm"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
+
+[[package]]
+name = "pyo3"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8970a78afe0628a3e3430376fc5fd76b6b45c4d43360ffd6cdd40bdde72b682a"
+dependencies = [
+ "indoc",
+ "libc",
+ "memoffset",
+ "once_cell",
+ "portable-atomic",
+ "pyo3-build-config",
+ "pyo3-ffi",
+ "pyo3-macros",
+ "unindent",
+]
+
+[[package]]
+name = "pyo3-build-config"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "458eb0c55e7ece017adeba38f2248ff3ac615e53660d7c71a238d7d2a01c7598"
+dependencies = [
+ "once_cell",
+ "target-lexicon",
+]
+
+[[package]]
+name = "pyo3-ffi"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7114fe5457c61b276ab77c5055f206295b812608083644a5c5b2640c3102565c"
+dependencies = [
+ "libc",
+ "pyo3-build-config",
+]
+
+[[package]]
+name = "pyo3-macros"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8725c0a622b374d6cb051d11a0983786448f7785336139c3c94f5aa6bef7e50"
+dependencies = [
+ "proc-macro2",
+ "pyo3-macros-backend",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "pyo3-macros-backend"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4109984c22491085343c05b0dbc54ddc405c3cf7b4374fc533f5c3313a572ccc"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "pyo3-build-config",
+ "quote",
+ "syn 2.0.119",
+]
 
 [[package]]
 name = "qoi"
@@ -6394,8 +6683,21 @@ checksum = "687274d293b6cdc6e73e0fee520bf2049650090d7164f87672d212a3c530cf4a"
 dependencies = [
  "dyn-clone",
  "ref-cast",
+ "schemars_derive",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d98c67716b46af2f0b8cf752abc930f6f9aecfbf671ecfb531db8a31dbe4e2ba"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -6572,6 +6874,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-wasm-bindgen"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b"
+dependencies = [
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "serde_core"
 version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6592,6 +6905,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_derive_internals"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f852137cce035d6a4df67ccce505ff6b3e9fd3a10e3e52b24dc71e650bb1a9bd"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
+]
+
+[[package]]
 name = "serde_json"
 version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6602,6 +6926,17 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "serde_path_to_error"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
+dependencies = [
+ "itoa",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -6947,6 +7282,12 @@ dependencies = [
  "quote",
  "syn 3.0.6",
 ]
+
+[[package]]
+name = "target-lexicon"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 
 [[package]]
 name = "tempfile"
@@ -7337,7 +7678,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8765b90061cba6c22b5831f675da109ae5561588290f9fa2317adab2714d5a6"
 dependencies = [
  "memchr",
- "nom",
+ "nom 8.0.0",
  "petgraph",
 ]
 
@@ -7361,6 +7702,12 @@ name = "twox-hash"
 version = "2.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5283634e518fe9e82c7b20520bb4bc209009fd16c82077c802f8111ecbb0117a"
+
+[[package]]
+name = "typed-arena"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
 
 [[package]]
 name = "typenum"
@@ -7430,6 +7777,12 @@ name = "unicode-width"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
+
+[[package]]
+name = "unindent"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7264e107f553ccae879d21fbea1d6724ac785e8c3bfc762137959b5802826ef3"
 
 [[package]]
 name = "unscanny"

@@ -1,0 +1,39 @@
+diff --git a/avenger-datafusion-dataflow/src/runtime.rs b/avenger-datafusion-dataflow/src/runtime.rs
+index 414a2e7e7..afdae8342 100644
+--- a/avenger-datafusion-dataflow/src/runtime.rs
++++ b/avenger-datafusion-dataflow/src/runtime.rs
+@@ -995,6 +995,9 @@ impl Evaluation {
+                 columns,
+                 &RecordBatchOptions::new().with_row_count(Some(end - offset)),
+             )?;
++            if std::env::var_os("AVENGER_CHARGE_LOG").is_some() {
++                eprintln!("charge partition rows={} charged={}", batch.num_rows(), batch.get_array_memory_size());
++            }
+             self.reservation
+                 .charge(batch.get_array_memory_size() + std::mem::size_of::<RecordBatch>())?;
+             batches.push(batch);
+@@ -1535,11 +1538,19 @@ impl Evaluation {
+             .await
+             .map_err(|source| self.execution_error(origin, index, source))?
+         {
+-            self.reservation.charge(
+-                batch
+-                    .get_array_memory_size()
+-                    .saturating_add(std::mem::size_of::<RecordBatch>()),
+-            )?;
++            // INSTRUMENTED (scratch copy): what is charged, and what the rows hold.
++            if std::env::var_os("AVENGER_CHARGE_LOG").is_some() {
++                let slice: usize = batch.columns().iter().map(|c| c.to_data().get_slice_memory_size().unwrap_or(0)).sum();
++                eprintln!("charge query node={} rows={} charged={} slice={}", node.name, batch.num_rows(), batch.get_array_memory_size(), slice);
++            }
++            // EXPERIMENT (scratch copy): charge what the batch's rows hold, not
++            // the whole buffers its columns share with other batches.
++            let charged = if std::env::var_os("AVENGER_CHARGE_SLICES").is_some() {
++                batch.columns().iter().map(|c| c.to_data().get_slice_memory_size().unwrap_or_else(|_| c.get_array_memory_size())).sum::<usize>()
++            } else {
++                batch.get_array_memory_size()
++            };
++            self.reservation.charge(charged.saturating_add(std::mem::size_of::<RecordBatch>()))?;
+             // Binding can refine nullability. Public schemas remain fixed.
+             let batch = RecordBatch::try_new_with_options(
+                 schema.clone(),

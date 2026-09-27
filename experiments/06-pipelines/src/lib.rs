@@ -2,7 +2,9 @@
 
 pub mod vega {
     pub mod compile;
-    pub mod parse;
+    /// The parser lives in `avenger-validate`, which checks pipelines
+    /// before they run; this crate compiles what it parses.
+    pub use avenger_validate::vega as parse;
 
     pub use compile::{analyze, Analysis, Blocker, Compiler};
     pub use parse::{parse, Ast, ParseError};

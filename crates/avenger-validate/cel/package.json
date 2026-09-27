@@ -1,0 +1,9 @@
+{
+  "name": "avenger-validate-cel",
+  "private": true,
+  "description": "Reference driver for avenger-validate's CEL export, and parity checks against the Rust validator.",
+  "type": "module",
+  "dependencies": {
+    "@marcbachmann/cel-js": "^8.0.0"
+  }
+}
