@@ -506,8 +506,37 @@ concave lasso on the tile (the tests cover a concave ring). **Measure:**
 `cargo run --release -p lidar-probes --bin probe_selection -- $T` and
 `cargo test --release -p avenger-selection`.
 
-Still to come, each needing an addition rather than a helper: a degree in
-[0, 1] for soft selection beside the yes-or-no predicate; tests over a
+### 26. Soft selection needs a degree, not a predicate
+
+Experiment 7's `--soft` fades what lies near a brush, by a degree of interest
+in [0, 1] that falls linearly with the distance from it. The crate's output is
+a Boolean, so it cannot say this. `ConsumerFilter::degree(state, width)`
+(added here, `src/degree.rs`) returns a Float64 expression beside
+`predicate`: 1 where the predicate holds, falling to 0 at `width` logical
+pixels. Distance is measured in pixels from the row's cell, per gridded
+projection, as a Euclidean length; keys and sets give 1 or 0; intersections
+and `All` take the least degree, unions and `Any` the greatest, `Not` the
+complement. A range on a projection without a grid is refused, since its data
+units need not match the other projection's. A lasso gets a soft edge for free:
+its distance is to the nearest run of cells.
+
+On the flat map of the whole tile, against experiment 7's formula (continuous
+distance from the brush), with a 20 px width (`--soft 0.05` on a 400 px plot):
+
+| Cells | degree, 17.3M points | predicate alone | largest difference from experiment 7 | bound (cell diagonal / width) |
+|---|---|---|---|---|
+| 1 px | 174 ms | 187 ms | 0.070 | 0.071 |
+| 4 px | 174 ms | 187 ms | 0.280 | 0.283 |
+
+So the degree costs what the predicate costs, and differs from the continuous
+formula by at most a cell's diagonal. Points at degree ½ or more: 1,043,076
+here, 1,029,519 with the continuous formula, since the crate measures from
+the cell. A soft 80-run lasso first took 1,953 ms, each row measuring all 80
+runs; a bounding-box test that settles rows beyond the width brought it to
+319 ms. **Not checked:** the degree through the preaggregation split, which
+has no notion of it. **Measure:** as for 25.
+
+Still to come, each needing an addition rather than a helper: tests over a
 series (line brush, timebox), which are not row-local; CloudLasso, which the
 chart must resolve and hand over as keys; the gesture kept with a
 contribution for drawing its outline; and serialisation, so a selection can

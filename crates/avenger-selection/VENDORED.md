@@ -28,6 +28,12 @@ The additions so far:
   which every term repeats its cell expression (FINDINGS.md 25: 5.3 s → 269
   ms for an 80-tuple lasso over 17.3M points). Membership is unchanged.
 
+- **`ConsumerFilter::degree`** (`src/degree.rs`, `tests/degree.rs`): a
+  Float64 degree of interest in [0, 1] beside the predicate, for soft
+  selection. 1 exactly where the predicate holds, falling linearly to 0 at a
+  width in logical pixels, measured from the row's cell on gridded
+  projections (FINDINGS.md 26).
+
 Measured by `cargo run --release -p lidar-probes --bin probe_selection -- <tile>`.
 
 Regenerate the diff against a checkout of upstream at the pin:

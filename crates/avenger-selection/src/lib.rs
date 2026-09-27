@@ -6,6 +6,7 @@ mod identity;
 mod pixels;
 mod polygon;
 mod cell_boxes;
+mod degree;
 mod predicate;
 mod resolve;
 mod split;

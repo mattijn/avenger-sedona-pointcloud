@@ -234,6 +234,61 @@ fn dist_to_ring(p: [f64; 2], ring: &[[f64; 2]]) -> f64 {
     }).fold(f64::MAX, f64::min)
 }
 
+/// Soft selection (experiment 7's `--soft`): the crate's `degree()` against
+/// experiment 7's formula, which measures the continuous distance from the
+/// brush; the crate measures from the row's cell. Both in pixels here.
+async fn soft(view: &View, points: &[RecordBatch]) -> DFResult<()> {
+    let width = 0.05 * P; // experiment 7's widths are in the unit square
+    let (x0, x1, y0, y1) = (0.6 * P, 0.8 * P, 0.45 * P, 0.65 * P);
+    println!("\n## soft selection on the flat map: brush {:.0}..{:.0} x {:.0}..{:.0} px, width {width} px", x0, x1, y0, y1);
+    let mem = SessionContext::new();
+    mem.register_table("pts", Arc::new(MemTable::try_new(points[0].schema(), vec![points.to_vec()])?))?;
+    let (u, v) = (ProjectionId::new("u").unwrap(), ProjectionId::new("v").unwrap());
+    let sel = SelectionId::new("brush").unwrap();
+    for (label, size) in [("1 px", 1.0), ("4 px", 4.0)] {
+        let producer = ProducerDefinition::new(sel.clone(), ProducerId::new("brush").unwrap(), ViewId::new("map").unwrap(),
+            [Projection::new(u.clone(), view.px(&view.a)).unwrap(), Projection::new(v.clone(), view.px(&view.b)).unwrap()]).unwrap()
+            .with_pixel_grids([(u.clone(), grid(size)), (v.clone(), grid(size))]).unwrap();
+        let value = SelectionValue::tuple([(u.clone(), avenger_selection::ValueTest::range(x0..=x1)), (v.clone(), avenger_selection::ValueTest::range(y0..=y1))]);
+        let state = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap().set(&producer, value).unwrap();
+        let filter = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::membership(&sel, EmptySelection::MatchNone));
+        let degree = filter.degree(&state, width).unwrap();
+        let (t_degree, _) = best(3, || async { let df = mem.table("pts").await?.select(vec![degree.clone().alias("d")])?; count(df.filter(col("d").gt(lit(0.0)))?).await }).await?;
+        let out = mem.table("pts").await?.select(vec![degree.alias("d"), view.px(&view.a).alias("u"), view.px(&view.b).alias("v")])?.collect().await?;
+        let pred = filter.predicate(&state).unwrap();
+        let (t_pred, _) = best(3, || in_mem(mem.clone(), pred.clone())).await?;
+        let (mut worst, mut faded, mut half_crate, mut half_e7) = (0.0_f64, 0usize, 0usize, 0usize);
+        for b in &out {
+            let (d, uu, vv) = (column(b, "d"), column(b, "u"), column(b, "v"));
+            for i in 0..b.num_rows() {
+                let (pu, pv) = (uu.value(i), vv.value(i));
+                let dist = (x0 - pu).max(pu - x1).max(0.0).hypot((y0 - pv).max(pv - y1).max(0.0));
+                let e7 = (1.0 - dist / width).clamp(0.0, 1.0);
+                worst = worst.max((d.value(i) - e7).abs());
+                faded += (d.value(i) > 0.0 && d.value(i) < 1.0) as usize;
+                half_crate += (d.value(i) >= 0.5) as usize;
+                half_e7 += (e7 >= 0.5) as usize;
+            }
+        }
+        println!("cells of {label}: degree for every point {t_degree:>6.0} ms (the predicate alone {t_pred:.0} ms); \
+                  {faded} points faded; largest difference from experiment 7's formula {worst:.3} \
+                  (a cell diagonal over the width is {:.3}); degree >= 0.5: {half_crate} here, {half_e7} there",
+                 size * std::f64::consts::SQRT_2 / width);
+    }
+    // A soft lasso: the distance to its nearest run of cells, 80 of them.
+    let (_, tuples) = selection(view, 1.0);
+    let (uid, vid) = (ProjectionId::new("u").unwrap(), ProjectionId::new("v").unwrap());
+    let lasso = ProducerDefinition::new(sel.clone(), ProducerId::new("lasso").unwrap(), ViewId::new("map").unwrap(),
+        [Projection::new(uid.clone(), view.px(&view.a)).unwrap(), Projection::new(vid.clone(), view.px(&view.b)).unwrap()]).unwrap()
+        .with_pixel_grids([(uid.clone(), grid(1.0)), (vid.clone(), grid(1.0))]).unwrap();
+    let value = SelectionValue::polygon((&uid, &grid(1.0)), (&vid, &grid(1.0)), &view.ring()).unwrap();
+    let state = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap().set(&lasso, value).unwrap();
+    let degree = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::membership(&sel, EmptySelection::MatchNone)).degree(&state, width).unwrap();
+    let (t, _) = best(3, || async { let df = mem.table("pts").await?.select(vec![degree.clone().alias("d")])?; count(df.filter(col("d").gt(lit(0.0)))?).await }).await?;
+    println!("soft lasso, {tuples} runs of 1 px cells: degree for every point {t:.0} ms");
+    Ok(())
+}
+
 async fn measure(ctx: &SessionContext, view: &View, points: &[RecordBatch]) -> DFResult<()> {
     let ring = view.ring();
     let n_points: usize = points.iter().map(|b| b.num_rows()).sum();
@@ -326,6 +381,7 @@ async fn main() -> DFResult<()> {
     println!("loaded the tile into memory in {:.0} ms", ms(t0));
     let view = flat(ext);
     measure(&ctx, &view, &all).await?;
+    soft(&view, &all).await?;
     drop(all);
 
     let win = [657500.0, 658000.0, 6867250.0, 6867750.0];
