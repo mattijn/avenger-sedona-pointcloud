@@ -509,6 +509,23 @@ const CRATES = [
   ["text", ["text", "fonts", "typst-label"]],
   ["data", ["transform", "datafusion-dataflow", "datafusion-aggregate-state", "-datafusion-preaggregate", "-datafusion-cache"]],
 ];
+// The same 38 crates by how they build on each other: each crate's row is
+// one above the highest row of the Avenger crates it depends on (their
+// Cargo.toml files at f4890be). The top row is first; the bottom row has
+// no Avenger dependencies and is split in two to fit.
+const LAYERS = [
+  ["vegalite-compiler"],
+  ["chart", "winit-wgpu"],
+  ["app", "wgpu", "widgets"],
+  ["eventstream", "guides", "-selection"],
+  ["geometry", "svg", "-pdf", "-scales-datafusion", "-vega-scenegraph"],
+  ["scales", "scenegraph"],
+  ["common"],
+  ["chart-definition", "format-config", "text"],
+  ["image", "panels", "typst-label", "format-number-d3", "format-datetime-d3", "format-datetime-chrono", "-datafusion-preaggregate"],
+  ["color", "fonts", "format", "resource", "layout", "geo"],
+  ["vegalite-spec", "transform", "datafusion-dataflow", "datafusion-aggregate-state", "-datafusion-cache"],
+];
 // The ground bands on other slides keep six families.
 const FAMILIES = ["describe", "draw", "scene", "shape", "encode", "data"];
 
@@ -733,37 +750,43 @@ const SLIDES = [
     title: "The current stack of Avenger crates",
     big: "38", bigsub: "crates at f4890be, 32 of them on this route",
     rows: [["on this route", "32", 0], ["not used here", "6", 0], ["carried here, with additions", "vegalite-spec", 0],
-           ["repin #120 → #124", "no code changes", 7], ["repin #124 → #130", "one line", 7]],
-    steps: 8,
+           ["no Avenger dependencies", "11 crates", 0], ["build on common", "16 of 38", 0],
+           ["repin #120 → #124", "no code changes", 0], ["repin #124 → #130", "one line", 0]],
+    steps: 1,
     hover: {},
     nerds: `<b>every crate in Avenger's workspace at the pin</b>
 <code>git -C ../avenger show f4890be:Cargo.toml | sed -n '/members/,/]/p'</code>
+<b>how they build on each other</b>  <em>the avenger-* dependencies in each crate's Cargo.toml at f4890be</em>
+<code>git -C ../avenger show f4890be:avenger-common/Cargo.toml</code>
 <b>the ones this route pulls in</b>  <em>this repo's Cargo.lock: 31 from Avenger, vegalite-spec patched to crates/</em>
-<code>grep -A2 '^name = "avenger-' Cargo.lock</code>
-
-<b>what worked well</b>  <em>FINDINGS.md</em>
-<em>a repin across a rewritten stack of 180 commits needed one line</em>`,
+<code>grep -A2 '^name = "avenger-' Cargo.lock</code>`,
     draw() {
-      CRATES.forEach(([fam, list], r) => {
-        const y = 56 + r * 90, s = CRATES.length - r - 1;
-        text(40, y + 22, fam, "kk", { s });
-        let x = 150;
-        list.forEach((c, k) => {
+      const top = 40, step = 70;
+      const g0 = layer(0);
+      // the bottom row, split in two to fit, as one band
+      el("rect", { x: 120, y: top + step * (LAYERS.length - 2) - 12, width: 1000, height: step + 58, fill: "#f4f4f4" }, g0);
+      el("path", { d: `M92,${top + 30} L92,${top + step * (LAYERS.length - 1) + 10}`, class: "edge", "marker-end": "url(#arr)" }, g0);
+      text(40, top + 20, "builds on", "kk", { parent: g0 });
+      text(40, top + step * (LAYERS.length - 1) + 44, "no Avenger", "kk", { parent: g0 });
+      text(40, top + step * (LAYERS.length - 1) + 60, "dependencies", "kk", { parent: g0 });
+      LAYERS.forEach((row, r) => {
+        const y = top + r * step;
+        let x = 130;
+        row.forEach((c, k) => {
           const unused = c.startsWith("-"), name = unused ? c.slice(1) : c;
-          x += chip("c" + r + k, x, y, name, { s, size: 14, kind: unused ? "ghost" : "solid" }) + 10;
+          const w = Math.max(60, 28 + name.length * 7.4);
+          const kind = unused ? "ghost" : "solid";
+          box("c" + r + "_" + k, x, y, w, 32, { label: name, size: 13, kind, s: 0,
+            title: name === "common" ? "avenger-common: shared types (ScalarOrArray values, stroke and fill types, canvas size, cursor, path helpers, a cross-platform time type); it builds on color, image and text" : "avenger-" + name });
+          x += w + 9;
         });
+        if (row[0] === "common") text(x + 8, y + 21, "shared types: values, strokes, canvas, paths", "sub", { parent: g0 });
       });
-      const g = layer(0);
-      el("rect", { x: 150, y: 790, width: 780, height: 28, fill: C.ink }, g);
-      // avenger-common: the shared types most crates use (its own README);
-      // it depends on color, image and text itself, so it is shared, not lowest.
-      text(540, 809, "common · shared types: values, strokes, canvas, paths", "lab", { anchor: "middle", parent: g, fill: "#fff", size: 14 });
-      el("title", { text: "avenger-common: ScalarOrArray values, stroke and fill types, canvas size, cursor, path helpers, a cross-platform time type" }, g);
       const lg = layer(0);
-      el("rect", { x: 960, y: 772, width: 26, height: 18, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, lg);
-      text(996, 786, "on this route", "sub", { parent: lg });
-      el("rect", { x: 960, y: 800, width: 26, height: 18, fill: "none", stroke: C.line, "stroke-dasharray": "3 4" }, lg);
-      text(996, 814, "not used here", "sub", { parent: lg });
+      el("rect", { x: 870, y: 44, width: 26, height: 18, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, lg);
+      text(906, 58, "on this route", "sub", { parent: lg });
+      el("rect", { x: 990, y: 44, width: 26, height: 18, fill: "none", stroke: C.line, "stroke-dasharray": "3 4" }, lg);
+      text(1026, 58, "not used here", "sub", { parent: lg });
     },
   },
 
