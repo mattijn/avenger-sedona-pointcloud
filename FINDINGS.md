@@ -611,15 +611,24 @@ tests, a value built from other grids than its producer's selected the wrong
 rows without complaint; `polygon` and `cells` now read the grids from the
 producer, so the two cannot disagree.
 
-On the tile, eight updates (CloudLasso's two, the series keys, a clear, a
-toggle) replay to the same predicates and contributions, and the replayed
-CloudLasso selects the same 721,463 points. The log is large: **427 KB**, of
-which the lasso is 32 KB (108 tuples) and CloudLasso's voxels 197 KB. It
-records the outcome, tuple by tuple. Recording the gesture instead (the
-lasso's ring is four points) would be a few hundred bytes, with the tuples
-rebuilt on replay; but for CloudLasso the rebuild depends on the data, so on a
-stream the replay would select other points. Which of the two a log should
-hold is a design choice for the chart language, not something to settle here.
+A log records **what was drawn**, not what it selected. A value with a
+gesture is written as the gesture alone, and replay draws it again. The
+crate redraws its own kind: a lasso, from its ring and the two projections
+it names (`SelectionValue::from_gesture`). The chart's kinds come back as
+`LogEntry::Drawn`, for the chart to redraw against the data as it did when
+the user drew them: a line brush or timebox runs its `SeriesTest` again, and
+CloudLasso counts its voxels again in the replayed state. Keys clicked in a
+legend have no gesture and are written as their tuples.
+
+On the tile, eight updates (the lasso and CloudLasso, the series, a clear, a
+toggle) replay to the same predicates and contributions, gestures included,
+and the replayed CloudLasso selects the same 721,463 points. The first version
+of the log recorded tuples and took **427 KB** (the lasso 32 KB, CloudLasso's
+voxels 197 KB); recording gestures takes **1,412 bytes** (the lasso 223,
+CloudLasso 227). Five of the eight are redrawn by the chart on replay, in 259 ms
+in all (not timed apart). On data that has moved, the
+same gestures select what they would select now; **not checked**, since the
+probe replays on the same data.
 **Measure:** as for 25; the log is written to `out/selection_log.jsonl`.
 
 Still to come: soft series selections, which need a degree per key; the

@@ -294,7 +294,7 @@ async fn soft(view: &View, points: &[RecordBatch]) -> DFResult<()> {
 /// values of bin/layer_roundtrip.rs find their lines in one query each; the
 /// keys then select those lines' raw points. On a growing tile, as a stream
 /// delivers it, the chart rebuilds the lines and the keys.
-async fn series(ctx: &SessionContext, tile: &str) -> DFResult<(Vec<ProducerDefinition>, Vec<avenger_selection::SelectionUpdate>)> {
+async fn series(ctx: &SessionContext, tile: &str) -> DFResult<(Vec<ProducerDefinition>, Vec<avenger_selection::SelectionUpdate>, SessionContext)> {
     use avenger_selection::SeriesTest;
     println!("\n## series: experiment 7's flight lines");
     let raw = ctx.sql(&format!("SELECT point_source_id, gps_time FROM '{tile}' ORDER BY gps_time")).await?.collect().await?;
@@ -390,7 +390,7 @@ async fn series(ctx: &SessionContext, tile: &str) -> DFResult<(Vec<ProducerDefin
         }
         println!("first {:>3.0} % of the points: {n_lines} lines in {n_fl} rows, rebuilt in {t_b:>5.0} ms; the three key sets in {:>5.1} ms ({:?} lines)", q * 100.0, ms(t0), k);
     }
-    Ok((defs, updates))
+    Ok((defs, updates, fm))
 }
 
 /// The regions of dense voxels, joined across faces, edges and corners, and
@@ -435,8 +435,53 @@ fn largest_region(count: &HashMap<(i64, i64, i64), usize>, structure: f64) -> (s
 /// and hands its voxels back as cells; the selection intersects them with
 /// the lasso. Voxels are 1/40 of the window across and 1/10 of its height.
 /// Returns the definitions and updates, for the log.
-async fn cloud_lasso(view: &View, win: [f64; 4], hz: (f64, f64), points: &[RecordBatch]) -> DFResult<(Vec<ProducerDefinition>, Vec<avenger_selection::SelectionUpdate>)> {
-    use avenger_selection::{Gesture, SelectionUpdate};
+/// The chart's side of CloudLasso: voxel counts of the points the current
+/// state selects (the lasso), the largest dense region, and its voxels as a
+/// value that carries the drawn lasso as a `"cloudlasso"` gesture.
+struct Cloud {
+    mem: SessionContext,
+    consumer: ConsumerFilter,
+    voxels: ProducerDefinition,
+    grids: [PixelGrid; 3],
+    ids: [ProjectionId; 3],
+    gesture: avenger_selection::Gesture,
+    structure: f64,
+}
+impl Cloud {
+    #[allow(clippy::type_complexity)]
+    async fn voxels(&self, state: &SelectionSet) -> DFResult<(SelectionValue, (usize, usize, usize, usize, f64, f64))> {
+        let [gx, gy, gz] = &self.grids;
+        let t0 = Instant::now();
+        let counts = self.mem.table("pts").await?
+            .filter(self.consumer.predicate(state).unwrap())?
+            .aggregate(vec![gx.cell_expr(col("x")).alias("i"), gy.cell_expr(col("y")).alias("j"), gz.cell_expr(col("z")).alias("k")],
+                       vec![datafusion::functions_aggregate::expr_fn::count(lit(1)).alias("n")])?
+            .collect().await?;
+        let t_count = ms(t0);
+        let mut count: HashMap<(i64, i64, i64), usize> = HashMap::new();
+        let mut n_in = 0;
+        for b in &counts {
+            let c = |n: &str| b.column_by_name(n).unwrap().as_any().downcast_ref::<arrow::array::Int64Array>().unwrap().clone();
+            let (i, j, k, n) = (c("i"), c("j"), c("k"), c("n"));
+            for r in 0..b.num_rows() {
+                count.insert((i.value(r), j.value(r), k.value(r)), n.value(r) as usize);
+                n_in += n.value(r) as usize;
+            }
+        }
+        let t0 = Instant::now();
+        let (best, regions) = largest_region(&count, self.structure);
+        let t_region = ms(t0);
+        let cells: Vec<Vec<i64>> = best.iter().map(|c| vec![c.0, c.1, c.2]).collect();
+        let [a, b, c] = &self.ids;
+        let value = SelectionValue::cells(&self.voxels, &[a, b, c], cells).unwrap()
+            .with_gesture(avenger_selection::Gesture::new("cloudlasso", self.gesture.points().iter().copied())
+                .on(self.gesture.projections().iter().cloned()).with_param("structure", self.structure));
+        Ok((value, (n_in, count.len(), regions, best.len(), t_count, t_region)))
+    }
+}
+
+async fn cloud_lasso(view: &View, win: [f64; 4], hz: (f64, f64), points: &[RecordBatch]) -> DFResult<(Vec<ProducerDefinition>, Vec<avenger_selection::SelectionUpdate>, Cloud)> {
+    use avenger_selection::SelectionUpdate;
     let structure = 0.3;
     println!("\n## CloudLasso in the tilted view (structure {structure})");
     let mem = SessionContext::new();
@@ -460,41 +505,23 @@ async fn cloud_lasso(view: &View, win: [f64; 4], hz: (f64, f64), points: &[Recor
 
     let t_all = Instant::now();
     let ring = view.ring();
-    let gesture = Gesture::new("polygon", ring.iter().copied()).with_param("structure", structure);
-    let lasso_value = SelectionValue::polygon(&lasso, &u, &v, &ring).unwrap().with_gesture(gesture);
+    let drawn = SelectionValue::polygon(&lasso, &u, &v, &ring).unwrap();
+    let gesture = drawn.gesture().unwrap().clone().with_param("structure", structure);
+    let lasso_value = drawn.with_gesture(gesture.clone());
     let set_lasso = SelectionUpdate::set(&lasso, lasso_value);
     let state = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap().apply(set_lasso.clone()).unwrap();
-    // The chart's step: voxel counts of the points in the lasso.
-    let t0 = Instant::now();
-    let counts = mem.table("pts").await?
-        .filter(consumer.predicate(&state).unwrap())?
-        .aggregate(vec![gx.cell_expr(col("x")).alias("i"), gy.cell_expr(col("y")).alias("j"), gz.cell_expr(col("z")).alias("k")],
-                   vec![datafusion::functions_aggregate::expr_fn::count(lit(1)).alias("n")])?
-        .collect().await?;
-    let t_count = ms(t0);
-    let mut count: HashMap<(i64, i64, i64), usize> = HashMap::new();
-    let mut n_in = 0;
-    for b in &counts {
-        let c = |n: &str| b.column_by_name(n).unwrap().as_any().downcast_ref::<arrow::array::Int64Array>().unwrap().clone();
-        let (i, j, k, n) = (c("i"), c("j"), c("k"), c("n"));
-        for r in 0..b.num_rows() {
-            count.insert((i.value(r), j.value(r), k.value(r)), n.value(r) as usize);
-            n_in += n.value(r) as usize;
-        }
-    }
-    let t0 = Instant::now();
-    let (best, regions) = largest_region(&count, structure);
-    let t_region = ms(t0);
-    let cells: Vec<Vec<i64>> = best.iter().map(|c| vec![c.0, c.1, c.2]).collect();
-    let set_voxels = SelectionUpdate::set(&voxels, SelectionValue::cells(&voxels, &[&px, &py, &pz], cells).unwrap());
+    let cloud = Cloud { mem: mem.clone(), consumer: consumer.clone(), voxels: voxels.clone(), grids: [gx, gy, gz], ids: [px, py, pz],
+                        gesture: gesture.clone(), structure };
+    let (value, st) = cloud.voxels(&state).await?;
+    let (n_in, n_vox, regions, n_best, t_count, t_region) = st;
+    let set_voxels = SelectionUpdate::set(&voxels, value);
     let state = state.apply(set_voxels.clone()).unwrap();
     let pred = consumer.predicate(&state).unwrap();
     let t0 = Instant::now();
     let n_sel = count_mem(&mem, pred.clone()).await?;
     let t_sel = ms(t0);
     let t_total = ms(t_all);
-    println!("the crate and the chart: {n_in} points in the lasso, {} voxels, {regions} dense regions; the largest has {} voxels; {n_sel} points selected",
-             count.len(), best.len());
+    println!("the crate and the chart: {n_in} points in the lasso, {n_vox} voxels, {regions} dense regions; the largest has {n_best} voxels; {n_sel} points selected");
     println!("  voxel counts {t_count:.0} ms, regions {t_region:.1} ms, selecting {t_sel:.0} ms; {t_total:.0} ms in all");
 
     // Experiment 7's algorithm in plain Rust, on the same points.
@@ -519,7 +546,7 @@ async fn cloud_lasso(view: &View, win: [f64; 4], hz: (f64, f64), points: &[Recor
     let r_sel = inside.iter().filter(|k| rbest.contains(k)).count();
     println!("experiment 7's loop:     {} points in the lasso, {} voxels, {rregions} dense regions; the largest has {} voxels; {r_sel} points selected ({:.0} ms)",
              inside.len(), rc.len(), rbest.len(), ms(t0));
-    Ok((vec![lasso, voxels], vec![set_lasso, set_voxels]))
+    Ok((vec![lasso, voxels], vec![set_lasso, set_voxels], cloud))
 }
 
 async fn count_mem(mem: &SessionContext, f: Expr) -> DFResult<usize> {
@@ -531,8 +558,9 @@ async fn count_mem(mem: &SessionContext, f: Expr) -> DFResult<usize> {
 /// back against the chart's definitions and replayed. The replayed state must
 /// give the same predicates and select the same points.
 async fn log_roundtrip(cloud_defs: &[ProducerDefinition], cloud: &[avenger_selection::SelectionUpdate],
-                       series_defs: &[ProducerDefinition], series: &[avenger_selection::SelectionUpdate], points: &[RecordBatch]) -> DFResult<()> {
-    use avenger_selection::{Producers, SelectionUpdate};
+                       series_defs: &[ProducerDefinition], series: &[avenger_selection::SelectionUpdate], points: &[RecordBatch],
+                       redraw_cloud: &Cloud, flight: &SessionContext) -> DFResult<()> {
+    use avenger_selection::{LogEntry, Producers, SelectionUpdate, SeriesTest};
     println!("\n## a selection log");
     let mut updates: Vec<SelectionUpdate> = cloud.to_vec();
     updates.extend(series.iter().cloned());
@@ -548,14 +576,32 @@ async fn log_roundtrip(cloud_defs: &[ProducerDefinition], cloud: &[avenger_selec
     let text = std::fs::read_to_string("out/selection_log.jsonl").unwrap();
     let producers = Producers::new(cloud_defs.iter().chain(series_defs).cloned());
     let t0 = Instant::now();
-    let replayed: Vec<SelectionUpdate> = text.lines().map(|l| SelectionUpdate::from_json(&serde_json::from_str(l).unwrap(), &producers).unwrap()).collect();
+    let entries: Vec<LogEntry> = text.lines().map(|l| LogEntry::from_json(&serde_json::from_str(l).unwrap(), &producers).unwrap()).collect();
     let t_read = ms(t0);
+    let n_drawn = entries.iter().filter(|e| matches!(e, LogEntry::Drawn(_))).count();
     let (cloud_sel, series_sel) = (SelectionId::new("cloud").unwrap(), SelectionId::new("series").unwrap());
     let start = SelectionSet::new([(cloud_sel.clone(), Resolution::Intersect), (series_sel.clone(), Resolution::Intersect)]).unwrap();
     let (mut a, mut b) = (start.clone(), start);
     let mut same = true;
-    for (u, r) in updates.into_iter().zip(replayed) {
+    let t0 = Instant::now();
+    let mut t_redraw = 0.0;
+    for (u, e) in updates.into_iter().zip(entries) {
         a = a.apply(u).unwrap();
+        // The chart draws its own gestures again, against the replayed state.
+        let t1 = Instant::now();
+        let r = match e {
+            LogEntry::Update(u) => u,
+            LogEntry::Drawn(d) => match d.gesture.kind() {
+                "cloudlasso" => { let v = redraw_cloud.voxels(&b).await?.0; d.redraw(v) }
+                "segment" | "timebox" => {
+                    let test = SeriesTest::from_gesture(&d.gesture).unwrap();
+                    let keys = test.keys(flight.table("flight").await?, col("line"), col("t"), col("n")).await.unwrap();
+                    d.redraw(test.value(&ProjectionId::new("line").unwrap(), keys))
+                }
+                other => panic!("no redraw for {other}"),
+            },
+        };
+        t_redraw += ms(t1);
         b = b.apply(r).unwrap();
         for sel in [&cloud_sel, &series_sel] {
             let f = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::membership(sel, EmptySelection::MatchNone));
@@ -568,8 +614,10 @@ async fn log_roundtrip(cloud_defs: &[ProducerDefinition], cloud: &[avenger_selec
     let f = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::membership(&cloud_sel, EmptySelection::MatchNone));
     let (na, nb) = (count_mem(&mem, f.predicate(&a).unwrap()).await?, count_mem(&mem, f.predicate(&b).unwrap()).await?);
     let bytes: Vec<usize> = lines.iter().map(|l| l.len()).collect();
-    println!("{} updates, {} bytes (the lasso {} bytes, the CloudLasso voxels {} bytes); written in {t_write:.1} ms, read back in {t_read:.1} ms",
+    let _ = t0;
+    println!("{} updates, {} bytes (the lasso {} bytes, CloudLasso's voxels {} bytes); written in {t_write:.1} ms, read back in {t_read:.1} ms",
              lines.len(), bytes.iter().sum::<usize>(), bytes[0], bytes[1]);
+    println!("{n_drawn} of them drawn again by the chart on replay (CloudLasso, the series), in {t_redraw:.0} ms all told");
     println!("replayed: same predicates and contributions, gestures included: {}; CloudLasso points {na} recorded, {nb} replayed",
              if same { "yes" } else { "NO" });
     Ok(())
@@ -683,12 +731,12 @@ async fn main() -> DFResult<()> {
     }
     let tilt = tilted(win, hlo, hhi, 30.0, 35.0);
     measure(&ctx, &tilt, &part).await?;
-    let (cloud_defs, cloud_updates) = cloud_lasso(&tilt, win, (hlo, hhi), &part).await?;
+    let (cloud_defs, cloud_updates, cloud) = cloud_lasso(&tilt, win, (hlo, hhi), &part).await?;
     let part_for_log = part.clone();
     drop(part);
 
-    let (series_defs, series_updates) = series(&ctx, &tile).await?;
-    log_roundtrip(&cloud_defs, &cloud_updates, &series_defs, &series_updates, &part_for_log).await?;
+    let (series_defs, series_updates, flight) = series(&ctx, &tile).await?;
+    log_roundtrip(&cloud_defs, &cloud_updates, &series_defs, &series_updates, &part_for_log, &cloud, &flight).await?;
     drop(part_for_log);
 
     // 3: from the file, flat lasso at 1 px. A bounding box in data units,

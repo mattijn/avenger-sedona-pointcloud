@@ -61,7 +61,7 @@ async fn a_log_replays_to_the_same_predicates() {
         SelectionUpdate::set(&keys, SelectionValue::tuples([
             [(pid("class"), ValueTest::equal(6_i64)), (pid("name"), ValueTest::one_of(["Building", "Bâtiment"]))],
             [(pid("class"), ValueTest::equal(f64::NAN)), (pid("name"), ValueTest::equal(ScalarValue::Utf8(None)))],
-        ]).with_gesture(Gesture::new("legend", [[1.5, -2.25]]).with_param("soft", 0.1))),
+        ])),
         SelectionUpdate::toggle(&keys, SelectionValue::tuple([(pid("class"), ValueTest::equal(2_i64)), (pid("name"), ValueTest::equal("Ground"))])),
         SelectionUpdate::set(&brush, SelectionValue::tuple([
             (pid("x"), ValueTest::Range { lower: Bound::Excluded(ScalarValue::Float64(Some(0.1 + 0.2))), upper: Bound::Unbounded }),
@@ -118,4 +118,35 @@ async fn cells_select_exactly_their_rows() {
         .collect();
     assert_eq!(want.len(), 3);
     assert_eq!(selected(rows, membership().predicate(&s).unwrap()).await, want);
+}
+
+#[tokio::test]
+async fn a_log_records_what_was_drawn() {
+    let lasso = map_producer("lasso");
+    let drawn = SelectionValue::polygon(&lasso, &pid("x"), &pid("y"), &RING).unwrap();
+    let with_structure = drawn.clone().with_gesture(drawn.gesture().unwrap().clone().with_param("structure", 0.3));
+    let line = serde_json::to_string(&SelectionUpdate::set(&lasso, with_structure.clone()).to_json().unwrap()).unwrap();
+    // The ring, not its runs of cells.
+    assert!(!line.contains("tuples") && line.len() < 400, "{} bytes: {line}", line.len());
+    let producers = Producers::new([lasso.clone()]);
+    let replayed = SelectionUpdate::from_json(&serde_json::from_str(&line).unwrap(), &producers).unwrap();
+    let a = state(Resolution::Intersect).set(&lasso, with_structure).unwrap();
+    let b = state(Resolution::Intersect).apply(replayed).unwrap();
+    assert_eq!(a.contributions(&id()).unwrap().collect::<Vec<_>>(), b.contributions(&id()).unwrap().collect::<Vec<_>>());
+
+    // A line brush is the chart's to draw again: its keys depend on the data.
+    let brush = producer("brush", view("lines"), &["line"]);
+    let test = SeriesTest::Crosses { from: [1.0, -1.0], to: [1.0, 3.0] };
+    let set = SelectionUpdate::set(&brush, test.value(&pid("line"), vec![ScalarValue::Int64(Some(7))]));
+    let line = serde_json::to_string(&set.to_json().unwrap()).unwrap();
+    let producers = Producers::new([brush.clone()]);
+    assert!(SelectionUpdate::from_json(&serde_json::from_str(&line).unwrap(), &producers).is_err());
+    let LogEntry::Drawn(d) = LogEntry::from_json(&serde_json::from_str(&line).unwrap(), &producers).unwrap() else {
+        panic!("a line brush should come back drawn")
+    };
+    assert_eq!(SeriesTest::from_gesture(&d.gesture), Some(test.clone()));
+    // The chart finds the keys again (here, the same ones) and redraws.
+    let redrawn = d.redraw(SelectionValue::tuple([(pid("line"), ValueTest::one_of([7_i64]))]));
+    let (a, b) = (state(Resolution::Intersect).apply(set).unwrap(), state(Resolution::Intersect).apply(redrawn).unwrap());
+    assert_eq!(a.contributions(&id()).unwrap().collect::<Vec<_>>(), b.contributions(&id()).unwrap().collect::<Vec<_>>());
 }

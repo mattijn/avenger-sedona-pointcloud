@@ -44,9 +44,12 @@ The additions so far:
   `polygon` read their grids from the producer.
 - **`Gesture`** (`src/gesture.rs`): what was drawn, carried by a value and
   kept by a contribution through `set`, dropped by `toggle` (FINDINGS.md 29).
-- **The selection log** (`src/log.rs`, `tests/log.rs`): `SelectionUpdate::to_json`
-  and `from_json`, against a `Producers` registry of the chart's definitions;
-  adds `serde_json` as a dependency (FINDINGS.md 29).
+- **The selection log** (`src/log.rs`, `tests/log.rs`): `SelectionUpdate::to_json`,
+  and `LogEntry::from_json` against a `Producers` registry of the chart's
+  definitions. It records what was drawn: a value with a gesture is written
+  as the gesture; replay redraws a lasso (`SelectionValue::from_gesture`) and
+  hands the chart's kinds back as `Drawn`. Adds `serde_json` as a dependency
+  (FINDINGS.md 29).
 
 Measured by `cargo run --release -p lidar-probes --bin probe_selection -- <tile>`.
 

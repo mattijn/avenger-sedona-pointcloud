@@ -4,10 +4,17 @@
 //! user did, not the chart's definitions: producer definitions hold
 //! DataFusion expressions and captured scales, which the chart rebuilds from
 //! its own specification. So an update is written as its producer's address
-//! (selection, producer, view), the operation, and the raw value with its
-//! gesture; reading it back looks the definition up in `Producers`. Replayed
-//! into the same definitions, a log gives the same state, and so the same
-//! predicates.
+//! (selection, producer, view), the operation, and what was drawn; reading
+//! it back looks the definition up in `Producers`.
+//!
+//! A log records what was drawn, not what it selected. A value with a
+//! gesture is written as the gesture alone, and replay draws it again: the
+//! crate redraws its own kinds (a lasso, `"polygon"`), and returns the
+//! chart's kinds (a line brush, a timebox, CloudLasso), whose outcome depends
+//! on the data, as `LogEntry::Drawn` for the chart to redraw. Replayed on the
+//! same data, a log gives the same state; on data that has moved, the same
+//! gestures select what they would select now. A value without a gesture,
+//! such as keys clicked in a legend, is written as its tuples.
 //!
 //! Scalars are written as their Arrow type and their value cast to a string,
 //! which DataFusion casts back: `{"type": "Int64", "value": "5"}`. Binary
@@ -67,7 +74,46 @@ impl SelectionUpdate {
         })
     }
 
-    /// Read one logged update back against the chart's definitions.
+    /// Read one logged update back against the chart's definitions, drawing
+    /// a lasso again. A gesture of the chart's own kind is an error here; read
+    /// such a log with `LogEntry::from_json` and redraw it.
+    pub fn from_json(v: &Value, producers: &Producers) -> Result<Self> {
+        match LogEntry::from_json(v, producers)? {
+            LogEntry::Update(u) => Ok(u),
+            LogEntry::Drawn(d) => Err(bad(format!(
+                "a {} gesture is the chart's to draw again: read it with LogEntry::from_json",
+                d.gesture.kind()
+            ))),
+        }
+    }
+}
+
+/// One line of a log, read back.
+#[derive(Clone, Debug)]
+pub enum LogEntry {
+    /// Ready to apply: a clear, keys, or a lasso drawn again by the crate.
+    Update(SelectionUpdate),
+    /// A gesture of the chart's own kind, to draw again against the data.
+    Drawn(Drawn),
+}
+
+/// A logged gesture the chart draws again, as it did when the user drew it.
+#[derive(Clone, Debug)]
+pub struct Drawn {
+    pub toggle: bool,
+    pub producer: ProducerDefinition,
+    pub gesture: Gesture,
+}
+impl Drawn {
+    /// The update, from the value the chart drew; the gesture goes with it.
+    pub fn redraw(self, value: SelectionValue) -> SelectionUpdate {
+        let value = value.with_gesture(self.gesture);
+        if self.toggle { SelectionUpdate::toggle(&self.producer, value) } else { SelectionUpdate::set(&self.producer, value) }
+    }
+}
+
+impl LogEntry {
+    /// Read one line of a log against the chart's definitions.
     pub fn from_json(v: &Value, producers: &Producers) -> Result<Self> {
         let s = |k: &str| v.get(k).and_then(Value::as_str).ok_or_else(|| bad(format!("an update needs a string {k}")));
         let address = || -> Result<ProducerAddress> {
@@ -80,11 +126,22 @@ impl SelectionUpdate {
         Ok(match s("op")? {
             op @ ("set" | "toggle") => {
                 let producer = producers.get(&address()?)?;
-                let value = value_from(v.get("value").ok_or_else(|| bad("a set or toggle needs a value"))?)?;
-                if op == "set" { SelectionUpdate::set(producer, value) } else { SelectionUpdate::toggle(producer, value) }
+                let toggle = op == "toggle";
+                let value = v.get("value").ok_or_else(|| bad("a set or toggle needs a value"))?;
+                let value = match value.get("drawn") {
+                    None => value_from(value)?,
+                    Some(g) => {
+                        let gesture = gesture_from(g)?;
+                        match SelectionValue::from_gesture(producer, &gesture) {
+                            Some(value) => value?,
+                            None => return Ok(LogEntry::Drawn(Drawn { toggle, producer: producer.clone(), gesture })),
+                        }
+                    }
+                };
+                LogEntry::Update(if toggle { SelectionUpdate::toggle(producer, value) } else { SelectionUpdate::set(producer, value) })
             }
-            "clear" => SelectionUpdate::clear(producers.get(&address()?)?),
-            "clear_all" => SelectionUpdate::clear_all(&SelectionId::new(s("selection")?)?),
+            "clear" => LogEntry::Update(SelectionUpdate::clear(producers.get(&address()?)?)),
+            "clear_all" => LogEntry::Update(SelectionUpdate::clear_all(&SelectionId::new(s("selection")?)?)),
             other => return Err(bad(format!("unknown operation {other}"))),
         })
     }
@@ -95,12 +152,15 @@ fn bad(m: impl Into<String>) -> Error {
 }
 
 fn value_json(v: &SelectionValue) -> Result<Value> {
+    if let Some(g) = v.gesture() {
+        return Ok(json!({"drawn": gesture_json(g)?}));
+    }
     let tuples = v
         .as_tuples()
         .iter()
         .map(|t| t.iter().map(|(id, test)| term_json(id, test)).collect::<Result<Vec<_>>>())
         .collect::<Result<Vec<_>>>()?;
-    Ok(json!({"tuples": tuples, "gesture": v.gesture().map(gesture_json).transpose()?}))
+    Ok(json!({"tuples": tuples}))
 }
 fn value_from(v: &Value) -> Result<SelectionValue> {
     let tuples = v
@@ -110,11 +170,7 @@ fn value_from(v: &Value) -> Result<SelectionValue> {
         .iter()
         .map(|t| t.as_array().ok_or_else(|| bad("a tuple is a list of terms"))?.iter().map(term_from).collect::<Result<Vec<_>>>())
         .collect::<Result<Vec<_>>>()?;
-    let value = SelectionValue::tuples(tuples);
-    Ok(match v.get("gesture") {
-        None | Some(Value::Null) => value,
-        Some(g) => value.with_gesture(gesture_from(g)?),
-    })
+    Ok(SelectionValue::tuples(tuples))
 }
 
 fn term_json(id: &ProjectionId, test: &ValueTest) -> Result<Value> {
@@ -191,7 +247,8 @@ fn gesture_json(g: &Gesture) -> Result<Value> {
         return Err(bad("a gesture's numbers must be finite"));
     }
     let params: Map<String, Value> = g.params().iter().map(|(n, v)| (n.clone(), json!(v))).collect();
-    Ok(json!({"kind": g.kind(), "points": g.points(), "params": params}))
+    let on: Vec<&str> = g.projections().iter().map(|p| p.as_str()).collect();
+    Ok(json!({"kind": g.kind(), "points": g.points(), "params": params, "on": on}))
 }
 fn gesture_from(v: &Value) -> Result<Gesture> {
     let kind = v.get("kind").and_then(Value::as_str).ok_or_else(|| bad("a gesture needs a kind"))?;
@@ -206,7 +263,14 @@ fn gesture_from(v: &Value) -> Result<Gesture> {
             _ => Err(bad("a point is [x, y]")),
         })
         .collect::<Result<Vec<_>>>()?;
-    let mut g = Gesture::new(kind, points);
+    let on = match v.get("on").and_then(Value::as_array) {
+        None => Vec::new(),
+        Some(a) => a
+            .iter()
+            .map(|p| ProjectionId::new(p.as_str().ok_or_else(|| bad("a gesture's projections are names"))?))
+            .collect::<Result<Vec<_>>>()?,
+    };
+    let mut g = Gesture::new(kind, points).on(on);
     if let Some(ps) = v.get("params").and_then(Value::as_object) {
         for (n, x) in ps {
             g = g.with_param(n.clone(), num(x)?);

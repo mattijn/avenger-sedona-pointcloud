@@ -19,7 +19,7 @@ mod values;
 pub use definitions::{ProducerDefinition, Projection, Resolution};
 pub use error::{Error, Result};
 pub use gesture::Gesture;
-pub use log::Producers;
+pub use log::{Drawn, LogEntry, Producers};
 pub use identity::{ProducerId, ProjectionId, SelectionId, ViewId};
 pub use pixels::PixelGrid;
 pub use series::SeriesTest;

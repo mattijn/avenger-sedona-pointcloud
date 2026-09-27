@@ -55,11 +55,27 @@ impl SelectionValue {
                 ]);
             }
         }
-        Ok(SelectionValue::tuples(tuples).with_gesture(crate::Gesture::new("polygon", ring.iter().copied())))
+        let (u, v) = (u.0.clone(), v.0.clone());
+        Ok(SelectionValue::tuples(tuples).with_gesture(crate::Gesture::new("polygon", ring.iter().copied()).on([u, v])))
     }
 }
 
 impl SelectionValue {
+    /// Draw a gesture again with the crate's own kinds: `"polygon"` on the
+    /// two projections it names. None for other kinds, which are the chart's
+    /// to redraw (a line brush or CloudLasso depends on the data as well).
+    pub fn from_gesture(producer: &ProducerDefinition, gesture: &crate::Gesture) -> Option<Result<Self>> {
+        match (gesture.kind(), gesture.projections()) {
+            ("polygon", [u, v]) => Some(
+                SelectionValue::polygon(producer, u, v, gesture.points()).map(|value| {
+                    // Keep the gesture as drawn, named numbers included.
+                    value.with_gesture(gesture.clone())
+                }),
+            ),
+            _ => None,
+        }
+    }
+
     /// Select the rows in the given cells: one tuple per cell, over one
     /// gridded projection per dimension, such as the voxels CloudLasso keeps.
     /// Each cell lists its index per projection, in the order of `ids`; the

@@ -17,11 +17,21 @@ pub struct Gesture {
     kind: String,
     points: Vec<[f64; 2]>,
     params: Vec<(String, f64)>,
+    on: Vec<crate::ProjectionId>,
 }
 
 impl Gesture {
     pub fn new(kind: impl Into<String>, points: impl IntoIterator<Item = [f64; 2]>) -> Self {
-        Self { kind: kind.into(), points: points.into_iter().collect(), params: Vec::new() }
+        Self { kind: kind.into(), points: points.into_iter().collect(), params: Vec::new(), on: Vec::new() }
+    }
+    /// Name the projections the points were drawn on, in the points' order:
+    /// what a replay needs to draw the gesture again.
+    pub fn on(mut self, projections: impl IntoIterator<Item = crate::ProjectionId>) -> Self {
+        self.on = projections.into_iter().collect();
+        self
+    }
+    pub fn projections(&self) -> &[crate::ProjectionId] {
+        &self.on
     }
     /// Add a named number. A repeated name replaces the earlier value.
     pub fn with_param(mut self, name: impl Into<String>, value: f64) -> Self {
@@ -43,11 +53,13 @@ impl Gesture {
     pub fn param(&self, name: &str) -> Option<f64> {
         self.params.iter().find(|(n, _)| n == name).map(|(_, v)| *v)
     }
-    fn bits(&self) -> (&str, Vec<[u64; 2]>, Vec<(&str, u64)>) {
+    #[allow(clippy::type_complexity)]
+    fn bits(&self) -> (&str, Vec<[u64; 2]>, Vec<(&str, u64)>, &[crate::ProjectionId]) {
         (
             &self.kind,
             self.points.iter().map(|p| [p[0].to_bits(), p[1].to_bits()]).collect(),
             self.params.iter().map(|(n, v)| (n.as_str(), v.to_bits())).collect(),
+            &self.on,
         )
     }
 }
