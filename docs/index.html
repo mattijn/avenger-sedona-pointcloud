@@ -830,7 +830,7 @@ const SLIDES = [
   // 7 ---------------------------------------------------------------- interaction
   {
     title: "Grammar of interaction",
-    big: "1", bigsub: "log of commands for every gesture",
+    big: "1", bigsub: "pipeline that records every interaction",
     rows: [["render, 300k marks", "21 ms", 2], ["hit-test index", "387 ms", 2], ["rebuilds per 1,022 batches", "140", 1],
            ["findings", "1 · 2 · 3 · 11", 2]],
     steps: 4,
@@ -855,10 +855,10 @@ const SLIDES = [
       text(585, 510, "brush · soft selection", "sub", { anchor: "middle", parent: g });
       el("rect", { x: 780, y: 280, width: 340, height: 240, fill: "none", stroke: C.accent, "stroke-dasharray": "5 4" }, g);
       G.code(800, 318, 300, ["chart line --x t --y n", "select interval --x 3..5", "lens regression --focus .4,.5", "view magnifier --zoom 3"], { parent: g, hi: 3 });
-      text(950, 510, "gestures as a log", "sub", { anchor: "middle", parent: g });
+      text(950, 510, "each interaction, one pipeline line", "sub", { anchor: "middle", parent: g });
       marker(60, 590, "1", "hit-test index is the frame", 2); marker(380, 590, "2", "interactive: false keeps it", 2);
       marker(700, 590, "3", "rebuilds always re-index", 2); marker(990, 590, "11", "no item keys", 2);
-      fork(120, 790, "gestures as pipeline commands", ["signals, as in Vega", "state in the app"], 3);
+      fork(120, 790, "interactions as pipeline commands", ["signals, as in Vega", "state in the app"], 3);
     },
   },
 
