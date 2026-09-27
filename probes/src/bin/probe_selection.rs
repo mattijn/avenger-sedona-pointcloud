@@ -493,6 +493,7 @@ fn largest_region(count: &HashMap<(i64, i64, i64), usize>, structure: f64) -> (s
 /// The chart's side of CloudLasso: voxel counts of the points the current
 /// state selects (the lasso), the largest dense region, and its voxels as a
 /// value that carries the drawn lasso as a `"cloudlasso"` gesture.
+#[derive(Clone)]
 struct Cloud {
     mem: SessionContext,
     consumer: ConsumerFilter,
@@ -689,6 +690,147 @@ async fn log_roundtrip(cloud_defs: &[ProducerDefinition], cloud: &[avenger_selec
     Ok(())
 }
 
+/// The preaggregation split (avenger-datafusion-preaggregate's planner, as in
+/// avenger-selection's own example), with the selections added here as the
+/// focus: a class histogram cross-filtered by a lasso on the whole tile, by
+/// a soft lasso (a fade: the degree summed per class), and by CloudLasso,
+/// whose voxels change while its lasso stays. Warm-up stores the counts per
+/// class and interaction dimension once; each redraw rolls them up. Every
+/// result is checked against the direct query.
+async fn split_section(view: &View, all: &[RecordBatch], cloud: &Cloud, cloud_defs: &[ProducerDefinition], cloud_state: &SelectionSet) -> DFResult<()> {
+    use avenger_datafusion_preaggregate::{BoundQuery, FilterQuery, PreaggregatePlanner};
+    use datafusion::logical_expr::LogicalPlanBuilder;
+    use datafusion::functions_aggregate::expr_fn::{count as count_agg, sum};
+    println!("\n## the preaggregation split: a class histogram, cross-filtered");
+    let sorted = |mut b: Vec<RecordBatch>| -> Vec<(i64, f64)> {
+        let mut out: Vec<(i64, f64)> = Vec::new();
+        for x in b.drain(..) {
+            let k = arrow::compute::cast(x.column(0), &DataType::Int64).unwrap();
+            let k = k.as_any().downcast_ref::<arrow::array::Int64Array>().unwrap().clone();
+            let v = column_at(&x, 1);
+            for i in 0..x.num_rows() { out.push((k.value(i), v.value(i))); }
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    };
+    let histogram = |rows: datafusion::logical_expr::LogicalPlan| {
+        LogicalPlanBuilder::from(rows).aggregate(vec![col("class")], vec![count_agg(lit(1_i64)).alias("n")])?.build()
+    };
+    async fn run(ctx: &SessionContext, plan: datafusion::logical_expr::LogicalPlan) -> DFResult<(Vec<RecordBatch>, f64)> {
+        let t0 = Instant::now();
+        let b = ctx.execute_logical_plan(plan).await?.collect().await?;
+        Ok((b, ms(t0)))
+    }
+    for (label, points, focus, states) in split_cases(view, all, cloud, cloud_defs, cloud_state).await? {
+        let ctx = SessionContext::new();
+        ctx.register_table("pts", Arc::new(MemTable::try_new(points[0].schema(), vec![points.to_vec()])?))?;
+        let source = ctx.table("pts").await?.into_unoptimized_plan();
+        let filter = ConsumerFilter::new(ViewId::new("classes").unwrap(), SelectionFilter::cross_filter([focus.selection()]));
+        let direct = FilterQuery::new(source.clone(), histogram)?;
+        let predicates = filter.predicates(&states[0], &focus).unwrap();
+        let split = match predicates.split() {
+            Ok(s) => s.clone(),
+            Err(reason) => { println!("{label}: no split ({reason})"); continue; }
+        };
+        let fixed = split.fixed().clone();
+        let query = FilterQuery::new(source.clone(), |rows| histogram(LogicalPlanBuilder::from(rows).filter(fixed.clone())?.build()?))?;
+        let prepared = PreaggregatePlanner::default().prepare(query, split.dimensions().to_vec())?;
+        let Some(materialization) = prepared.materialization_plan() else {
+            println!("{label}: prepared direct ({:?})", prepared.explain().direct_reason);
+            continue;
+        };
+        let (stored_batches, t_warm) = run(&ctx, materialization.clone()).await?;
+        let n_stored: usize = stored_batches.iter().map(|b| b.num_rows()).sum();
+        let schema = Arc::new(materialization.schema().as_arrow().clone());
+        ctx.register_table("states", Arc::new(MemTable::try_new(schema, vec![stored_batches])?))?;
+        let stored = ctx.table("states").await?.into_unoptimized_plan();
+        println!("{label}: warm-up stored {n_stored} rows from {} in {t_warm:.0} ms", points.iter().map(|b| b.num_rows()).sum::<usize>());
+        for (i, state) in states.iter().enumerate() {
+            let predicates = filter.predicates(state, &focus).unwrap();
+            let split = predicates.split().expect("the same split");
+            let (d_batches, t_direct) = run(&ctx, direct.direct(predicates.full().clone())?).await?;
+            let (strategy, r_batches, t_roll) = match prepared.bind(split.changing().clone())? {
+                BoundQuery::Preaggregated { rollup, .. } => {
+                    let (b, t) = run(&ctx, rollup.with_materialization(stored.clone())?).await?;
+                    ("rollup", b, t)
+                }
+                BoundQuery::Direct { plan, diagnostics, .. } => {
+                    let (b, t) = run(&ctx, plan).await?;
+                    ("direct", b, t + 0.0 * diagnostics.direct_reason.is_some() as u8 as f64)
+                }
+            };
+            let (d, r) = (sorted(d_batches), sorted(r_batches));
+            println!("  redraw {}: {strategy} {t_roll:>6.1} ms, direct {t_direct:>6.0} ms; same histogram: {} ({} points)",
+                     i + 1, if d == r { "yes" } else { "NO" }, d.iter().map(|x| x.1).sum::<f64>());
+        }
+        // A fade: the focus's degree over the stored dimensions, summed with the counts.
+        if label.starts_with("lasso") {
+            let width = 20.0;
+            let dims = split.dimensions().to_vec();
+            let warm = ctx.table("pts").await?.filter(split.fixed().clone())?
+                .aggregate(vec![col("class")].into_iter().chain(dims.iter().enumerate().map(|(i, d)| d.clone().alias(format!("d{i}")))).collect(),
+                           vec![count_agg(lit(1_i64)).alias("n")])?.collect().await?;
+            ctx.register_table("fade_states", Arc::new(MemTable::try_new(warm[0].schema(), vec![warm])?))?;
+            for (i, state) in states.iter().enumerate() {
+                let keys: Vec<Expr> = (0..dims.len()).map(|k| col(format!("d{k}"))).collect();
+                let deg = filter.focus_degree(state, &focus, width, keys).unwrap();
+                let t0 = Instant::now();
+                let r = ctx.table("fade_states").await?.aggregate(vec![col("class")], vec![sum(cast_f64(col("n")) * deg).alias("w")])?.collect().await?;
+                let t_roll = ms(t0);
+                let full = filter.degree(state, width).unwrap();
+                let t0 = Instant::now();
+                let d = ctx.table("pts").await?.aggregate(vec![col("class")], vec![sum(full).alias("w")])?.collect().await?;
+                let t_direct = ms(t0);
+                let (d, r) = (sorted(d), sorted(r));
+                let worst = d.iter().zip(&r).map(|(a, b)| if a.0 == b.0 { (a.1 - b.1).abs() / a.1.abs().max(1.0) } else { f64::INFINITY }).fold(0.0, f64::max);
+                println!("  fade {} (soft {width} px): degree over stored states {t_roll:>6.1} ms, over the points {t_direct:>6.0} ms; largest relative difference {worst:.1e}",
+                         i + 1);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn cast_f64(e: Expr) -> Expr {
+    datafusion::logical_expr::cast(e, DataType::Float64)
+}
+fn column_at(b: &RecordBatch, i: usize) -> Float64Array {
+    arrow::compute::cast(b.column(i), &DataType::Float64).unwrap().as_any().downcast_ref::<Float64Array>().unwrap().clone()
+}
+
+/// The cases: (label, points, focus, the states to redraw).
+async fn split_cases(view: &View, all: &[RecordBatch], cloud: &Cloud, cloud_defs: &[ProducerDefinition], cloud_state: &SelectionSet)
+    -> DFResult<Vec<(String, Vec<RecordBatch>, ProducerDefinition, Vec<SelectionSet>)>> {
+    // The flat lasso, drawn three ways: as experiment 7 has it, moved 20 px
+    // right, and moved 20 px down.
+    let (u, v) = (ProjectionId::new("u").unwrap(), ProjectionId::new("v").unwrap());
+    let sel = SelectionId::new("lasso").unwrap();
+    let lasso = ProducerDefinition::new(sel.clone(), ProducerId::new("lasso").unwrap(), ViewId::new("map").unwrap(),
+        [Projection::new(u.clone(), view.px(&view.a)).unwrap(), Projection::new(v.clone(), view.px(&view.b)).unwrap()]).unwrap()
+        .with_pixel_grids([(u.clone(), grid(1.0)), (v.clone(), grid(1.0))]).unwrap();
+    let ring = view.ring();
+    let empty = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap();
+    let states: Vec<SelectionSet> = [[0.0, 0.0], [20.0, 0.0], [0.0, 20.0]].iter().map(|d| {
+        let moved: Vec<[f64; 2]> = ring.iter().map(|p| [p[0] + d[0], p[1] + d[1]]).collect();
+        empty.set(&lasso, SelectionValue::polygon(&lasso, &u, &v, &moved).unwrap()).unwrap()
+    }).collect();
+    // CloudLasso: the lasso fixed, the voxels the focus, at three density shares.
+    let mut cloud_states = Vec::new();
+    for structure in [0.3, 0.5, 0.15] {
+        let c = Cloud { structure, ..cloud.clone() };
+        let (value, _) = c.voxels(cloud_state).await?;
+        cloud_states.push(cloud_state.set(&cloud_defs[1], value).unwrap());
+    }
+    let cloud_points: Vec<RecordBatch> = {
+        let t = cloud.mem.table("pts").await?.collect().await?;
+        t
+    };
+    Ok(vec![
+        ("lasso, flat map".into(), all.to_vec(), lasso, states),
+        ("CloudLasso, tilted view (structure 0.3, 0.5, 0.15)".into(), cloud_points, cloud_defs[1].clone(), cloud_states),
+    ])
+}
+
 async fn measure(ctx: &SessionContext, view: &View, points: &[RecordBatch]) -> DFResult<()> {
     let ring = view.ring();
     let n_points: usize = points.iter().map(|b| b.num_rows()).sum();
@@ -768,7 +910,7 @@ async fn main() -> DFResult<()> {
     let tile = std::env::args().nth(1).unwrap_or_else(|| "data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz".into());
     let ctx = las_context();
     ctx.sql("SET las.geometry_encoding = 'plain'").await?.collect().await?;
-    let pts = |w: &str| format!("SELECT x, y, CAST(z AS DOUBLE) AS z FROM '{tile}'{w}");
+    let pts = |w: &str| format!("SELECT x, y, CAST(z AS DOUBLE) AS z, CAST(classification AS BIGINT) AS class FROM '{tile}'{w}");
 
     let e = ctx.sql(&format!("SELECT min(x), max(x), min(y), max(y) FROM '{tile}'")).await?.collect().await?;
     let ext = [0, 1, 2, 3].map(|i| column(&e[0], e[0].schema().field(i).name()).value(0));
@@ -782,7 +924,6 @@ async fn main() -> DFResult<()> {
     let view = flat(ext);
     measure(&ctx, &view, &all).await?;
     soft(&view, &all).await?;
-    drop(all);
 
     let win = [657500.0, 658000.0, 6867250.0, 6867750.0];
     let wsql = format!(" WHERE x BETWEEN {} AND {} AND y BETWEEN {} AND {}", win[0], win[1], win[2], win[3]);
@@ -799,6 +940,9 @@ async fn main() -> DFResult<()> {
     measure(&ctx, &tilt, &part).await?;
     let (cloud_defs, cloud_updates, cloud) = cloud_lasso(&tilt, win, (hlo, hhi), &part).await?;
     let part_for_log = part.clone();
+    let cloud_state = SelectionSet::new([(SelectionId::new("cloud").unwrap(), Resolution::Intersect)]).unwrap().apply(cloud_updates[0].clone()).unwrap();
+    split_section(&view, &all, &cloud, &cloud_defs, &cloud_state).await?;
+    drop(all);
     drop(part);
 
     let (series_defs, series_updates, flight) = series(&ctx, &tile).await?;

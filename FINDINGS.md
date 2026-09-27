@@ -661,10 +661,35 @@ updates in 1,838 bytes and replays to the same contributions, partial
 degrees included. **Not checked:** partial degrees on a contribution with
 ranges, which are refused.
 
-Still to come: the
-preaggregation split with a polygon, a degree or a CloudLasso contribution,
-none of which were run through it; and wiring the log into the pipeline text
-of experiments 6 and 7, whose `select` lines use their own syntax.
+### 31. The preaggregation split takes a lasso, a fade and CloudLasso
+
+The crate splits a filter around the producer being dragged: a fixed
+predicate for the other producers, a changing one over interaction
+dimensions, and those dimensions, which the planner of
+`avenger-datafusion-preaggregate` stores counts by at warm-up. Each redraw
+then rolls up the stored states instead of reading every row. None of the
+selections added here had been through it. A class histogram,
+cross-filtered, with the planner used as the crate's own
+`preaggregate_queries` example uses it; every histogram is checked against
+the direct query:
+
+| Focus | Stored at warm-up | Redraw: rollup | Redraw: direct | Same histogram |
+|---|---|---|---|---|
+| lasso on the flat map, three positions (17.3M points) | 330,273 rows in 298 ms | 4.6–5.8 ms | 231–256 ms | yes, all three |
+| CloudLasso's voxels at structure 0.3, 0.5, 0.15, its lasso fixed (4.2M points) | 3,998 rows in 108 ms | 2.7–3.4 ms | 120–160 ms | yes, all three |
+
+The planner took the lasso's cell lookup (finding 25) as a changing predicate
+over the stored pixel cells without complaint. A degree has no place in the
+planner, which binds predicates. `ConsumerFilter::focus_degree` (added here)
+gives the focused producer's degree over given key expressions, so a fading
+chart can store counts by class and pixel cell and sum `count × degree`:
+6.0–7.0 ms against 318–403 ms over the points, for a 20 px soft lasso,
+equal to within 4 × 10⁻¹⁴ relative. **Not checked:** the planner's
+dataflow adapter, and a focus whose definition changes between warm-up and
+redraw.
+
+Still to come: wiring the log into the pipeline text of experiments 6 and 7,
+whose `select` lines use their own syntax.
 
 ## What worked well
 

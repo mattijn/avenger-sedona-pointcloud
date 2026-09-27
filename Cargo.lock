@@ -4607,6 +4607,7 @@ dependencies = [
  "arrow",
  "avenger-color",
  "avenger-common",
+ "avenger-datafusion-preaggregate",
  "avenger-geometry",
  "avenger-guides",
  "avenger-scales",

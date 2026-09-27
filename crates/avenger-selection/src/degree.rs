@@ -48,6 +48,30 @@ impl ConsumerFilter {
     }
 }
 
+impl ConsumerFilter {
+    /// The focused producer's degree alone, over `keys`: expressions for its
+    /// interaction dimensions (pixel cells for gridded projections), such as
+    /// the columns of states stored for preaggregation. With the other
+    /// producers applied as the split's fixed predicate at warm-up, a fading
+    /// chart sums `count × degree` per group over the stored states.
+    pub fn focus_degree(&self, selections: &SelectionSet, focus: &crate::ProducerDefinition, width: f64, keys: Vec<Expr>) -> Result<Expr> {
+        if !width.is_finite() || width < 0.0 {
+            return Err(Error::InvalidValue("a soft width must be finite and not negative".into()));
+        }
+        let named = selections.get(focus.selection())?;
+        let Some(c) = named.contributions.get(focus.address()) else {
+            return Err(Error::InvalidUpdate("the focus has no contribution to measure".into()));
+        };
+        if c.producer() != focus {
+            return Err(Error::InvalidDefinition("the focus differs from the producer that contributed".into()));
+        }
+        if keys.len() != focus.projections().len() {
+            return Err(Error::InvalidDefinition(format!("the focus has {} dimensions", focus.projections().len())));
+        }
+        contribution(&ResolvedContribution { contribution: c.clone(), projections: keys }, width)
+    }
+}
+
 fn resolved(filter: &ResolvedFilter, width: f64) -> Result<Expr> {
     Ok(match filter {
         ResolvedFilter::All(fs) => fold(fs.iter().map(|f| resolved(f, width)).collect::<Result<_>>()?, true, 1.0),

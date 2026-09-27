@@ -145,8 +145,8 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/degree.rs avenger-selection/src/degree.rs
 --- avenger-selection/src/degree.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/src/degree.rs	2026-09-27 22:06:53.694262880 +0000
-@@ -0,0 +1,230 @@
++++ avenger-selection/src/degree.rs	2026-09-27 22:15:25.710931444 +0000
+@@ -0,0 +1,254 @@
 +//! A degree of interest in [0, 1], beside the yes-or-no predicate.
 +//!
 +//! Not upstream: added in this repo (VENDORED.md). Soft selection (Doleisch
@@ -194,6 +194,30 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +            return Err(Error::InvalidValue("a soft width must be finite and not negative".into()));
 +        }
 +        resolved(&self.resolve(selections)?, width)
++    }
++}
++
++impl ConsumerFilter {
++    /// The focused producer's degree alone, over `keys`: expressions for its
++    /// interaction dimensions (pixel cells for gridded projections), such as
++    /// the columns of states stored for preaggregation. With the other
++    /// producers applied as the split's fixed predicate at warm-up, a fading
++    /// chart sums `count × degree` per group over the stored states.
++    pub fn focus_degree(&self, selections: &SelectionSet, focus: &crate::ProducerDefinition, width: f64, keys: Vec<Expr>) -> Result<Expr> {
++        if !width.is_finite() || width < 0.0 {
++            return Err(Error::InvalidValue("a soft width must be finite and not negative".into()));
++        }
++        let named = selections.get(focus.selection())?;
++        let Some(c) = named.contributions.get(focus.address()) else {
++            return Err(Error::InvalidUpdate("the focus has no contribution to measure".into()));
++        };
++        if c.producer() != focus {
++            return Err(Error::InvalidDefinition("the focus differs from the producer that contributed".into()));
++        }
++        if keys.len() != focus.projections().len() {
++            return Err(Error::InvalidDefinition(format!("the focus has {} dimensions", focus.projections().len())));
++        }
++        contribution(&ResolvedContribution { contribution: c.clone(), projections: keys }, width)
 +    }
 +}
 +
