@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tile to pixel</title>
-<meta name="description" content="avenger-sedona-pointcloud: nine experiments, four crates and one findings ledger, drawn as one system.">
+<title>One route to Altair</title>
+<meta name="description" content="Avenger's crates, the compositions on them, and one explored route towards an Altair generated from Avenger's schema.">
 <style>
   /* Experiment 7's Theme::calm() (src/layer/theme.rs): white, black text,
      greys, one accent colour, one typeface throughout (pipeline text
@@ -54,8 +54,8 @@
   #hover { margin-top: 18px; min-height: 48px; font-size: 16px; font-style: italic; color: var(--muted); }
   #foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between;
           font-size: 13px; color: var(--kicker); }
-  #dots { display: flex; gap: 6px; }
-  #dots i { width: 8px; height: 8px; border: 1px solid var(--line); display: block; cursor: pointer; }
+  #dots { display: flex; gap: 3px; }
+  #dots i { width: 7px; height: 7px; border: 1px solid var(--line); display: block; cursor: pointer; }
   #dots i.on { background: var(--ink); border-color: var(--ink); }
   #nav button { font: inherit; font-size: 13px; background: none; border: 1px solid var(--line);
                 color: var(--muted); padding: 3px 10px; cursor: pointer; }
@@ -82,6 +82,7 @@
   .elab { font-size: 13px; fill: var(--muted); paint-order: stroke; stroke: #fff; stroke-width: 5px; stroke-linejoin: round; }
   .box { fill: #fff; stroke: var(--line); stroke-width: 1.2; }
   .box.acc { stroke: var(--accent); stroke-width: 2; }
+  .box.solid { stroke: var(--ink); stroke-width: 1.6; }
   .box.warn { stroke: var(--accent); stroke-width: 2.4; }
   .box.ext { stroke-dasharray: 5 4; }
   .box.ghost { stroke-dasharray: 3 4; fill: none; }
@@ -420,630 +421,581 @@ function wireHover(hoverText) {
 
 const T = "data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz";
 
+// ---------------------------------------------------------------- shared
+
+// Avenger's crates as used in this repo, grouped the way D3's modules are.
+const CRATES = [
+  ["describe", ["chart", "chart-definition", "vegalite-spec", "vegalite-compiler"]],
+  ["draw", ["wgpu", "winit-wgpu", "app", "resource"]],
+  ["scene", ["scenegraph", "eventstream", "widgets"]],
+  ["shape", ["geometry", "geo", "guides"]],
+  ["encode", ["scales", "color", "format", "format-number-d3", "format-datetime-d3", "text"]],
+  ["data", ["transform", "datafusion-dataflow", "datafusion-aggregate-state"]],
+];
+const FAMILIES = CRATES.map(c => c[0]);
+
+// A chip in the ground: what already stands, drawn heaviest.
+function chip(id, x, y, label, o = {}) {
+  const w = o.w || Math.max(64, 18 + label.length * 8.1);
+  box(id, x, y, w, o.h || 34, { label, size: o.size || 15, kind: o.kind || "solid", s: o.s, parent: o.parent });
+  return w;
+}
+
+// The ground as bands, one per crate family, for the slides that stand on it.
+function ground(y, o = {}) {
+  const g = layer(o.s);
+  const h = o.h || 22, x0 = o.x || 60, w = o.w || 1060;
+  FAMILIES.slice().reverse().forEach((f, i) => {
+    const yy = y - i * (h + 4);
+    el("rect", { x: x0, y: yy, width: w, height: h, fill: "#fff", stroke: C.ink, "stroke-width": 1.4 }, g);
+    text(x0 + 10, yy + 16, f, "sub", { parent: g, fill: C.ink });
+  });
+  return (f) => y - FAMILIES.slice().reverse().indexOf(f) * (h + 4) + h / 2;
+}
+
+// Part 2's template: three bands and a fork.
+function bands() {
+  const g = layer(0);
+  [["in the crates", 70], ["tried", 250], ["found", 560], ["a choice", 700]].forEach(([t, y]) => {
+    text(40, y, t, "kk", { parent: g });
+    el("line", { x1: 40, y1: y + 10, x2: 1140, y2: y + 10, stroke: C.grid }, g);
+  });
+}
+
+function marker(x, y, n, label, s) {
+  const g = layer(s);
+  el("circle", { cx: x + 16, cy: y + 16, r: 16, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g);
+  text(x + 16, y + 21, n, "val", { anchor: "middle", parent: g, fill: C.accent });
+  text(x + 42, y + 21, label, "lab", { parent: g, size: 14, fill: C.muted });
+}
+
+// A fork: the way this repo went (blue), and ways it could go (dotted).
+function fork(x, y, taken, alts, s) {
+  const g = layer(s);
+  el("circle", { cx: x, cy: y, r: 5, fill: C.ink }, g);
+  const all = [taken, ...alts];
+  all.forEach((t, i) => {
+    const ty = y + (i - (all.length - 1) / 2) * 44, tx = x + 190;
+    el("path", { d: `M${x},${y} C${x + 90},${y} ${x + 90},${ty} ${tx},${ty}`, fill: "none",
+                 stroke: i ? C.line : C.accent, "stroke-width": i ? 1.4 : 2.4, "stroke-dasharray": i ? "3 5" : null }, g);
+    text(tx + 12, ty + 5, t, "lab", { parent: g, size: 16, fill: i ? C.muted : C.accent, bold: !i });
+  });
+  text(x + 190 + 12 + 330, y + 5, "", "lab", { parent: g });
+}
+
+// ---------------------------------------------------------------- slides
+
 const SLIDES = [
-  // 1 ----------------------------------------------------------------
+  // 1 ---------------------------------------------------------------- modules
   {
-    title: "Tile to pixel",
-    big: "17.3M", bigsub: "points · 1 km² · Lambert-93",
-    rows: [["experiments", "9"], ["crates", "4"], ["findings", "24"], ["tiles", "1"], ["Avenger", "f4890be"]],
-    steps: 1,
-    nerds: `<b>the tile</b>  <em>IGN LiDAR HD, north-east of Paris, ~105 MB</em>
-<code>./scripts/download_tile.sh</code>
+    title: "The crates",
+    big: "24", bigsub: "crates this route stands on",
+    rows: [["families", "6", 0], ["repin #120 → #124", "no code changes", 6], ["repin #124 → #130", "one line", 6],
+           ["crates carried across", "20", 6]],
+    steps: 7,
+    hover: {},
+    nerds: `<b>the pin</b>  <em>root Cargo.toml, [workspace.dependencies]</em>
+<code>avenger-* = { git = "https://github.com/jonmmease/avenger", rev = "f4890be…" }</code>
 
-<b>top views and the cross-section</b>  <em>experiment 1</em>
-<code>cargo run --release -p lidar-charts --bin topviews -- ${T} out</code>
-<code>cargo run --release -p lidar-charts --bin cross_section -- ${T} out/cross_section.png</code>
-
-<b>the chart that moves between marks</b>  <em>experiment 7</em>
-<code>cargo run --release -p lidar-decide --bin autopilot_live</code>
-
-<em>the pictures on these slides are drawings, not renders</em>`,
+<b>what worked well</b>  <em>FINDINGS.md</em>
+<em>a repin across a rewritten stack of 180 commits needed one line</em>`,
     draw() {
-      text(70, 118, "tile.copc.laz", "kk");
-      G.tile(70, 130, 560, 560, { n: 56, seed: 5 });
-      const g = layer(0);
-      el("path", { d: "M660,410 L760,410", class: "edge acc flow", "marker-end": "url(#arrA)" }, g);
-      text(710, 395, "SQL · Arrow · Avenger", "elab", { anchor: "middle", parent: g });
-      text(790, 118, "charts", "kk");
-      const card = (x, y, w, h) => el("rect", { x, y, width: w, height: h, fill: "none", stroke: C.line });
-      card(790, 130, 160, 160); G.bars(810, 160, 120, 110, [9, 2, 2.3, 4.8, 4.7, 3], { hi: 4 });
-      card(970, 130, 160, 160); G.arc(1050, 210, 58, [9, 2, 2.3, 4.8, 4.7, 3], { hi: 4 });
-      card(790, 310, 340, 160); G.line(810, 335, 300, 115, { series: 4, seed: 9 });
-      card(790, 490, 160, 160); G.tile(805, 505, 130, 130, { n: 16, seed: 2, frame: false });
-      card(970, 490, 160, 160); G.tilt(1000, 520, 110, 100, [3, 5, 2, 8, 4], { hi: 3 });
+      CRATES.forEach(([fam, list], r) => {
+        const y = 80 + r * 118, s = CRATES.length - r;
+        text(60, y + 23, fam, "kk", { s });
+        let x = 180;
+        list.forEach((c, k) => { x += chip("c" + r + k, x, y, c, { s }) + 12; });
+      });
+      const g = layer(6);
+      el("rect", { x: 180, y: 790, width: 900, height: 30, fill: C.ink }, g);
+      text(630, 810, "common", "lab", { anchor: "middle", parent: g, fill: "#fff", size: 15 });
     },
   },
 
-  // 2 ----------------------------------------------------------------
+  // 2 ---------------------------------------------------------------- compositions
   {
-    title: "Context",
-    big: "2", bigsub: "outputs: charts · FINDINGS.md",
-    rows: [["Avenger", "f4890be · #130", 2], ["DataFusion", "54.1", 1], ["Arrow", "58.3", 1],
-           ["Jev", "1.13", 3], ["Claude Haiku", "4.5", 3], ["Altair", "6.3", 3]],
-    steps: 5,
-    hover: {
-      repo: "avenger-sedona-pointcloud", an: "HKV / SVASEK engineer", ag: "an LLM that writes pipelines",
-      jon: "Jon Mease, Avenger's author", av: "an open PR stack, repinned each round",
-      refs: "syntax and lessons, not linked",
-    },
-    nerds: `<b>the cycle</b>  <em>CLAUDE.md</em>
-<code>git -C ../avenger fetch --all --prune</code>
-<code>sed -i '' "s/&lt;old-rev&gt;/$NEW/g" Cargo.toml</code>
-<code>cargo build --release --workspace</code>
-<em>rerun everything, compare with FINDINGS.md, write it down</em>`,
-    draw() {
-      box("repo", 430, 395, 320, 110, { kind: "acc", label: "avenger-sedona-pointcloud", sub: "9 experiments · 4 crates · FINDINGS.md", bold: true, s: 0 });
-      person("an", 120, 280, "Analyst", { s: 0 });
-      person("ag", 120, 610, "Agent", { s: 0 });
-      edge("an", "repo", { label: "questions", s: 0 });
-      edge("ag", "repo", { label: "pipelines", s: 0 });
-
-      box("ign", 150, 70, 190, 64, { kind: "ext", label: "IGN LiDAR HD", sub: "COPC/LAZ tile", s: 1 });
-      box("sed", 440, 70, 190, 64, { kind: "ext", label: "SedonaDB", sub: "sedona-pointcloud", s: 1 });
-      box("df", 730, 70, 190, 64, { kind: "ext", label: "DataFusion", sub: "Arrow", s: 1 });
-      edge("ign", "sed", { s: 1 });
-      edge("sed", "df", { s: 1 });
-      edge("repo", "sed", { label: "reads", s: 1 });
-
-      box("av", 900, 250, 200, 64, { kind: "ext", label: "Avenger", sub: "jonmmease/avenger", s: 2 });
-      person("jon", 1000, 560, "Jon Mease", { s: 2 });
-      edge("repo", "av", { label: "draws", s: 2 });
-      edge("repo", "jon", { label: "FINDINGS", kind: "acc flow", s: 2, bend: -30 });
-      edge("jon", "av", { label: "commits", kind: "acc", s: 2 });
-      edge("av", "df", { s: 2 });
-
-      box("or", 330, 770, 210, 64, { kind: "ext", label: "OpenRouter", sub: "Jev · Claude Haiku", s: 3 });
-      box("alt", 640, 770, 210, 64, { kind: "ext", label: "Altair", sub: "Vega-Lite", s: 3 });
-      edge("repo", "or", { label: "decides", s: 3 });
-      edge("alt", "repo", { label: "charts", s: 3 });
-
-      box("refs", 920, 770, 210, 64, { kind: "ghost", label: "GDAL · PDAL", sub: "VegaFusion · Vega", s: 4 });
-      edge("repo", "refs", { kind: "dash", label: "lessons", s: 4 });
-    },
-  },
-
-  // 3 ----------------------------------------------------------------
-  {
-    title: "The spine",
-    big: "387 ms", bigsub: "geometry index · 300k marks",
-    rows: [["full scan", "1.1 s", 1], ["chunk statistics", "69 ms", 1], ["MemTable", "4 ms", 1],
-           ["render, 300k marks", "21.3 ms", 2], ["geometry index", "387 ms", 2]],
+    title: "Our composition",
+    big: "1", bigsub: "of many, towards the next Altair",
+    rows: [["window", "scene · draw · encode", 1], ["stream", "data · encode · scene", 1], ["pipeline", "data · describe", 1],
+           ["agent vocabulary", "describe", 1], ["chart language", "describe · encode", 1], ["Vega-Lite → Altair", "describe · data · draw", 1]],
     steps: 3,
-    nerds: `<b>fetching a window</b>  <em>experiment 1</em>
-<code>cargo run --release -p lidar-charts --bin bench_window -- ${T}</code>
-
-<b>set_scene · render · geometry index, apart</b>  <em>FINDINGS 1–3</em>
-<code>cargo run --release -p lidar-probes --bin probe_render</code>`,
+    nerds: `<b>compositions in this repo</b>
+<code>experiments/01-charts            a native window</code>
+<code>experiments/03-streaming         a live stream</code>
+<code>experiments/06-pipelines         a pipeline</code>
+<code>experiments/07-chart-decisions   a vocabulary for agents</code>
+<code>experiments/02-chart-language    the chart language</code>
+<code>crates/avenger-altair            Vega-Lite → Altair</code>`,
     draw() {
-      const st = [["tile", "COPC/LAZ"], ["sedona-pointcloud", "file format"], ["DataFusion", "lazy plan"],
-                  ["Arrow", "arrays"], ["scales · guides", "Avenger"], ["scenegraph", "Avenger"],
-                  ["wgpu", "GPU"], ["pixels", "window · PNG"]];
-      const y = 200, w = 122, gap = 17.5;
-      st.forEach((s, i) => box("s" + i, 40 + i * (w + gap), y, w, 70,
-        { label: s[0], sub: s[1], s: 0, kind: i === 3 ? "acc" : "", size: s[0].length > 12 ? 13 : 15 }));
-      for (let i = 0; i < st.length - 1; i++) edge("s" + i, "s" + (i + 1), { s: 0 });
-      // points moving through the spine
-      const g = layer(0);
-      el("line", { x1: 40, y1: y + 92, x2: 40 + 8 * (w + gap) - gap, y2: y + 92, stroke: C.grid }, g);
-      const p = el("path", { d: `M40,${y + 92} L${40 + 8 * (w + gap) - gap},${y + 92}`, fill: "none", stroke: "none", id: "spinePath" }, g);
-      for (let k = 0; k < 10; k++) {
-        const c = el("circle", { r: 3.2, fill: k % 3 ? "#949494" : C.accent }, g);
-        const a = el("animateMotion", { dur: "6s", repeatCount: "indefinite", begin: `${-k * 0.6}s` }, c);
-        el("mpath", { href: "#spinePath" }, a);
-      }
-      text(40, 160, "tile → pixel", "kk");
-
-      bars(60, 440, [["full scan", 1100, "1.1 s", C.barSoft], ["copc-rs", 270, "270 ms", C.barSoft],
-                     ["chunk statistics", 69, "69 ms"], ["MemTable", 4, "4 ms", C.accent, null, true]],
-           { log: true, min: 1, max: 1500, head: "window fetch · log", s: 1, trackW: 200, labelW: 140 });
-
-      box("gi", 40 + 5 * (w + gap), 330, w, 60, { kind: "warn", label: "geometry index", sub: "hit testing", s: 2, size: 13 });
-      edge("s5", "gi", { kind: "warn", s: 2 });
-      bars(640, 470, [["set_scene", 6.7, "6.7 ms", C.barSoft], ["render", 21.3, "21.3 ms"],
-                      ["geometry index", 387.2, "387 ms", C.warn, null, true]],
-           { max: 400, head: "300k marks", s: 2, trackW: 250, labelW: 130 });
-      bars(640, 640, [["10k", 8.7, "8.7 ms", C.warn], ["50k", 56.3, "56 ms", C.warn],
-                      ["150k", 181.3, "181 ms", C.warn], ["300k", 387.2, "387 ms", C.warn]],
-           { max: 400, head: "geometry index · marks", s: 2, trackW: 250, labelW: 130, rowH: 26 });
-    },
-  },
-
-  // 4 ----------------------------------------------------------------
-  {
-    title: "Nine front doors",
-    big: "1", bigsub: "spine",
-    rows: [["01", "SQL", 1], ["02", "chart language", 2], ["03", "Arrow Flight", 3], ["04", "proposal", 4],
-           ["05", "coordinate systems", 5], ["06", "pipeline", 6], ["07", "text", 7], ["08", "validator", 8],
-           ["09", "Altair", 9]],
-    steps: 10,
-    hover: {
-      d1: "static charts, explorer, window bench", d2: "the .avenger chart", d3: "live feed, aggregate states",
-      d4: "pixel binning, mark budget, Flight table", d5: "cartesian · polar · 3D · spatial · fisheye",
-      d6: "read ! filter ! sql ! chart", d7: "Jev chooses, Haiku writes", d8: "five layers, 39/39",
-      d9: "Avenger validates and draws Altair",
-    },
-    nerds: `<b>one crate per experiment</b>
-<code>cargo run --release -p lidar-charts   --bin explorer -- ${T}</code>
-<code>cargo run --release -p lidar-stream   --bin stream_live -- --speed 8 --window 12</code>
-<code>cargo run --release -p lidar-coords   --bin coords_live -- ${T}</code>
-<code>cargo run --release -p lidar-pipeline --bin pipeline -- "read … ! chart bar …"</code>
-<code>cargo run --release -p lidar-decide   --bin autopilot_live</code>
-<code>cd crates/avenger-validate &amp;&amp; maturin develop --release</code>
-<code>cd crates/avenger-altair   &amp;&amp; maturin develop --release</code>`,
-    draw() {
-      const sy = 790;
-      const sp = [["tile", 60], ["plan", 250], ["Arrow", 440], ["Avenger", 640], ["wgpu", 840], ["pixels", 1020]];
-      sp.forEach((s, i) => box("p" + i, s[1], sy, 110, 46, { label: s[0], s: 0, kind: i === 1 || i === 3 ? "acc" : "" }));
-      for (let i = 0; i < sp.length - 1; i++) edge("p" + i, "p" + (i + 1), { s: 0, kind: "acc" });
-
-      const cards = [
-        ["d1", "01", "SQL", null, 40, 40, "p1"],
-        ["d2", "02", "chart language", null, 265, 40, "p3"],
-        ["d3", "03", "live feed", null, 490, 40, "p2"],
-        ["d4", "04", "coupling", null, 715, 40, "p1"],
-        ["d5", "05", "coordinates", null, 940, 40, "p3"],
-        ["d6", "06", "pipeline", null, 150, 360, "p1"],
-        ["d7", "07", "decisions", null, 375, 360, "d6"],
-        ["d8", "08", "validation", null, 600, 360, "d6"],
-        ["d9", "09", "Altair", null, 825, 360, "p3"],
+      const gy = ground(820, { x: 60, w: 700, s: 0 });
+      const T = [
+        ["window", ["scene", "draw", "encode", "shape"], "win"], ["stream", ["data", "encode", "scene", "draw"], "live"],
+        ["pipeline", ["data", "describe"], "pipe"], ["agents", ["describe"], "voc"],
+        ["chart language", ["describe", "encode", "draw"], "lang"], ["Altair", ["describe", "data", "encode", "draw"], "alt"],
       ];
-      cards.forEach((c, i) => {
-        const [id, n, lab, img, x, y, to] = c;
-        const s = i + 1, w = 200, h = 200;
-        box(id, x, y, w, h, { s, kind: id === "d4" ? "ghost" : "" });
-        const g = layer(s);
-        text(x + 12, y + 24, n, "kk", { parent: g });
-        text(x + 38, y + 24, lab, "lab", { parent: g, size: 16, bold: true });
-        const X = x + 12, Y = y + 44, IW = w - 24, IH = h - 56;
-        if (id === "d1") G.tile(X + 22, Y, IH, IH, { n: 18, seed: 4, parent: g });
-        else if (id === "d2") G.code(X, Y + 8, IW, ["mark rect as cells {", "  x: cx;  y: cy;", "  fill: h;", "}"], { parent: g });
-        else if (id === "d3") {
-          G.tile(X + 22, Y, IH, IH * 0.62, { n: 18, seed: 6, parent: g, fill: 1 });
-          G.bars(X, Y + IH * 0.7, IW, IH * 0.3, [3, 4, 6, 5, 7, 8, 6, 9, 7, 8, 6, 5], { parent: g, hi: 11 });
-        }
-        else if (id === "d4") {
-          text(x + w / 2, y + 115, "px", "bignum", { anchor: "middle", parent: g, fill: C.kicker });
-          text(x + w / 2, y + 150, "bins = plot.width", "mono", { anchor: "middle", parent: g, fill: C.muted });
-        }
-        else if (id === "d5") {
-          G.bars(X, Y + 10, IW * 0.42, IH - 20, [5, 3, 4], { parent: g, hi: 0 });
-          G.arc(X + IW * 0.76, Y + IH / 2, IH * 0.36, [5, 3, 4], { parent: g });
-        }
-        else if (id === "d6") G.code(X, Y + 8, IW, ["read tile", "! sql \"…\"", "! chart bar", "! set y.scale log"], { parent: g, hi: 2 });
-        else if (id === "d7") {
-          el("rect", { x: X, y: Y + 4, width: IW, height: 32, fill: "#fff", stroke: C.line }, g);
-          text(X + 10, Y + 25, "show it as a pie", "lab", { parent: g, size: 14 });
-          bars(X, Y + 56, [["mark", 0.98, "0.98", C.accent, null, true], ["zoom", 0.01, "0.00"], ["color", 0.01, "0.00"]],
-               { parent: g, max: 1, labelW: 50, trackW: 90, rowH: 24 });
-        }
-        else if (id === "d8") {
-          text(x + w / 2, y + 118, "39/39", "bignum", { anchor: "middle", parent: g, fill: C.accent });
-          [0, 1, 2, 3, 4].forEach(k => el("rect", { x: x + 30 + k * 30, y: y + 140, width: 24, height: 10, fill: C.accent, opacity: 0.3 + k * 0.15 }, g));
-          text(x + w / 2, y + 172, "0 · 1 · 2 · 3 · 4", "sub", { anchor: "middle", parent: g });
-        }
-        else if (id === "d9") {
-          G.code(X, Y, IW, ["alt.Chart(df)"], { parent: g, hi: 0 });
-          G.tilt(X + 30, Y + 54, IW - 60, IH - 60, [3, 5, 2, 7, 4], { parent: g, hi: 3 });
-        }
-        if (to.startsWith("p")) edge(id, to, { s, to: "t", from: "b", curve: "v", kind: id === "d4" ? "dash" : "" });
-        else edge(id, to, { s, from: "l", to: "r", kind: id === "d8" ? "acc" : "", label: id === "d8" ? "checks" : "writes" });
+      T.forEach((t, i) => {
+        const x = 90 + i * 112, acc = t[2] === "alt";
+        const g = layer(1);
+        if (!acc) g.setAttribute("style", "opacity:.38");
+        el("rect", { x, y: 190, width: 92, height: 150, fill: "#fff", stroke: acc ? C.accent : C.line, "stroke-width": acc ? 2.2 : 1.2 }, g);
+        text(x + 46, 180, t[0], "lab", { anchor: "middle", parent: g, size: 14, bold: acc, fill: acc ? C.accent : null });
+        const cx = x + 46;
+        if (t[2] === "win") { el("rect", { x: x + 12, y: 210, width: 68, height: 50, fill: "none", stroke: C.muted }, g); G.bars(x + 18, 222, 56, 32, [3, 5, 2, 4], { parent: g, hi: 1 }); }
+        if (t[2] === "live") G.bars(x + 10, 212, 72, 50, [2, 3, 5, 4, 6, 7, 5, 8], { parent: g, hi: 7 });
+        if (t[2] === "pipe") ["read", "! sql", "! chart"].forEach((l, k) => text(x + 12, 226 + k * 18, l, "sub", { parent: g, fill: k === 2 ? C.accent : C.muted }));
+        if (t[2] === "voc") bars(x + 8, 214, [["mark", 0.9, "", C.accent], ["zoom", 0.1, ""]], { parent: g, max: 1, labelW: 36, trackW: 40, rowH: 20 });
+        if (t[2] === "lang") ["mark rect {", "  x: cx", "}"].forEach((l, k) => text(x + 12, 226 + k * 18, l, "sub", { parent: g }));
+        if (t[2] === "alt") text(x + 12, 230, "alt.Chart", "sub", { parent: g, fill: C.accent });
+        t[1].forEach(f => {
+          el("line", { x1: cx, y1: 340, x2: cx, y2: gy(f), stroke: acc ? C.accent : C.line, "stroke-width": acc ? 2 : 1.2 }, g);
+          el("circle", { cx, cy: gy(f), r: 4, fill: acc ? C.accent : C.muted }, g);
+        });
+      });
+      const gm = layer(1);
+      [0, 1].forEach(k => el("rect", { x: 90 + (6 + k) * 112 - 30, y: 190, width: 60, height: 150, fill: "none", stroke: C.line, "stroke-dasharray": "3 5" }, gm));
+
+      // the same shape, one layer lower: D3
+      const g2 = layer(2);
+      const X = 880;
+      text(X, 110, "the same shape", "kk", { parent: g2 });
+      el("rect", { x: X, y: 760, width: 250, height: 60, fill: "#fff", stroke: C.ink, "stroke-width": 1.4 }, g2);
+      text(X + 125, 796, "D3 modules", "lab", { anchor: "middle", parent: g2 });
+      ["Vega", "Vega-Lite", "Altair"].forEach((t, k) => {
+        el("rect", { x: X, y: 640 - k * 90, width: 120, height: 60, fill: "#fff", stroke: k === 2 ? C.accent : C.line, "stroke-width": k === 2 ? 2 : 1.2 }, g2);
+        text(X + 60, 676 - k * 90, t, "lab", { anchor: "middle", parent: g2, size: 15 });
+        el("line", { x1: X + 60, y1: 700 - k * 90, x2: X + 60, y2: 760 - (k ? 0 : 0) - k * 90 + (k ? -30 : 0), stroke: C.line }, g2);
+      });
+      [0, 1, 2].forEach(k => {
+        el("rect", { x: X + 140, y: 640 - k * 90, width: 110, height: 60, fill: "none", stroke: C.line, "stroke-dasharray": "3 5" }, g2);
+        el("line", { x1: X + 195, y1: 700 - k * 90, x2: X + 195, y2: 760, stroke: C.line, "stroke-dasharray": "3 5" }, g2);
       });
     },
   },
 
-  // 5 ----------------------------------------------------------------
+  // 3 ---------------------------------------------------------------- halfway
   {
-    title: "Decisions",
-    big: "290 ms", bigsub: "Jev · p50",
-    rows: [["rules", "13/19", 0], ["Jev", "19/19 · 290 ms", 0], ["Claude Haiku", "19/19 · 1,114 ms", 1],
-           ["Jev steers, Haiku writes", "25/25 · 1,790 ms", 2], ["everything, built and measured", "$0.91", 3]],
+    title: "Meeting halfway",
+    big: "2", bigsub: "sides that move",
+    rows: [["Altair", "validator hook", 2], ["Altair", "schema source configurable", 2], ["Altair", "Arrow instead of JSON rows", 2],
+           ["Avenger", "layer · marks · composition", 2], ["Avenger", "config accepted", 2], ["both", "Vega-Lite as the floor", 3]],
     steps: 4,
-    hover: { txt: "what someone types", jev: "chooses from options we supply", hk: "writes the pipeline itself",
-             val: "refuses what the chart cannot draw", fold: "the chart is the fold of its command log" },
-    nerds: `<b>Jev, rules and Haiku on the same cases</b>
-<code>cargo run --release -p lidar-decide --bin decide_eval</code>
-<code>cargo run --release -p lidar-decide --bin writer_eval</code>
-<em>needs OPENROUTER_API_KEY; every response is cached by hash</em>`,
+    hover: { alt: "the Python API people write charts with", av: "spec types, compiler, chart", sch: "JSON Schema + CEL, exported from the types" },
+    nerds: `<b>the proposal, in text</b>  <em>experiments/09-altair-on-avenger/README.md</em>
+<em>What Altair needs · What Avenger needs</em>
+<em>nothing is sent upstream from this repo without asking first</em>`,
     draw() {
-      // the typing box, as in the autopilot window
-      const g0 = layer(0);
-      el("rect", { x: 60, y: 70, width: 420, height: 50, fill: "#fff", stroke: "#cfd3d8", rx: 3 }, g0);
-      text(78, 101, "zoom to the south-east", "lab", { parent: g0 });
-      box("txt", 60, 70, 420, 50, { s: 0, kind: "ghost" });
-
-      box("jev", 60, 200, 420, 190, { s: 0 });
-      const gj = layer(0);
-      text(80, 232, "Jev", "lab", { parent: gj, bold: true });
-      text(460, 232, "290 ms", "sub", { parent: gj, anchor: "end" });
-      bars(80, 256, [["zoom", 1.0, "1.00", C.accent, null, true], ["color", 0.004, "0.00"], ["highlight", 0.004, "0.00"],
-                     ["mark", 0.004, "0.00"], ["no change", 0.004, "0.00"]],
-           { max: 1, parent: gj, labelW: 100, trackW: 220, rowH: 25 });
-      edge("txt", "jev", { s: 0 });
-
-      box("hk", 700, 200, 300, 110, { s: 1, label: "Claude Haiku", sub: "writes the pipeline · 1.1 s", bold: true });
-      edge("jev", "hk", { s: 1, from: "r", to: "l", label: "not covered", kind: "" });
-
-      box("lines", 60, 470, 420, 70, { s: 0, kind: "dark" });
-      const gl = layer(0);
-      text(78, 498, "! zoom 657500..658000", "mono", { parent: gl, fill: C.darkAccent });
-      text(78, 520, "        6867000..6867500", "mono", { parent: gl, fill: C.darkAccent });
-      edge("jev", "lines", { s: 0, label: "covered" });
-      edge("hk", "lines", { s: 1, curve: "v", from: "b", to: "r" });
-
-      box("val", 600, 470, 220, 70, { s: 0, kind: "acc", label: "validate", sub: "0 · 1 · 2 · 3 · 4", bold: true });
-      edge("lines", "val", { s: 0, kind: "acc" });
-      edge("val", "hk", { s: 2, kind: "warn dash flow", label: "refused + reason", bend: 60, dx1: 0 });
-
-      const chain = [["fold", "command log → state"], ["resolve", "keyed items"], ["transition", "a → b"], ["draw", "coordinate system"]];
-      chain.forEach((c, i) => box(["fold", "res", "tr", "dr"][i], 60 + i * 150, 640, 130, 64, { s: 0, label: c[0], sub: c[1], size: 16 }));
-      edge("val", "fold", { s: 0, curve: "v", from: "b", to: "t" });
-      edge("fold", "res", { s: 0 }); edge("res", "tr", { s: 0 }); edge("tr", "dr", { s: 0 });
-      const gv = layer(0);
-      el("rect", { x: 660, y: 600, width: 470, height: 180, fill: "none", stroke: C.line }, gv);
-      text(680, 628, "Points per class", "lab", { parent: gv, fill: C.accent, bold: true, size: 15 });
-      G.bars(680, 650, 160, 110, [9, 2, 2.3, 4.8, 4.7, 3], { parent: gv, hi: 4 });
-      el("path", { d: "M860,705 L930,705", class: "edge acc flow", "marker-end": "url(#arrA)" }, gv);
-      text(895, 690, "keyed", "elab", { anchor: "middle", parent: gv });
-      G.arc(1030, 705, 62, [9, 2, 2.3, 4.8, 4.7, 3], { parent: gv, hi: 4 });
-      edge("dr", "dr", { s: 0, noarrow: true });
+      box("alt", 60, 200, 300, 330, { s: 0, kind: "" });
       const ga = layer(0);
-      el("path", { d: "M580,672 L650,672", class: "edge", "marker-end": "url(#arr)" }, ga);
+      text(80, 235, "Altair", "lab", { parent: ga, bold: true, size: 20 });
+      ["Python API", "schema → classes", "validate", "renderer"].forEach((t, k) => chip("a" + k, 80, 260 + k * 60, t, { w: 260, kind: "", parent: ga }));
+      box("av", 820, 200, 300, 330, { s: 0, kind: "solid" });
+      const gb = layer(0);
+      text(840, 235, "Avenger", "lab", { parent: gb, bold: true, size: 20 });
+      ["spec types", "compiler", "chart · chart-definition", "scenegraph · wgpu"].forEach((t, k) => chip("b" + k, 840, 260 + k * 60, t, { w: 260, parent: gb }));
+
+      box("sch", 470, 300, 240, 120, { s: 1, kind: "acc", label: "schema", sub: "JSON Schema + CEL", bold: true, size: 20 });
+      edge("b0", "sch", { s: 1, kind: "acc", from: "l", to: "r", label: "exports" });
+      edge("sch", "a1", { s: 1, kind: "acc", from: "l", to: "r", label: "generates" });
+
+      const g2 = layer(2);
+      [["validator hook", 80], ["schema source", 130], ["Arrow data path", 180]].forEach(([t, dy], k) => {
+        el("path", { d: `M200,${560 + k * 34} L300,${560 + k * 34}`, class: "edge", "marker-end": "url(#arr)" }, g2);
+        text(310, 565 + k * 34, t, "lab", { parent: g2, size: 15, fill: C.muted });
+      });
+      [["layer · marks", 0], ["composition · colour", 1], ["config", 2]].forEach(([t, k]) => {
+        el("path", { d: `M980,${560 + k * 34} L880,${560 + k * 34}`, class: "edge", "marker-end": "url(#arr)" }, g2);
+        text(870, 565 + k * 34, t, "lab", { parent: g2, size: 15, fill: C.muted, anchor: "end" });
+      });
 
       const g3 = layer(3);
-      text(1000, 395, "$0.91", "bignum", { parent: g3, anchor: "middle" });
-      text(1000, 420, "all of experiment 7", "sub", { parent: g3, anchor: "middle" });
+      el("line", { x1: 60, y1: 740, x2: 1120, y2: 740, stroke: C.ink, "stroke-width": 1.6 }, g3);
+      text(590, 770, "Vega-Lite", "lab", { anchor: "middle", parent: g3, bold: true });
+      text(590, 110, "more", "kk", { anchor: "middle", parent: g3 });
+      el("path", { d: "M590,720 L590,430", class: "edge acc dash" }, g3);
+      el("path", { d: "M590,290 L590,130", class: "edge acc dash", "marker-end": "url(#arrA)" }, g3);
     },
   },
 
-  // 6 ----------------------------------------------------------------
+  // 4 ---------------------------------------------------------------- beyond
   {
-    title: "Vocabulary as data",
-    big: "39/39", bigsub: "refusals caught · 0 false",
-    rows: [["Rust, warm", "10 µs", 1], ["Python · pyo3", "13.8 µs", 1], ["wasm", "8.5 µs", 1],
-           ["CEL · cel-js", "3.6 µs", 1], ["portable vs Rust", "99 % of 3,330", 2], ["avenger-vegalite-py", "1 MB", 2]],
+    title: "Beyond Vega-Lite",
+    big: "3", bigsub: "grammars on the same crates",
+    rows: [["graphics", "cartesian · polar · tilt · maps", 0], ["interaction", "magnifier · lens · brush · pipeline", 1],
+           ["vocabulary", "typed choices", 2], ["for", "people · Altair · agents", 3], ["checked", "before any Rust runs", 3],
+           ["data", "straight from the source", 3]],
     steps: 4,
-    hover: { spec: "spec/steps.json", l2: "a CEL rule per step", l4: "DataFusion plans on empty tables",
-             vls: "Jon's typed Vega-Lite, with a schema export" },
-    nerds: `<b>the validator</b>  <em>crates/avenger-validate</em>
-<code>cd crates/avenger-validate &amp;&amp; maturin develop --release</code>
-<code>python -c "import avenger_validate as av; print(av.Validator().check(text))"</code>
+    nerds: `<b>where each grammar was tried</b>
+<code>experiments/05-coordinate-systems   graphics</code>
+<code>experiments/06-pipelines            interaction as commands</code>
+<code>experiments/07-chart-decisions      interaction, vocabulary</code>
+<code>crates/avenger-altair               camera in Altair</code>`,
+    draw() {
+      const cols = [["graphics", 60], ["interaction", 440], ["vocabulary", 820]];
+      cols.forEach(([t, x], i) => {
+        const g = layer(i);
+        el("rect", { x, y: 90, width: 320, height: 470, fill: "#fff", stroke: C.line }, g);
+        text(x + 20, 125, t, "lab", { parent: g, bold: true, size: 20 });
+      });
+      // graphics: the same bars under three coordinate systems
+      const g0 = layer(0);
+      G.bars(90, 170, 110, 110, [5, 3, 4, 2], { parent: g0, hi: 0 });
+      G.arc(300, 225, 55, [5, 3, 4, 2], { parent: g0 });
+      G.tilt(110, 360, 120, 120, [3, 5, 2, 4], { parent: g0, hi: 1 });
+      const pg = layer(0);
+      for (let k = 0; k < 6; k++) el("path", { d: `M${250 + k * 10},${370} Q${290},${420} ${250 + k * 10},${480}`, fill: "none", stroke: k === 3 ? C.accent : C.line }, pg);
+      text(220, 530, "cartesian as the base", "sub", { anchor: "middle", parent: g0 });
 
-<b>Vega-Lite types as JSON Schema + CEL</b>
+      // interaction: magnifier over points, brush, pipeline
+      const g1 = layer(1), r = rnd(5);
+      for (let k = 0; k < 90; k++) el("circle", { cx: 470 + r() * 260, cy: 160 + r() * 170, r: 2.4, fill: "#a8a8a8" }, g1);
+      el("circle", { cx: 640, cy: 240, r: 44, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g1);
+      for (let k = 0; k < 9; k++) el("circle", { cx: 615 + (k % 3) * 25, cy: 215 + Math.floor(k / 3) * 25, r: 5, fill: C.accent }, g1);
+      el("rect", { x: 480, y: 360, width: 110, height: 70, fill: C.accent, opacity: 0.12, stroke: C.accent }, g1);
+      G.line(470, 350, 260, 90, { parent: g1, series: 2, seed: 4 });
+      ["! select interval", "! lens regression", "! view magnifier"].forEach((l, k) => text(470, 470 + k * 22, l, "mono", { parent: g1, fill: k === 2 ? C.accent : C.muted }));
+
+      // vocabulary: a typed question, its options
+      const g2 = layer(2);
+      el("rect", { x: 845, y: 160, width: 270, height: 40, fill: "#fff", stroke: C.line }, g2);
+      text(860, 186, "which share is building?", "lab", { parent: g2, size: 15 });
+      bars(845, 240, [["mark → arc", 0.94, "0.94", C.accent, null, true], ["highlight", 0.04, "0.04"], ["zoom", 0.01, "0.01"], ["no change", 0.01, "0.01"]],
+           { parent: g2, max: 1, labelW: 100, trackW: 110, rowH: 30 });
+      G.arc(980, 460, 60, [5, 2, 2, 4, 5, 3], { parent: g2, hi: 4 });
+
+      // the qualities
+      const g3 = layer(3);
+      ["people", "Altair", "agents", "fast", "streaming", "independent", "checked in Python · JS", "data sources"].forEach((t, k) => {
+        const x = 60 + (k % 4) * 270, y = 620 + Math.floor(k / 4) * 60;
+        el("rect", { x, y, width: 250, height: 44, fill: "#fff", stroke: C.ink, "stroke-width": 1.2 }, g3);
+        text(x + 125, y + 28, t, "lab", { anchor: "middle", parent: g3, size: 16 });
+      });
+      // Vega-Lite as the floor
+      const gv = layer(0);
+      el("rect", { x: 70, y: 150, width: 250, height: 140, fill: "none", stroke: C.ink, "stroke-dasharray": "2 4" }, gv);
+      text(80, 305, "Vega-Lite today", "sub", { parent: gv });
+    },
+  },
+
+  // 5 ---------------------------------------------------------------- scenarios
+  {
+    title: "Scenarios as tests",
+    big: "8", bigsub: "scenarios, one set of crates",
+    rows: [["a very large file", "17.3M rows", 0], ["a live stream", "rows arriving", 0], ["a chart language", "74 lines", 0],
+           ["coordinate systems", "5", 0], ["pipelines", "text · lazy", 0], ["decisions", "typed choices", 0],
+           ["validation", "4 languages", 0], ["Altair", "117 gallery charts", 0]],
+    steps: 2,
+    nerds: `<b>the large file is only large</b>
+<em>a 105 MB point-cloud tile with 17.3M rows; any wide, long table would do</em>
+<code>./scripts/download_tile.sh</code>`,
+    draw() {
+      box("core", 470, 360, 240, 120, { s: 0, kind: "solid", label: "the crates", bold: true, size: 20 });
+      const S = [["big", "a very large file", "scale"], ["live", "a live stream", "time"], ["lang", "a chart language", "syntax"],
+        ["crd", "coordinate systems", "space"], ["pipe", "pipelines", "composition"], ["dec", "decisions", "choice"],
+        ["val", "validation", "trust"], ["alt", "Altair", "reach"]];
+      S.forEach((s, i) => {
+        const a = -Math.PI / 2 + i * 2 * Math.PI / 8, cx = 590 + Math.cos(a) * 400, cy = 420 + Math.sin(a) * 300;
+        box(s[0], cx - 110, cy - 40, 220, 80, { s: 0, label: s[1], sub: s[2], size: 16, kind: s[0] === "alt" ? "acc" : "" });
+        edge(s[0], "core", { s: 1, kind: s[0] === "alt" ? "acc" : "" });
+      });
+    },
+  },
+
+  // 6 ---------------------------------------------------------------- graphics
+  {
+    title: "Grammar of graphics",
+    big: "≈ 20", bigsub: "lines to resolve a coordinate system",
+    rows: [["cartesian · polar · 3D · map · fisheye", "5", 1], ["Lambert-93 against a conic map", "0.27 px", 1],
+           ["findings", "4 · 5 · 6 · 7 · 10", 2]],
+    steps: 4,
+    nerds: `<b>the coordinate trait</b>  <em>experiments/05-coordinate-systems</em>
+<code>cargo run --release -p lidar-coords --bin coords -- ${T} experiments/05-coordinate-systems/images</code>
+<code>cargo run --release -p lidar-coords --bin coords_live -- ${T}</code>
+<b>the findings</b>
+<code>cargo run --release -p lidar-probes --bin probe_guides</code>`,
+    draw() {
+      bands();
+      let x = 60;
+      ["scales", "color", "geometry", "geo", "scenegraph", "guides", "wgpu"].forEach((c, k) => { x += chip("k" + k, x, 100, c, { s: 0 }) + 14; });
+      const g = layer(1);
+      const panel = (px, lab) => { el("rect", { x: px, y: 280, width: 230, height: 240, fill: "none", stroke: C.accent, "stroke-dasharray": "5 4" }, g); text(px + 115, 510, lab, "sub", { anchor: "middle", parent: g }); };
+      panel(60, "cartesian"); G.bars(90, 310, 170, 170, [5, 3, 4, 2, 6], { parent: g, hi: 4 });
+      panel(330, "polar"); G.arc(445, 395, 80, [5, 3, 4, 2, 6], { parent: g, hi: 4 });
+      panel(600, "cartesian3d"); G.tilt(640, 320, 160, 170, [5, 3, 4, 2, 6], { parent: g, hi: 4 });
+      panel(870, "spatial · fisheye"); G.tile(915, 305, 140, 140, { n: 14, seed: 3, parent: g });
+      el("circle", { cx: 985, cy: 375, r: 34, fill: "none", stroke: C.accent, "stroke-width": 2 }, g);
+      marker(60, 590, "4", "gradients flat", 2); marker(280, 590, "5", "colorbar origin", 2); marker(500, 590, "6", "legend title", 2);
+      marker(720, 590, "7", "two-stop domains", 2); marker(930, 590, "10", "one fill per mark", 2);
+      fork(120, 790, "one coordinate trait", ["coordinates per mark", "projection as a scale"], 3);
+    },
+  },
+
+  // 7 ---------------------------------------------------------------- interaction
+  {
+    title: "Grammar of interaction",
+    big: "387 ms", bigsub: "to index 300k marks for hit testing",
+    rows: [["render, 300k marks", "21 ms", 2], ["hit-test index", "387 ms", 2], ["rebuilds per 1,022 batches", "140", 1],
+           ["findings", "1 · 2 · 3 · 11", 2]],
+    steps: 4,
+    nerds: `<b>interaction as commands</b>  <em>experiments/06-pipelines, 07-chart-decisions</em>
+<code>cargo run --release -p lidar-pipeline --bin cqrs_check -- ${T} out</code>
+<code>cargo run --release -p lidar-decide --bin layer_roundtrip</code>
+<b>the frame budget</b>
+<code>cargo run --release -p lidar-probes --bin probe_render</code>`,
+    draw() {
+      bands();
+      let x = 60;
+      ["eventstream", "widgets", "app", "scenegraph", "geometry", "datafusion-aggregate-state"].forEach((c, k) => { x += chip("k" + k, x, 100, c, { s: 0 }) + 14; });
+      const g = layer(1), r = rnd(9);
+      el("rect", { x: 60, y: 280, width: 330, height: 240, fill: "none", stroke: C.accent, "stroke-dasharray": "5 4" }, g);
+      for (let k = 0; k < 120; k++) el("circle", { cx: 80 + r() * 290, cy: 300 + r() * 200, r: 2.4, fill: "#a8a8a8" }, g);
+      el("circle", { cx: 250, cy: 400, r: 55, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g);
+      for (let k = 0; k < 16; k++) el("circle", { cx: 214 + (k % 4) * 24, cy: 364 + Math.floor(k / 4) * 24, r: 5, fill: C.accent }, g);
+      text(225, 510, "magnifier · lens", "sub", { anchor: "middle", parent: g });
+      el("rect", { x: 420, y: 280, width: 330, height: 240, fill: "none", stroke: C.accent, "stroke-dasharray": "5 4" }, g);
+      G.line(440, 300, 290, 170, { parent: g, series: 3, seed: 12 });
+      el("rect", { x: 540, y: 300, width: 80, height: 170, fill: C.accent, opacity: 0.12 }, g);
+      text(585, 510, "brush · soft selection", "sub", { anchor: "middle", parent: g });
+      G.code(780, 280, 340, ["chart line --x t --y n", "select interval --x 3..5", "lens regression --focus .4,.5", "view magnifier --zoom 3"], { parent: g, hi: 3 });
+      text(950, 510, "gestures as a log", "sub", { anchor: "middle", parent: g });
+      marker(60, 590, "1", "hit-test index is the frame", 2); marker(380, 590, "2", "interactive: false keeps it", 2);
+      marker(700, 590, "3", "rebuilds always re-index", 2); marker(990, 590, "11", "no item keys", 2);
+      fork(120, 790, "gestures as pipeline commands", ["signals, as in Vega", "state in the app"], 3);
+    },
+  },
+
+  // 8 ---------------------------------------------------------------- vocabulary
+  {
+    title: "A chart vocabulary",
+    big: "290 ms", bigsub: "for a typed choice",
+    rows: [["typed choices", "19 / 19", 1], ["rules alone", "13 / 19", 1], ["an LLM writes, when choices end", "25 / 25", 1],
+           ["findings", "12 · 13", 2]],
+    steps: 4,
+    nerds: `<b>choices and writing</b>  <em>experiments/07-chart-decisions</em>
+<code>cargo run --release -p lidar-decide --bin decide_eval</code>
+<code>cargo run --release -p lidar-decide --bin writer_eval</code>`,
+    draw() {
+      bands();
+      let x = 60;
+      ["chart", "chart-definition"].forEach((c, k) => { x += chip("k" + k, x, 100, c, { s: 0 }) + 14; });
+      const g = layer(1);
+      el("rect", { x: 60, y: 290, width: 330, height: 44, fill: "#fff", stroke: C.line }, g);
+      text(76, 318, "only the buildings, as a map", "lab", { parent: g, size: 15 });
+      el("path", { d: "M390,312 L440,312", class: "edge", "marker-end": "url(#arr)" }, g);
+      bars(460, 290, [["mark → map", 0.96, "0.96", C.accent, null, true], ["subset", 0.9, "building", C.accent, null, true], ["zoom", 0.01, "keep"]],
+           { parent: g, max: 1, labelW: 110, trackW: 120, rowH: 30 });
+      el("path", { d: "M800,312 L850,312", class: "edge", "marker-end": "url(#arr)" }, g);
+      G.code(860, 280, 260, ["! filter class = 6", "! chart point", "! color h:Q"], { parent: g, hi: 1 });
+      el("rect", { x: 460, y: 400, width: 330, height: 110, fill: "none", stroke: C.accent, "stroke-dasharray": "5 4" }, g);
+      text(476, 430, "options as data", "lab", { parent: g, bold: true, size: 15 });
+      ["mark: bar · arc · line · rect · point", "colour · zoom · highlight · view · lens"].forEach((l, k) => text(476, 458 + k * 24, l, "sub", { parent: g }));
+      marker(60, 590, "12", "vocabulary not yet as data", 2); marker(460, 590, "13", "refusals should name a path", 2);
+      fork(120, 790, "vocabulary as data, beside the crates", ["inside chart-definition", "in each application"], 3);
+    },
+  },
+
+  // 9 ---------------------------------------------------------------- schema everywhere
+  {
+    title: "The schema everywhere",
+    big: "3.6 µs", bigsub: "a check in JavaScript, from exported rules",
+    rows: [["Rust", "10 µs", 1], ["Python", "13.8 µs", 1], ["wasm", "8.5 µs", 1], ["JavaScript, CEL", "3.6 µs", 1],
+           ["portable agrees with Rust", "99 % of 3,330", 1], ["findings", "23 · 24", 2]],
+    steps: 4,
+    nerds: `<b>the export</b>
 <code>cargo run -p avenger-vegalite-spec --features schema --example json_schema</code>
-<code>python crates/avenger-altair/bench/schema_parity.py &lt;avenger checkout&gt;</code>`,
+<b>the validator for pipelines</b>
+<code>cargo run --release -p avenger-validate -- corpus experiments/07-chart-decisions/results 20</code>
+<code>cargo test --release -p avenger-validate</code>`,
     draw() {
-      box("spec", 50, 70, 360, 250, { s: 0, kind: "dark" });
-      const g = layer(0);
-      text(70, 100, "spec/steps.json", "kk", { parent: g, fill: "#b8b8b8" });
-      ['"highlight": {', '  "positional": [["where", "vega"]],', '  "requires":', "    \"state.phase == 'chart'", "     && state.mark in", "        ['bar','arc','point']\"", "}"]
-        .forEach((l, i) => text(70, 134 + i * 24, l, "mono", { parent: g, fill: i === 0 || i === 6 ? "#fff" : C.darkAccent }));
-
-      const L = [["l0", "0", "syntax"], ["l1", "1", "arguments"], ["l2", "2", "order · state · CEL"], ["l3", "3", "Vega expressions"], ["l4", "4", "data · SQL"]];
-      L.forEach((l, i) => box(l[0], 480, 70 + i * 52, 250, 42, { s: 0, label: l[1] + "  " + l[2], align: "left", size: 15, kind: "acc" }));
-      for (let i = 0; i < 4; i++) edge("l" + i, "l" + (i + 1), { s: 0, kind: "acc" });
-      edge("spec", "l0", { s: 0, from: "r", to: "l" });
-
-      bars(800, 100, [["Rust", 10, "10 µs", C.accent, null, true], ["Python", 13.8, "13.8 µs"],
-                      ["wasm", 8.5, "8.5 µs"], ["CEL · JS", 3.6, "3.6 µs"]],
-           { max: 25, head: "per pipeline", s: 1, labelW: 80, trackW: 190, rowH: 34 });
-      const gl = layer(1);
-      el("path", { d: "M730,185 C765,185 765,150 795,150", class: "edge acc", "marker-end": "url(#arrA)" }, gl);
-
-      // the second vocabulary
-      const y2 = 470;
-      box("vls", 50, y2, 300, 90, { s: 2, kind: "dark", label: "avenger-vegalite-spec", sub: "Rust types", bold: true });
-      box("js", 450, y2, 240, 90, { s: 2, label: "JSON Schema", sub: "+ x-avenger-rules (CEL)" });
-      box("port", 790, y2, 320, 90, { s: 2, label: "jsonschema + cel-python", sub: "ajv + cel-js" });
-      edge("vls", "js", { s: 2 }); edge("js", "port", { s: 2 });
-      box("vlp", 450, 640, 240, 90, { s: 2, kind: "acc", label: "avenger-vegalite-py", sub: "1 MB · import 3.1 ms", bold: true });
-      edge("vls", "vlp", { s: 2, curve: "v", from: "b", to: "l" });
-      bars(790, 650, [["1 MB", 1, "3.1 ms", C.accent, null, true], ["89 MB", 89, "268 ms", C.barSoft]],
-           { max: 89, head: "module · import", s: 2, labelW: 80, trackW: 190, rowH: 34 });
-
-      const g3 = layer(3);
-      el("rect", { x: 830, y: 280, width: 250, height: 110, fill: "none", stroke: C.accent, "stroke-width": 2 }, g3);
-      text(955, 345, "39/39", "bignum", { parent: g3, anchor: "middle", fill: C.accent });
-      text(955, 372, "0 of 230 wrongly", "sub", { parent: g3, anchor: "middle" });
+      bands();
+      chip("k0", 60, 100, "vegalite-spec", { s: 0 });
+      text(250, 122, "typed Vega-Lite, in Rust", "sub", { s: 0 });
+      const g = layer(1);
+      G.code(60, 280, 300, ["struct Mark {", "  kind: MarkType,", "  opacity: Option<f64>,", "}"], { parent: g, hi: 0 });
+      el("path", { d: "M360,340 L420,340", class: "edge acc", "marker-end": "url(#arrA)" }, g);
+      el("rect", { x: 430, y: 290, width: 250, height: 110, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g);
+      text(555, 330, "JSON Schema", "lab", { anchor: "middle", parent: g, bold: true });
+      text(555, 360, "+ rules as CEL", "lab", { anchor: "middle", parent: g, fill: C.accent });
+      [["Python", 300], ["JavaScript", 360], ["Altair's generator", 420], ["Rust · pyo3 · wasm", 480]].forEach(([t, y]) => {
+        el("path", { d: `M680,345 C720,345 720,${y} 760,${y}`, fill: "none", stroke: C.accent, "stroke-width": 1.6, "marker-end": "url(#arrA)" }, g);
+        el("rect", { x: 770, y: y - 20, width: 260, height: 40, fill: "#fff", stroke: C.line }, g);
+        text(785, y + 6, t, "lab", { parent: g, size: 15 });
+      });
+      marker(60, 590, "23", "an array accepted for an object", 2); marker(520, 590, "24", "schema + CEL export, local", 2);
+      fork(120, 790, "types export JSON Schema + CEL", ["Rust everywhere, through bindings", "a separate schema, by hand"], 3);
     },
   },
 
-  // 7 ----------------------------------------------------------------
+  // 10 --------------------------------------------------------------- altair
   {
-    title: "Arrow and native",
-    big: "108×", bigsub: "Vega-Lite validation",
-    rows: [["validation", "6.5 µs · 705 µs", 0], ["pipelines", "470 µs · 1,667 µs", 1],
-           ["1M rows", "48 ms · 2.2 s", 2], ["window", "4 ms · 1.1 s", 3]],
-    steps: 4,
-    nerds: `<b>Altair's validation vs Avenger's types</b>  <em>crates/avenger-altair</em>
-<code>cargo run --release -p avenger-altair -- render spec.json out.png 10</code>
-<b>pipelines, Rust vs pure Python</b>  <em>experiment 8, Linux</em>
-<code>cd experiments/08-pipeline-validation/bench &amp;&amp; cargo run --release -- 50</code>
-<code>python experiments/08-pipeline-validation/python/validate.py 5</code>
-<b>1M-row histogram</b>
-<code>LARGE_ALL=1 python crates/avenger-altair/bench/large.py 1000000</code>
-<b>window fetch</b>
-<code>cargo run --release -p lidar-charts --bin bench_window -- ${T}</code>`,
-    draw() {
-      const o = { log: true, labelW: 150, trackW: 240, rowH: 34 };
-      bars(60, 110, [["Avenger types", 6.5, "6.5 µs", C.accent, null, true], ["JSON Schema", 705, "705 µs", C.barSoft]],
-           { ...o, min: 1, max: 1000, head: "Vega-Lite validation", s: 0 });
-      bars(640, 110, [["Rust", 470, "470 µs", C.accent, null, true], ["Rust · pyo3", 523, "523 µs", C.bar],
-                      ["pure Python", 1667, "1,667 µs", C.barSoft]],
-           { ...o, min: 10, max: 3000, head: "pipeline validation", s: 1 });
-      bars(60, 480, [["Arrow", 48, "48 ms", C.accent, null, true], ["VegaFusion", 500, "0.5 s", C.bar],
-                     ["JSON rows", 2200, "2.2 s", C.barSoft]],
-           { ...o, min: 1, max: 3000, head: "1M-row histogram", s: 2 });
-      bars(640, 480, [["MemTable", 4, "4 ms", C.accent, null, true], ["chunk statistics", 69, "69 ms", C.bar],
-                      ["copc-rs", 270, "270 ms", C.barSoft], ["full scan", 1100, "1.1 s", C.barSoft]],
-           { ...o, min: 1, max: 2000, head: "window fetch", s: 3 });
-      text(60, 820, "log scales", "kk");
-      const g = layer(0);
-      el("line", { x1: 590, y1: 70, x2: 590, y2: 800, class: "axis" }, g);
-      el("line", { x1: 40, y1: 410, x2: 1140, y2: 410, class: "axis" }, g);
-    },
-  },
-
-  // 8 ----------------------------------------------------------------
-  {
-    title: "The frame budget",
-    big: "1.2 µs", bigsub: "per mark, to index",
-    rows: [["render, 300k", "21.3 ms", 0], ["set_scene, 300k", "6.7 ms", 0], ["geometry index, 300k", "387 ms", 1],
-           ["live, ~156k cells", "4.3 fps", 2], ["live, ~40k cells", "10.8 fps", 2]],
+    title: "Altair from the schema",
+    big: "0 / 117", bigsub: "gallery charts compile today",
+    rows: [["validation", "6.5 µs · 705 µs", 1], ["classes from the schema", "35 + 9", 1], ["1M rows", "48 ms · 2.2 s", 1],
+           ["notebook frame", "22 ms", 1], ["first needs", "layer · marks", 2], ["findings", "18 · 19 · 21", 2]],
     steps: 3,
-    nerds: `<b>the probe</b>  <em>FINDINGS 1–3</em>
-<code>cargo run --release -p lidar-probes --bin probe_render</code>
-<b>the live viewer</b>  <em>experiment 3</em>
+    nerds: `<b>the five steps</b>  <em>experiments/09-altair-on-avenger/README.md</em>
+<code>cd crates/avenger-altair &amp;&amp; maturin develop --release</code>
+<code>python crates/avenger-altair/bench/coverage.py ~/vega/altair/tests/examples_methods_syntax</code>`,
+    draw() {
+      const steps = [["opt-in backend", "tried", "no change to Altair"], ["validator hook", "Altair", "a small PR"],
+        ["API from the schema", "tried", "35 + 9 classes"], ["data without JSON", "tried", "48 ms for 1M rows"], ["notebook interaction", "tried", "22 ms a frame"]];
+      const g0 = layer(0);
+      el("path", { d: "M140,360 C240,300 280,480 362,470 S520,300 584,360 S760,480 806,470 S1000,330 1028,360", fill: "none", stroke: C.grid, "stroke-width": 10 }, g0);
+      steps.forEach((s, i) => {
+        const x = 40 + i * 222, y = i % 2 ? 470 : 250;
+        const gg = layer(i === 1 ? 0 : 1);
+        el("rect", { x, y, width: 200, height: 110, fill: "#fff", stroke: s[1] === "Altair" ? C.ink : C.accent,
+                     "stroke-width": 1.8, "stroke-dasharray": s[1] === "Altair" ? null : "5 4" }, gg);
+        text(x + 14, y + 26, String(i + 1), "kk", { parent: gg });
+        text(x + 14, y + 56, s[0], "lab", { parent: gg, bold: true, size: 16 });
+        text(x + 14, y + 84, s[2], "sub", { parent: gg });
+        el("circle", { cx: x + 100, cy: i % 2 ? y : y + 110, r: 5, fill: s[1] === "Altair" ? C.ink : C.accent }, gg);
+      });
+      const g2 = layer(2);
+      bars(300, 690, [["layer", 41, "41", C.accent], ["a mark other than bar", 41, "41", C.accent], ["composition", 19, "19", C.accent], ["colour", 8, "8", C.accent]],
+           { parent: g2, max: 45, head: "first refusal in the gallery", labelW: 200, trackW: 360, rowH: 32 });
+      text(60, 740, "0 / 117", "bignum", { parent: g2 });
+    },
+  },
+
+  // 11 --------------------------------------------------------------- data
+  {
+    title: "Fast, streaming, independent",
+    big: "48 ms", bigsub: "1M rows as Arrow, 2.2 s as JSON",
+    rows: [["fold a batch", "2–7 ms", 1], ["merge a window", "2–11 ms", 1], ["window from chunk statistics", "69 ms", 1],
+           ["findings", "16 · 20 · 22", 2]],
+    steps: 4,
+    nerds: `<b>Arrow across the boundary</b>
+<code>LARGE_ALL=1 python crates/avenger-altair/bench/large.py 1000000</code>
+<b>a live stream</b>
 <code>cargo run --release -p lidar-stream --bin stream_server -- ${T}</code>
 <code>cargo run --release -p lidar-stream --bin stream_live -- --speed 8 --window 12</code>`,
     draw() {
-      const X0 = 100, X1 = 760, Y0 = 740, Y1 = 90;
-      const sx = v => X0 + (X1 - X0) * v / 300000, sy = v => Y0 - (Y0 - Y1) * v / 400;
-      const g = layer(0);
-      [0, 100, 200, 300, 400].forEach(v => {
-        el("line", { x1: X0, y1: sy(v), x2: X1, y2: sy(v), class: "axis" }, g);
-        text(X0 - 12, sy(v) + 4, v + " ms", "num", { anchor: "end", parent: g });
+      bands();
+      let x = 60;
+      ["transform", "datafusion-dataflow", "datafusion-aggregate-state"].forEach((c, k) => { x += chip("k" + k, x, 100, c, { s: 0 }) + 14; });
+      const g = layer(1);
+      [["file", 290], ["table", 350], ["stream", 410], ["DataFrame", 470]].forEach(([t, y]) => {
+        el("rect", { x: 60, y: y - 22, width: 150, height: 40, fill: "#fff", stroke: C.line }, g);
+        text(135, y + 4, t, "lab", { anchor: "middle", parent: g, size: 15 });
+        el("path", { d: `M210,${y - 2} C260,${y - 2} 260,380 320,380`, fill: "none", stroke: C.accent, "stroke-width": 1.6 }, g);
       });
-      [0, 100000, 200000, 300000].forEach(v => text(sx(v), Y0 + 26, (v / 1000) + "k", "num", { anchor: "middle", parent: g }));
-      text((X0 + X1) / 2, Y0 + 56, "marks", "kk", { anchor: "middle", parent: g });
-      const xs = [10000, 50000, 150000, 300000];
-      const line = (vals, col, s, lab, w) => {
-        const gg = layer(s);
-        el("path", { d: vals.map((v, i) => (i ? "L" : "M") + sx(xs[i]) + "," + sy(v)).join(" "), fill: "none", stroke: col, "stroke-width": w || 2.4 }, gg);
-        vals.forEach((v, i) => el("circle", { cx: sx(xs[i]), cy: sy(v), r: 4, fill: "#fff", stroke: col, "stroke-width": 2 }, gg));
-        text(sx(300000) + 14, sy(vals[3]) + 5, lab, "lab", { parent: gg, fill: col, bold: true });
-      };
-      line([0.8, 1.5, 3.6, 6.7], C.line, 0, "set_scene");
-      line([4.7, 7.9, 13.9, 21.3], C.bar, 0, "render");
-      line([8.7, 56.3, 181.3, 387.2], C.warn, 1, "geometry index", 3);
-
-      const g2 = layer(2);
-      text(870, 150, "live feed", "kk", { parent: g2 });
-      [["~156k", 4.3], ["~40k", 10.8]].forEach((r, i) => {
-        const y = 200 + i * 170;
-        text(870, y + 44, r[1], "bignum", { parent: g2 });
-        text(990, y + 44, "fps", "lab", { parent: g2, fill: C.muted });
-        text(870, y + 72, r[0] + " cells", "sub", { parent: g2 });
-        for (let k = 0; k < 12; k++) el("rect", { x: 870 + k * 20, y: y + 90, width: 14, height: 14,
-          fill: k < Math.round(r[1]) ? C.bar : C.track }, g2);
-      });
-      G.tile(870, 560, 190, 190, { n: 24, seed: 8, s: 2, fill: 0.55 });
+      el("rect", { x: 320, y: 340, width: 150, height: 80, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g);
+      text(395, 386, "Arrow", "lab", { anchor: "middle", parent: g, bold: true });
+      el("path", { d: "M470,380 L540,380", class: "edge acc flow", "marker-end": "url(#arrA)" }, g);
+      G.bars(560, 300, 240, 160, [2, 3, 5, 4, 6, 7, 5, 8, 6, 7], { parent: g, hi: 9 });
+      bars(840, 320, [["Arrow", 48, "48 ms", C.accent, null, true], ["VegaFusion", 500, "0.5 s", C.muted], ["JSON rows", 2200, "2.2 s", C.line]],
+           { parent: g, log: true, min: 10, max: 3000, labelW: 100, trackW: 110, rowH: 34 });
+      marker(60, 590, "16", "geo versions keep a crate out", 2); marker(430, 590, "20", "SVG: 340 ms on the font", 2);
+      marker(790, 590, "22", "shared buffers charged per batch", 2);
+      fork(120, 790, "Arrow and DataFusion underneath", ["a data layer of its own", "rows as JSON"], 3);
     },
   },
 
-  // 9 ----------------------------------------------------------------
+  // 12 --------------------------------------------------------------- findings
   {
-    title: "Altair on Avenger",
-    big: "19 ms", bigsub: "chart to PNG",
-    rows: [["validate", "6.5 µs", 0], ["JSON Schema", "705 µs", 1], ["gallery compiles", "0 / 117", 2],
-           ["notebook frame", "22 ms", 0], ["SVG export", "341 ms", 2]],
-    steps: 3,
-    hover: { val: "Avenger's own Vega-Lite types", comp: "avenger-vegalite-compiler", data: "Arrow via the PyCapsule interface",
-             js: "Altair's usual path" },
-    nerds: `<b>enable it</b>  <em>crates/avenger-altair</em>
-<code>cd crates/avenger-altair &amp;&amp; maturin develop --release</code>
-<code>import avenger_altair; avenger_altair.enable()</code>
-<b>what the gallery needs</b>  <em>FINDINGS 21</em>
-<code>python crates/avenger-altair/bench/coverage.py ~/vega/altair/tests/examples_methods_syntax</code>`,
-    draw() {
-      box("chart", 40, 150, 180, 64, { s: 0, kind: "dark" });
-      text(56, 188, "alt.Chart(df)", "mono", { fill: C.darkAccent });
-      box("dict", 260, 150, 130, 64, { s: 0, label: "to_dict", sub: "Vega-Lite" });
-      box("val", 430, 150, 150, 64, { s: 0, kind: "acc", label: "validate", sub: "6.5 µs", bold: true });
-      box("comp", 620, 150, 150, 64, { s: 0, label: "compiler", sub: "ChartDefinition" });
-      box("data", 620, 270, 150, 64, { s: 0, label: "Arrow", sub: "no JSON rows", kind: "acc" });
-      box("ac", 810, 150, 150, 64, { s: 0, label: "avenger-chart", sub: "wgpu", size: 16 });
-      edge("chart", "dict", { s: 0 }); edge("dict", "val", { s: 0 }); edge("val", "comp", { s: 0, kind: "acc" });
-      edge("comp", "ac", { s: 0 }); edge("data", "ac", { s: 0, curve: "h", from: "r", to: "b" });
-      edge("chart", "data", { s: 0, curve: "v", from: "b", to: "l", label: "df" });
-      const gc = layer(0);
-      el("rect", { x: 990, y: 120, width: 160, height: 190, fill: "none", stroke: C.line }, gc);
-      G.tilt(1010, 150, 120, 130, [3, 5, 2, 7, 4], { parent: gc, hi: 3 });
-      const ga = layer(0);
-      el("path", { d: "M960,182 L985,182", class: "edge", "marker-end": "url(#arr)" }, ga);
-
-      box("js", 430, 400, 150, 64, { s: 1, label: "JSON Schema", sub: "705 µs", kind: "ext" });
-      box("vega", 620, 400, 150, 64, { s: 1, label: "Vega · JS", sub: "browser", kind: "ext" });
-      edge("val", "js", { s: 1, kind: "dash", label: "not yet drawn" });
-      edge("js", "vega", { s: 1, kind: "dash" });
-
-      const g2 = layer(2);
-      text(40, 580, "0 / 117", "bignum", { parent: g2 });
-      text(40, 606, "Altair gallery", "sub", { parent: g2 });
-      bars(300, 560, [["layer", 41, "41", C.warn], ["marks", 41, "41", C.warn], ["composition", 19, "19", C.warn], ["colour", 8, "8", C.warn]],
-           { max: 45, head: "needed first", parent: g2, labelW: 120, trackW: 300, rowH: 34 });
-    },
-  },
-
-  // 10 ---------------------------------------------------------------
-  {
-    title: "What evolves where",
-    big: "genesis", bigsub: "built here",
-    rows: [["genesis", "pipeline · validator · decider", 0], ["custom → product", "Avenger", 1],
-           ["commodity", "Arrow · DataFusion · wgpu", 0], ["friction", "FINDINGS", 2]],
-    steps: 3,
-    hover: {},
-    nerds: `<b>the same map as text</b>  <em>ARCHITECTURE.md, section 5</em>
-<em>paste it into onlinewardleymaps.com</em>
-
-<em>positions are judgements, not measurements</em>`,
-    draw() {
-      const X0 = 70, X1 = 1140, Y0 = 800, Y1 = 50;
-      const px = e => X0 + (X1 - X0) * e, py = v => Y0 - (Y0 - Y1) * v;
-      const g = layer(0);
-      el("line", { x1: X0, y1: Y0, x2: X1, y2: Y0, stroke: C.ink, "stroke-width": 1.2, "marker-end": "url(#arr)" }, g);
-      el("line", { x1: X0, y1: Y0, x2: X0, y2: Y1, stroke: C.ink, "stroke-width": 1.2, "marker-end": "url(#arr)" }, g);
-      [0.17, 0.4, 0.7].forEach(e => el("line", { x1: px(e), y1: Y0, x2: px(e), y2: Y1, stroke: C.grid, "stroke-dasharray": "4 4" }, g));
-      [["genesis", 0.085], ["custom", 0.285], ["product", 0.55], ["commodity", 0.85]].forEach(t => text(px(t[1]), Y0 + 26, t[0], "kk", { anchor: "middle", parent: g }));
-      text(X0 - 14, Y1 + 10, "visible", "kk", { anchor: "end", parent: g });
-      text(X0 - 14, Y0, "hidden", "kk", { anchor: "end", parent: g });
-      const band = layer(1);
-      el("rect", { x: px(0), y: Y1, width: px(0.17) - px(0), height: Y0 - Y1, fill: C.accent, opacity: 0.06 }, band);
-
-      const W = [
-        ["a", "Analyst", 0.98, 0.45, "anchor"], ["ag", "Agent", 0.98, 0.20, "anchor"],
-        ["q", "answer to a question", 0.90, 0.35], ["alt", "Altair API", 0.80, 0.78], ["dec", "decider", 0.78, 0.22],
-        ["pl", "pipeline language", 0.71, 0.14], ["val", "validator", 0.645, 0.09], ["voc", "vocabulary as data", 0.58, 0.04],
-        ["lay", "chart layer", 0.52, 0.12], ["crd", "coordinate systems", 0.455, 0.07], ["vlc", "Vega-Lite compiler", 0.56, 0.30],
-        ["sg", "Avenger scenegraph", 0.47, 0.40], ["gi", "geometry index", 0.36, 0.33], ["agg", "aggregate states", 0.40, 0.20],
-        ["llm", "LLM API", 0.62, 0.55], ["cel", "CEL", 0.46, 0.58], ["jss", "JSON Schema", 0.46, 0.85],
-        ["sp", "sedona-pointcloud", 0.30, 0.30], ["df", "DataFusion", 0.30, 0.68], ["fl", "Arrow Flight", 0.24, 0.66],
-        ["ar", "Arrow", 0.20, 0.86], ["wg", "wgpu", 0.14, 0.72], ["tile", "COPC/LAZ tile", 0.10, 0.80], ["gpu", "GPU", 0.04, 0.95],
-      ];
-      W.forEach(c => {
-        const [id, lab, v, e, kind] = c;
-        const cx = px(e), cy = py(v);
-        const gg = layer(0);
-        const inner = el("g", { class: "dim hot", "data-id": id }, gg);
-        el("circle", { cx, cy, r: kind ? 7 : 6, fill: kind ? C.ink : "#fff", stroke: C.ink, "stroke-width": 1.5 }, inner);
-        text(cx + 11, cy + 5, lab, "lab", { parent: inner, size: 15, bold: !!kind });
-        NODES[id] = { x: cx - 7, y: cy - 7, w: 14, h: 14, cx, cy, g: inner };
-      });
-      const links = [["a", "q"], ["ag", "q"], ["a", "alt"], ["q", "dec"], ["q", "pl"], ["dec", "llm"], ["dec", "voc"], ["pl", "val"],
-        ["val", "voc"], ["val", "cel"], ["alt", "vlc"], ["alt", "jss"], ["pl", "lay"], ["lay", "crd"], ["lay", "sg"], ["vlc", "sg"],
-        ["sg", "gi"], ["sg", "wg"], ["pl", "df"], ["agg", "df"], ["agg", "fl"], ["df", "sp"], ["sp", "tile"], ["df", "ar"], ["wg", "gpu"]];
-      const lg = layer(0);
-      svg.insertBefore(lg, svg.children[1]);
-      links.forEach(([a, b]) => {
-        const A = NODES[a], B = NODES[b];
-        const inner = el("g", { class: "dim" }, lg);
-        el("line", { x1: A.cx, y1: A.cy, x2: B.cx, y2: B.cy, stroke: "#c4c4c4", "stroke-width": 1.1 }, inner);
-        EDGES.push({ a, b, g: inner });
-      });
-      [["val", 0.45], ["vlc", 0.55], ["sg", 0.60], ["sp", 0.55]].forEach(([id, to]) => {
-        const n = NODES[id], gg = layer(1);
-        el("path", { d: `M${n.cx},${n.cy + 16} L${px(to)},${n.cy + 16}`, class: "edge acc dash", "marker-end": "url(#arrA)" }, gg);
-      });
-      [["gi", "1–3"], ["vlc", "21"], ["sg", "4–7"]].forEach(([id, f]) => {
-        const n = NODES[id], gg = layer(2);
-        el("circle", { cx: n.cx, cy: n.cy, r: 15, fill: "none", stroke: C.warn, "stroke-width": 2 }, gg);
-        text(n.cx - 20, n.cy + 5, f, "val", { anchor: "end", parent: gg, fill: C.warn });
-      });
-    },
-  },
-
-  // 11 ---------------------------------------------------------------
-  {
-    title: "Nine questions",
-    big: "?", bigsub: "where the vocabulary lives",
-    rows: [["can it draw", "1 · 2 · 3", 0], ["how to describe", "4 · 5 · 6", 1], ["who drives", "7", 2],
-           ["how to check", "8 · 9", 3], ["next", "?", 4]],
-    steps: 5,
-    hover: { q1: "17.3M points from SQL", q2: "the experimental chart language", q3: "a live sensor feed",
-             q4: "patterns from coupled workflows", q5: "cartesian, polar, 3D and maps as one trait",
-             q6: "Vega expressions compiled to DataFusion", q7: "Jev and Claude Haiku",
-             q8: "one spec, five layers, every language", q9: "Avenger as Altair's engine", nx: "this repo · Avenger · its own crate" },
-    nerds: `<b>each experiment's README</b>
-<code>experiments/01-charts/README.md</code>
-<code>…</code>
-<code>experiments/09-altair-on-avenger/README.md</code>`,
-    draw() {
-      const colX = [40, 280, 520, 740, 960], w = 200, h = 108;
-      ["draw", "describe", "drive", "check", "next"].forEach((t, i) => text(colX[i], 120, t, "kk", { s: i }));
-      const Q = [
-        ["q1", 0, 150, "1", "draw from SQL", "69 ms window"], ["q2", 0, 360, "2", "chart language", "74 lines"],
-        ["q3", 0, 570, "3", "live feed", "11 fps"],
-        ["q5", 1, 150, "5", "coordinate systems", "0.27 px"], ["q6", 1, 360, "6", "Vega + SQL", "67 % compiles"],
-        ["q4", 1, 570, "4", "coupling patterns", "proposal"],
-        ["q7", 2, 255, "7", "decisions", "19/19 · 290 ms"],
-        ["q8", 3, 255, "8", "validation", "39/39 · 10 µs"], ["q9", 3, 465, "9", "Altair", "6.5 vs 705 µs"],
-      ];
-      const st = { 0: 0, 1: 1, 2: 2, 3: 3 };
-      Q.forEach(q => {
-        const [id, c, y, n, lab, num] = q;
-        box(id, colX[c], y, w, h, { s: st[c] });
-        const g = layer(st[c]);
-        text(colX[c] + 14, y + 28, n, "kk", { parent: g });
-        text(colX[c] + 14, y + 56, lab, "lab", { parent: g, bold: true });
-        text(colX[c] + 14, y + 84, num, "lab", { parent: g, fill: C.accent });
-      });
-      box("nx", colX[4], 360, 180, 108, { s: 4, kind: "acc ext" });
-      const gn = layer(4);
-      text(colX[4] + 90, 430, "?", "bignum", { anchor: "middle", parent: gn, fill: C.accent });
-      ["this repo", "Avenger", "own crate"].forEach((t, i) => {
-        el("rect", { x: colX[4], y: 500 + i * 50, width: 180, height: 36, fill: "none", stroke: C.line }, gn);
-        text(colX[4] + 90, 523 + i * 50, t, "lab", { anchor: "middle", parent: gn, size: 15 });
-      });
-      edge("q1", "q2", { s: 0 }); edge("q2", "q3", { s: 0 });
-      edge("q3", "q4", { s: 1 }); edge("q1", "q5", { s: 1 }); edge("q1", "q6", { s: 1 });
-      edge("q5", "q7", { s: 2 }); edge("q6", "q7", { s: 2 });
-      edge("q7", "q8", { s: 3 }); edge("q6", "q8", { s: 3, bend: 60 }); edge("q8", "q9", { s: 3 });
-      edge("q9", "nx", { s: 4, kind: "acc" }); edge("q8", "nx", { s: 4, kind: "acc" });
-    },
-  },
-
-  // 12 ---------------------------------------------------------------
-  {
-    title: "The ledger",
-    big: "24", bigsub: "findings for Avenger",
+    title: "Findings",
+    big: "24", bigsub: "each can be measured again",
     rows: [["open", "12", 0], ["suggestion", "4", 0], ["worked around here", "3", 0], ["API change, adapted", "4", 0], ["fixed", "1", 0]],
     steps: 1,
-    nerds: `<b>re-measure</b>  <em>FINDINGS.md</em>
+    nerds: `<b>measure again</b>  <em>FINDINGS.md</em>
 <code>cargo run --release -p lidar-probes --bin probe_guides</code>
 <code>cargo run --release -p lidar-probes --bin probe_render</code>
 <em>every entry carries the command that measures it</em>`,
     draw() {
       const F = {
-        1: ["geometry index dominates frames", "open"], 2: ["interactive: false doesn't avoid it", "open"],
-        3: ["invalidation always rebuilds geometry", "open"], 4: ["gradient fills flat or missing", "open"],
+        1: ["hit-test index dominates frames", "open"], 2: ["interactive: false keeps the cost", "open"],
+        3: ["rebuilds always re-index", "open"], 4: ["gradient fills flat or missing", "open"],
         5: ["colorbar ignores its origin", "open"], 6: ["legend title inside the plot", "open"],
         7: ["linear domains: two stops only", "open"], 8: ["axis always set band", "fixed"],
         9: ["NumberFormatContext removed", "adapted"], 10: ["one constant fill per mark", "suggestion"],
         11: ["no per-item key", "suggestion"], 12: ["vocabulary not available as data", "suggestion"],
         13: ["unsupported properties need a path", "suggestion"], 14: ["number formatting fails at run time", "adapted"],
-        15: ["the format crates split", "adapted"], 16: ["geo 0.29 blocks sedona-geo", "open"],
+        15: ["the format crates split", "adapted"], 16: ["geo 0.29 keeps sedona-geo out", "open"],
         17: ["number formatting moved again", "adapted"], 18: ["axis labels fail with defaults", "open"],
         19: ["spec types refuse Altair's config", "local"], 20: ["SVG export: 340 ms on the font", "open"],
-        21: ["0 of 117 gallery charts compile", "open"], 22: ["materialisation charged per batch", "local"],
+        21: ["0 of 117 gallery charts compile", "open"], 22: ["shared buffers charged per batch", "local"],
         23: ["array accepted where an object belongs", "open"], 24: ["schema + CEL export", "local"],
       };
-      const rows = [["frame", [1, 2, 3]], ["drawing", [4, 5, 6, 7, 8]], ["API", [9, 14, 15, 17]],
-        ["vocabulary", [10, 11, 12, 13]], ["Vega-Lite", [18, 19, 21, 23, 24]], ["performance", [20, 22]], ["dependencies", [16]]];
-      const style = s => s === "open" ? { fill: "#fff", stroke: C.warn, sw: 2.2, dash: null, tc: C.warn }
+      const rows = [["scene · draw", [1, 2, 3, 4]], ["encode", [7, 9, 14, 15, 17, 20]], ["shape", [5, 6, 8, 16]],
+        ["describe", [10, 11, 12, 13]], ["Vega-Lite", [18, 19, 21, 23, 24]], ["data", [22]]];
+      const style = s => s === "open" ? { fill: "#fff", stroke: C.accent, sw: 2.2, dash: null, tc: C.accent }
         : s === "suggestion" ? { fill: "#fff", stroke: C.accent, sw: 1.6, dash: "4 3", tc: C.accent }
-        : s === "local" ? { fill: "#e5f5fa", stroke: C.accent, sw: 1.6, dash: null, tc: C.accent }
+        : s === "local" ? { fill: C.tint, stroke: C.accent, sw: 1.6, dash: null, tc: C.accent }
         : s === "adapted" ? { fill: C.track, stroke: C.line, sw: 1, dash: null, tc: C.muted }
         : { fill: C.accent, stroke: C.accent, sw: 1, dash: null, tc: "#fff" };
       const hover = document.getElementById("hover");
       rows.forEach((r, i) => {
-        const y = 70 + i * 105;
-        text(60, y + 44, r[0], "lab", { fill: C.muted, s: 0 });
+        const y = 80 + i * 118;
+        text(60, y + 44, r[0], "lab", { fill: C.muted });
         r[1].forEach((n, k) => {
-          const x = 250 + k * 100, st = style(F[n][1]);
-          const g = layer(0);
-          const inner = el("g", { class: "dim hot" }, g);
+          const x = 230 + k * 100, st = style(F[n][1]);
+          const inner = el("g", { class: "dim hot" }, layer(0));
           el("rect", { x, y, width: 76, height: 76, fill: st.fill, stroke: st.stroke, "stroke-width": st.sw, "stroke-dasharray": st.dash }, inner);
           text(x + 38, y + 47, n, "lab", { anchor: "middle", parent: inner, bold: true, fill: st.tc, size: 22 });
           el("title", { text: `${n} · ${F[n][0]}` }, inner);
-          inner.addEventListener("mouseenter", () => { hover.textContent = `${n} · ${F[n][0]}`; });
-          inner.addEventListener("mouseleave", () => { hover.textContent = ""; });
+          const say = () => { hover.textContent = `${n} · ${F[n][0]}`; };
+          inner.addEventListener("mouseenter", say); inner.addEventListener("click", say);
         });
       });
       const lg = layer(0);
       [["open", "open"], ["suggestion", "suggestion"], ["local", "worked around here"], ["adapted", "adapted"], ["fixed", "fixed"]].forEach((s, i) => {
-        const st = style(s[0]), x = 780, y = 90 + i * 44;
+        const st = style(s[0]), x = 880, y = 90 + i * 44;
         el("rect", { x, y, width: 22, height: 22, fill: st.fill, stroke: st.stroke, "stroke-width": st.sw, "stroke-dasharray": st.dash }, lg);
         text(x + 34, y + 17, s[1], "lab", { parent: lg, size: 15, fill: C.muted });
       });
+    },
+  },
+
+  // 13 --------------------------------------------------------------- small steps
+  {
+    title: "Small steps",
+    big: "7", bigsub: "one possible order towards the next Altair",
+    rows: [["each step", "stands on its own", 0], ["each step", "useful beyond Altair", 0], ["the order", "a suggestion", 0]],
+    steps: 8,
+    nerds: `<b>where each step comes from</b>  <em>FINDINGS.md</em>
+<em>13 · 12 · 24 · 1–2 · 11 · 10 · 21</em>`,
+    draw() {
+      const S = [["errors that name their place", "13"], ["the vocabulary as data", "12"], ["the schema exported", "24"],
+        ["drawing without a hit-test index", "1–2"], ["a key per item", "11"], ["a colour scale per mark", "10"], ["layer and more marks", "21"]];
+      const pts = S.map((_, i) => [100 + i * 140, 700 - i * 78]);
+      const g0 = layer(0);
+      el("path", { d: "M60,740 L" + pts.map(p => p.join(",")).join(" L") + " L1050,150", fill: "none", stroke: C.grid, "stroke-width": 8, "stroke-linejoin": "round" }, g0);
+      S.forEach((s, i) => {
+        const [x, y] = pts[i], g = layer(i);
+        el("rect", { x: x - 16, y: y - 16, width: 32, height: 32, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, g);
+        text(x, y + 6, String(i + 1), "val", { anchor: "middle", parent: g });
+        text(x + 30, y + 40, s[0], "lab", { parent: g, size: 15 });
+        text(x + 30, y + 62, "finding " + s[1], "sub", { parent: g, fill: C.accent });
+      });
+      const g7 = layer(7);
+      el("rect", { x: 1000, y: 90, width: 150, height: 60, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g7);
+      text(1075, 126, "the next Altair", "lab", { anchor: "middle", parent: g7, bold: true, size: 15, fill: C.accent });
+    },
+  },
+
+  // 14 --------------------------------------------------------------- one route
+  {
+    title: "One route of many",
+    big: "1", bigsub: "route explored, to one destination",
+    rows: [["the crates", "the ground", 0], ["this route", "one set of choices", 1], ["other routes", "just as open", 2]],
+    steps: 3,
+    nerds: `<b>the whole repo, as a map</b>  <em>ARCHITECTURE.md</em>
+<em>experiments/01 … 09 · crates/avenger-validate · crates/avenger-altair</em>`,
+    draw() {
+      const gy = ground(820, { x: 60, w: 1060, s: 0 });
+      box("dest", 440, 80, 300, 70, { s: 0, kind: "acc", label: "the next Altair", sub: "generated from Avenger's schema", size: 18, bold: true });
+      const g1 = layer(1);
+      const way = [[300, gy("data")], [330, 560], [470, 470], [560, 360], [600, 250], [590, 150]];
+      el("path", { d: `M${way[0]} C300,620 330,600 330,560 S420,500 470,470 S560,400 560,360 S610,290 600,250 S590,180 590,150`,
+                   fill: "none", stroke: C.accent, "stroke-width": 3 }, g1);
+      [["the schema exported", 330, 560], ["a validator hook", 470, 470], ["the API from the schema", 560, 360], ["beyond Vega-Lite", 600, 250]].forEach(([t, x, y]) => {
+        el("circle", { cx: x, cy: y, r: 7, fill: "#fff", stroke: C.accent, "stroke-width": 2.4 }, g1);
+        text(x - 18, y + 5, t, "lab", { anchor: "end", parent: g1, size: 15 });
+      });
+      const g2 = layer(2);
+      [`M820,${gy("describe")} C820,520 760,300 680,150`, `M1000,${gy("draw")} C1020,480 900,260 720,140`,
+       `M140,${gy("scene")} C140,420 360,260 480,150`, `M680,${gy("encode")} C700,560 640,400 640,150`].forEach(d =>
+        el("path", { d, fill: "none", stroke: C.line, "stroke-width": 2, "stroke-dasharray": "3 6" }, g2));
     },
   },
 ];
