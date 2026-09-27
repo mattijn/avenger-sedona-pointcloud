@@ -176,7 +176,12 @@
   #tcount { position: fixed; z-index: 10; bottom: 10px; right: 14px; font-size: 16px; color: #949494; }
   @media (orientation: portrait) {
     body.touch #rotate { display: flex; position: fixed; inset: 0; z-index: 20; background: #fff;
-                         align-items: center; justify-content: center; }
+                         flex-direction: column; align-items: center; justify-content: center;
+                         padding: 32px; text-align: center; }
+    #rotate .rtitle { font-size: clamp(24px, 7.5vw, 30px); font-weight: 700; line-height: 1.15; margin-top: 22px; }
+    #rotate .rsub { font-size: 17px; color: #595959; margin-top: 8px; }
+    #rotate .rturn { margin-top: 56px; }
+    #rotate .rhint { font-size: 15px; color: #0277bd; margin-top: 10px; }
   }
 </style>
 </head>
@@ -219,13 +224,20 @@
   <button id="tnerd" aria-label="how to reproduce">{ }</button>
   <div id="tcount"></div>
 </div>
-<div id="rotate" aria-label="turn the phone sideways">
-  <svg width="160" height="160" viewBox="0 0 160 160">
-    <rect x="58" y="30" width="44" height="80" fill="none" stroke="#b8b8b8" stroke-width="3"/>
-    <rect x="40" y="88" width="80" height="44" fill="none" stroke="#03a9f4" stroke-width="3"/>
-    <path d="M118,52 a34,34 0 0 1 12,30" fill="none" stroke="#03a9f4" stroke-width="3"/>
-    <path d="M124,80 l6,8 l6,-9" fill="none" stroke="#03a9f4" stroke-width="3"/>
+<div id="rotate" aria-label="Towards the next Altair: turn your phone sideways">
+  <svg class="rlogo" width="120" height="120" viewBox="0 0 200 200" aria-hidden="true">
+    <polygon points="13,175 71,25 71,175" fill="#fbc02d"/><rect x="71" y="25" width="45" height="150" fill="#03a9f4"/>
+    <rect x="106" y="75" width="45" height="100" fill="#4fc3f7"/><rect x="141" y="125" width="45" height="50" fill="#b3e5fc"/>
   </svg>
+  <div class="rtitle">Towards the next Altair</div>
+  <div class="rsub">one route across Avenger's crates</div>
+  <svg class="rturn" width="150" height="110" viewBox="0 0 150 110" aria-hidden="true">
+    <rect x="18" y="14" width="36" height="64" fill="none" stroke="#b3e5fc" stroke-width="3"/>
+    <rect x="64" y="46" width="68" height="38" fill="#e1f5fe" stroke="#03a9f4" stroke-width="3"/>
+    <path d="M60,16 a40,40 0 0 1 36,22" fill="none" stroke="#fbc02d" stroke-width="3.5"/>
+    <path d="M89,38 l8,2 l1,-9" fill="none" stroke="#fbc02d" stroke-width="3.5"/>
+  </svg>
+  <div class="rhint">turn your phone sideways</div>
 </div>
 
 <script>
