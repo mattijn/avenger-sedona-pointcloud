@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "common",
     "crates/avenger-altair",
+    "crates/avenger-selection",
     "crates/avenger-vegalite-py",
     "crates/avenger-vegalite-spec",
     "crates/avenger-validate",
@@ -44,6 +45,8 @@ avenger-scenegraph = { git = "https://github.com/jonmmease/avenger", rev = "f489
 avenger-text = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }
 avenger-transform = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }
 avenger-datafusion-dataflow = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }
+avenger-datafusion-preaggregate = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }
+avenger-scales-datafusion = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }
 avenger-vegalite-compiler = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8", default-features = false, features = ["svg", "png"] }
 avenger-vegalite-spec = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }
 avenger-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8" }
@@ -71,6 +74,7 @@ winit = "0.30.11"
 copc-rs = { git = "https://github.com/pka/copc-rs", rev = "7918657abc8ba767cdccf041b7b020c218029ace", features = ["laz-parallel"] }
 
 lidar-common = { path = "common" }
+avenger-selection = { path = "crates/avenger-selection" }
 
 # Avenger's Vega-Lite spec types, carried in this repo with additions that are
 # not upstream yet: a JSON Schema export, `config`, and `camera`

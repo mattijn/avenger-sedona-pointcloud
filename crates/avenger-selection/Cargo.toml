@@ -1,0 +1,23 @@
+[package]
+name = "avenger-selection"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "Typed selections and consumer-specific DataFusion predicates"
+license = "BSD-3-Clause"
+publish = false
+
+# Carried from jonmmease/avenger at f4890be (VENDORED.md). Only the path
+# dependencies changed: they point at the workspace's git pin.
+[dependencies]
+avenger-scales-datafusion.workspace = true
+datafusion = { version = "=54.1.0", default-features = false }
+thiserror = "2.0.12"
+half = "2"
+
+[dev-dependencies]
+datafusion = { version = "=54.1.0", default-features = false, features = ["sql"] }
+avenger-datafusion-preaggregate = { workspace = true, features = ["dataflow"] }
+async-trait.workspace = true
+avenger-datafusion-dataflow = { workspace = true, features = ["sql"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
