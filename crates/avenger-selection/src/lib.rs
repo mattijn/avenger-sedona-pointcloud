@@ -4,6 +4,7 @@ mod definitions;
 mod error;
 mod identity;
 mod pixels;
+mod polygon;
 mod predicate;
 mod resolve;
 mod split;
