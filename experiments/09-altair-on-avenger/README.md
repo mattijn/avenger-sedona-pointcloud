@@ -1,10 +1,20 @@
-# Altair on Avenger
+# Experiment 9 — Altair on Avenger
 
-Status: a design and a spike, 26 Sep 2026, grown out of this experiment's
-validator. The spike is [`crates/avenger-altair`](../../crates/avenger-altair/),
-throwaway code that answers whether this can work and what each side must
+Status: a design and a spike, 26 Sep 2026, grown out of
+[experiment 8](../08-pipeline-validation/)'s validator. The spike is
+[`crates/avenger-altair`](../../crates/avenger-altair/), throwaway code that answers whether this can work and what each side must
 change; its README has the answers, the measurements, and where each of its
 shortcuts belongs.
+
+The experiment's code lives in `crates/`, next to the other crates:
+
+- [`crates/avenger-altair`](../../crates/avenger-altair/): the spike, Avenger
+  as an opt-in backend for Altair, with its benchmarks, notebook and video.
+- [`crates/avenger-vegalite-spec`](../../crates/avenger-vegalite-spec/VENDORED.md):
+  Jon's typed Vega-Lite spec at `f4890be`, carried here with a JSON Schema
+  and CEL export that is not upstream yet.
+- [`crates/avenger-vegalite-py`](../../crates/avenger-vegalite-py/): that
+  validation alone, as a 1 MB Python module.
 
 Altair stays the front end: the Python API people write charts with. Avenger
 becomes the engine underneath: it validates the chart and it draws it, natively
