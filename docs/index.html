@@ -48,13 +48,45 @@
   #big { font-size: 40px; font-weight: 700; line-height: 1; min-height: 40px; }
   #bigsub { font-size: 15px; color: var(--muted); margin: 6px 0 22px; min-height: 18px; }
   #rows { border-top: 1px solid var(--line); padding-top: 16px; }
-  .row { display: flex; justify-content: space-between; gap: 12px; font-size: 16px; line-height: 1.95;
+  .row { display: flex; justify-content: space-between; gap: 12px; font-size: 16px; line-height: 1.8;
          opacity: 0; transition: opacity .45s; }
   .row.on { opacity: 1; }
   .row span:first-child { color: var(--muted); }
   .row span:last-child { font-weight: 700; text-align: right; }
+  #media { margin-top: 18px; flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+  #media .kick { margin-bottom: 4px; }
+  #media button {
+    display: flex; align-items: center; gap: 12px; width: 100%; background: none; border: none;
+    border-top: 1px solid #e6e6e6; padding: 5px 0; font: inherit; font-size: 14px; color: var(--ink);
+    cursor: pointer; text-align: left;
+  }
+  #media button:hover { color: var(--accent-text); }
+  .ico { flex: none; width: 18px; height: 18px; position: relative; }
+  .ico.video { background: var(--amber); }
+  .ico.video::after { content: ""; position: absolute; left: 6px; top: 4px; border-left: 8px solid #fff;
+                      border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+  .ico.img { border: 2px solid var(--accent); }
+  #modal {
+    position: absolute; inset: 0; z-index: 30; background: #fff; display: none;
+    flex-direction: column; padding: 34px 90px 26px;
+  }
+  #modal.on { display: flex; }
+  #modal .frame { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  #modal img, #modal video { max-width: 100%; max-height: 100%; object-fit: contain; box-shadow: 0 0 0 1px #dcdcdc; background: #fff; }
+  #modal .cap { margin-top: 16px; display: flex; justify-content: space-between; align-items: baseline; gap: 24px; }
+  #modal .cap b { font-size: 20px; }
+  #modal .cap .src { font-size: 14px; color: var(--muted); text-align: right; }
+  #modal .cap .cmd { display: block; color: var(--accent-text); }
+  #modal button { position: absolute; background: #fff; border: 1px solid var(--line); color: var(--muted);
+                  font: inherit; cursor: pointer; width: 56px; height: 56px; font-size: 28px; }
+  #modal button:hover { border-color: var(--accent); color: var(--accent-text); }
+  #mclose { top: 18px; right: 18px; }
+  #mprev { left: 18px; top: 50%; margin-top: -28px; }
+  #mnext { right: 18px; top: 50%; margin-top: -28px; }
+  #mcount { position: absolute; top: 34px; left: 90px; font-size: 14px; color: var(--kicker); }
+  .media-link { cursor: pointer; }
   #hover { margin-top: 18px; min-height: 48px; font-size: 16px; font-style: italic; color: var(--muted); }
-  #foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between;
+  #foot { margin-top: auto; padding-top: 10px; flex: none; display: flex; align-items: center; justify-content: space-between;
           font-size: 13px; color: var(--kicker); }
   #dots { display: flex; gap: 3px; }
   #dots i { width: 7px; height: 7px; border: 1px solid var(--line); display: block; cursor: pointer; }
@@ -135,6 +167,14 @@
     <svg id="svg" viewBox="0 0 1180 900" aria-label="slide"></svg>
     <div id="nerds"></div>
   </div>
+  <div id="modal" role="dialog" aria-modal="true">
+    <div id="mcount"></div>
+    <div class="frame" id="mframe"></div>
+    <div class="cap"><b id="mtitle"></b><span class="src"><span id="msrc"></span><span class="cmd" id="mcmd"></span></span></div>
+    <button id="mclose" aria-label="close">×</button>
+    <button id="mprev" aria-label="previous">‹</button>
+    <button id="mnext" aria-label="next">›</button>
+  </div>
   <aside id="panel">
     <svg id="logo" width="34" height="34" viewBox="0 0 200 200" aria-label="Vega-Altair">
       <polygon points="13,175 71,25 71,175" fill="#fbc02d"/><rect x="71" y="25" width="45" height="150" fill="#03a9f4"/>
@@ -145,6 +185,7 @@
     <div id="big"></div>
     <div id="bigsub"></div>
     <div id="rows"></div>
+    <div id="media"></div>
     <div id="hover"></div>
     <div id="foot">
       <div id="dots"></div>
@@ -733,6 +774,9 @@ const SLIDES = [
   // 5 ---------------------------------------------------------------- scenarios
   {
     title: "Scenarios as tests",
+    noList: true,
+    links: [["big", "classes"], ["live", "liveGif"], ["lang", "watch"], ["crd", "tour"], ["pipe", "hill"],
+            ["dec", "autopilot"], ["val", "writer"], ["alt", "notebook"]],
     big: "8", bigsub: "scenarios, one set of crates",
     rows: [["a very large file", "17.3M rows", 0], ["a live stream", "rows arriving", 0], ["a chart language", "74 lines", 0],
            ["coordinate systems", "5", 0], ["pipelines", "text · lazy", 0], ["decisions", "typed choices", 0],
@@ -1069,6 +1113,98 @@ const SLIDES = [
   },
 ];
 
+// ---------------------------------------------------------------- evidence
+
+// The experiments' own renders and recordings, served from the repo at a
+// fixed commit through jsDelivr, so the deck carries no copies.
+const CDN = "https://cdn.jsdelivr.net/gh/mattijn/avenger-sedona-pointcloud@af3134b337f0fad988dd06ec34ea89f0641027bb/";
+const E = {
+  explorer: ["experiments/01-charts/images/explorer_zoom.png", "the explorer: a native window, zoomed in", `cargo run --release -p lidar-charts --bin explorer -- ${T}`],
+  classes: ["experiments/01-charts/images/top_class.png", "17.3M rows as one top view", `cargo run --release -p lidar-charts --bin topviews -- ${T} out`],
+  section: ["experiments/01-charts/images/cross_section.png", "a cross-section", `cargo run --release -p lidar-charts --bin cross_section -- ${T} out/cross_section.png`],
+  watch: ["experiments/02-chart-language/images/avenger_watch.png", "the chart language, in avenger watch", "avenger watch charts/pantin.avenger"],
+  liveGif: ["experiments/03-streaming/images/stream_live_loop.gif", "a live stream over Arrow Flight", "cargo run --release -p lidar-stream --bin stream_live -- --speed 8 --window 12"],
+  liveMp4: ["experiments/03-streaming/video/stream_live_0.5x.mp4", "the live stream, recorded", "cargo run --release -p lidar-stream --bin stream_live -- --record out/frames"],
+  cbars: ["experiments/05-coordinate-systems/images/bars.png", "one chart, five coordinate systems", `cargo run --release -p lidar-coords --bin coords -- ${T} experiments/05-coordinate-systems/images`],
+  morph: ["experiments/05-coordinate-systems/images/morph.png", "morphing between systems", `cargo run --release -p lidar-coords --bin coords -- ${T} …`],
+  maps: ["experiments/05-coordinate-systems/images/maps.png", "the tile under map projections", `cargo run --release -p lidar-coords --bin coords -- ${T} …`],
+  glyphs: ["experiments/05-coordinate-systems/images/glyphs.png", "a glyph at every point: nested systems", "cargo run --release -p lidar-coords --bin glyphs -- …"],
+  tour: ["experiments/05-coordinate-systems/video/tour.mp4", "a tour through the coordinate systems", `cargo run --release -p lidar-coords --bin coords_live -- ${T} --tour out/tour_frames`],
+  fisheye: ["experiments/05-coordinate-systems/video/fisheye_tour.mp4", "a fisheye following the pointer", `cargo run --release -p lidar-coords --bin coords_live -- ${T} --record out/fisheye_frames`],
+  hill: ["experiments/06-pipelines/images/hillshade.png", "a pipeline's hillshade step", 'cargo run --release -p lidar-pipeline --bin pipeline -- "read … ! hillshade … ! png …"'],
+  pchart: ["experiments/06-pipelines/images/chart.png", "a chart drawn from a pipeline", 'cargo run --release -p lidar-pipeline --bin pipeline -- "… ! chart bar …"'],
+  povw: ["experiments/06-pipelines/video/overview.mp4", "pipelines, an overview", "experiments/06-pipelines/README.md"],
+  autopilot: ["experiments/07-chart-decisions/video/autopilot.mp4", "the autopilot: typed text drives the chart", "cargo run --release -p lidar-decide --bin autopilot_live -- --record …"],
+  aptour: ["experiments/07-chart-decisions/video/autopilot_tour.mp4", "one chart, many marks, keyed transitions", "cargo run --release -p lidar-decide --bin autopilot_live -- --tour out/autopilot_live/tour"],
+  ittour: ["experiments/07-chart-decisions/video/interactions_tour.mp4", "the interactions, one after another", "cargo run --release -p lidar-decide --bin autopilot_live -- --tour-interactions out/autopilot_live/tour"],
+  apshot: ["experiments/07-chart-decisions/images/autopilot.png", "the autopilot window", "cargo run --release -p lidar-decide --bin autopilot_live"],
+  decisions: ["experiments/07-chart-decisions/images/decisions.png", "decisions, case by case", "cargo run --release -p lidar-decide --bin decide_eval"],
+  writer: ["experiments/07-chart-decisions/images/writer_nerds.png", "the writer, and why a try was refused", "cargo run --release -p lidar-decide --bin writer_eval"],
+  editor: ["experiments/07-chart-decisions/images/editor.png", "the pipeline, editable", "cargo run --release -p lidar-decide --bin autopilot_live"],
+  magnifier: ["experiments/07-chart-decisions/images/magnifier.png", "the offset magnifier", "cargo run --release -p lidar-decide --bin layer_roundtrip"],
+  lenses: ["experiments/07-chart-decisions/images/lenses.png", "lenses: regression, sample, mole", "cargo run --release -p lidar-decide --bin layer_roundtrip"],
+  soft: ["experiments/07-chart-decisions/images/soft.png", "smooth brushing: a degree of interest", "cargo run --release -p lidar-decide --bin layer_roundtrip"],
+  lasso: ["experiments/07-chart-decisions/images/cloudlasso.png", "CloudLasso on the map in 3D", "cargo run --release -p lidar-decide --bin layer_roundtrip"],
+  series: ["experiments/07-chart-decisions/images/series.png", "series predicates", "cargo run --release -p lidar-decide --bin layer_roundtrip"],
+  notebook: ["crates/avenger-altair/video/notebook.mp4", "Altair in a notebook, drawn by Avenger", "cd crates/avenger-altair && maturin develop --release"],
+  altbars: ["crates/avenger-altair/images/bars.png", "an Altair chart, drawn by Avenger", "cargo run --release -p avenger-altair -- render spec.json out.png"],
+  camera: ["crates/avenger-altair/images/camera.png", "camera in Altair: fisheye and tilt", "crates/avenger-altair/README.md"],
+  altlive: ["crates/avenger-altair/bench/live.png", "a live Altair chart as rows arrive", "python crates/avenger-altair/bench/live.py 10000 100"],
+};
+const MEDIA = {
+  2: ["explorer", "liveGif", "povw", "aptour", "watch", "notebook"],
+  3: ["altbars", "notebook"],
+  4: ["morph", "lenses", "decisions", "camera"],
+  5: ["classes", "liveGif", "watch", "tour", "hill", "autopilot", "writer", "notebook"],
+  6: ["cbars", "morph", "maps", "glyphs", "tour", "fisheye"],
+  7: ["ittour", "magnifier", "lenses", "soft", "lasso", "series"],
+  8: ["aptour", "apshot", "decisions", "writer", "editor"],
+  10: ["notebook", "altbars", "camera", "altlive"],
+  11: ["liveMp4", "explorer", "altlive", "section"],
+};
+
+let mList = [], mIdx = 0;
+const modal = document.getElementById("modal");
+function openMedia(list, i) {
+  mList = list; mIdx = i;
+  const [src, title, cmd] = E[list[i]];
+  const url = CDN + src, frame = document.getElementById("mframe");
+  frame.innerHTML = "";
+  const m = document.createElement(/\.mp4$/.test(src) ? "video" : "img");
+  if (m.tagName === "VIDEO") Object.assign(m, { controls: true, autoplay: true, muted: true, loop: true, playsInline: true });
+  else m.alt = title;
+  m.src = url;
+  frame.appendChild(m);
+  document.getElementById("mtitle").textContent = title;
+  document.getElementById("msrc").textContent = src;
+  document.getElementById("mcmd").textContent = cmd;
+  document.getElementById("mcount").textContent = (i + 1) + " / " + list.length;
+  modal.classList.add("on");
+}
+function closeMedia() { modal.classList.remove("on"); document.getElementById("mframe").innerHTML = ""; }
+function stepMedia(d) { if (mList.length) openMedia(mList, (mIdx + d + mList.length) % mList.length); }
+document.getElementById("mclose").onclick = closeMedia;
+document.getElementById("mprev").onclick = () => stepMedia(-1);
+document.getElementById("mnext").onclick = () => stepMedia(1);
+modal.addEventListener("click", e => { if (e.target === modal || e.target.id === "mframe") closeMedia(); });
+
+function mediaList(S) {
+  const box = document.getElementById("media");
+  box.innerHTML = "";
+  const list = S.media || [];
+  if (!list.length) return;
+  const k = document.createElement("div");
+  k.className = "kick"; k.textContent = "evidence";
+  box.appendChild(k);
+  list.forEach((key, i) => {
+    const b = document.createElement("button");
+    b.innerHTML = `<i class="ico ${/\.mp4$/.test(E[key][0]) ? "video" : "img"}"></i><span></span>`;
+    b.children[1].textContent = E[key][1];
+    b.onclick = () => openMedia(list, i);
+    box.appendChild(b);
+  });
+}
+
 // ---------------------------------------------------------------- engine
 
 let cur = 0, step = 0;
@@ -1097,6 +1233,17 @@ function render() {
     rows.appendChild(d);
   });
   nerds.innerHTML = S.nerds || "";
+  S.media = (MEDIA[cur] || []).filter(k => E[k]);
+  if (!S.noList) mediaList(S); else document.getElementById("media").innerHTML = "";
+  if (S.links) S.links.forEach(([id, key]) => {
+    const n = NODES[id]; if (!n) return;
+    n.g.classList.add("media-link");
+    const g = n.g, x = n.x + n.w - 26, y = n.y + 8;
+    el("rect", { x, y, width: 18, height: 18, fill: /\.mp4$/.test(E[key][0]) ? C.amber : "#fff",
+                 stroke: /\.mp4$/.test(E[key][0]) ? "none" : C.accent, "stroke-width": 2 }, g);
+    if (/\.mp4$/.test(E[key][0])) el("path", { d: `M${x + 6},${y + 4} l8,5 l-8,5 z`, fill: "#fff" }, g);
+    g.addEventListener("click", () => openMedia(S.media, Math.max(0, S.media.indexOf(key))));
+  });
   const dots = document.getElementById("dots");
   dots.innerHTML = "";
   SLIDES.forEach((_, i) => {
@@ -1136,6 +1283,13 @@ function prev() {
 }
 
 document.addEventListener("keydown", e => {
+  if (modal.classList.contains("on")) {
+    if (e.key === "Escape") closeMedia();
+    else if (e.key === "ArrowRight") stepMedia(1);
+    else if (e.key === "ArrowLeft") stepMedia(-1);
+    e.preventDefault();
+    return;
+  }
   if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); next(); }
   else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); prev(); }
   else if (e.key === "Home") go(0, 0);
@@ -1167,7 +1321,7 @@ stage.addEventListener("touchend", e => {
   const t = e.changedTouches[0], dx = t.clientX - t0.x, dy = t.clientY - t0.y;
   const quick = Date.now() - t0.t < 600;
   t0 = null;
-  if (e.target.closest("button, #dots i")) return;
+  if (e.target.closest("button, #dots i, #modal, #media, .media-link")) return;
   if (nerds.classList.contains("on")) { nerds.classList.remove("on"); document.getElementById("tnerd").classList.remove("on"); return; }
   if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) { dx < 0 ? next() : prev(); return; }
   if (quick && Math.abs(dx) < 12 && Math.abs(dy) < 12) {
@@ -1190,6 +1344,9 @@ fit();
   const all = /[?&]all\b/.test(location.search);
   const i = m ? Number(m[1]) - 1 : 0;
   go(i, all ? "end" : (m && m[2] ? Number(m[2]) : 0));
+  // ?evidence=N opens the slide's N-th piece of evidence (1-based).
+  const ev = location.search.match(/[?&]evidence=(\d+)/);
+  if (ev && SLIDES[cur].media && SLIDES[cur].media[ev[1] - 1]) openMedia(SLIDES[cur].media, ev[1] - 1);
 })();
 </script>
 </body>
