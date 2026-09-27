@@ -504,7 +504,7 @@ const SLIDES = [
       const g = layer(0);
       const route = el("path", { d: `M300,${gy("data")} C300,640 520,640 600,560 S820,470 880,400`, fill: "none", stroke: C.accent, "stroke-width": 3 }, g);
       const L = route.getTotalLength();
-      [0, 0.3, 0.55, 0.8].forEach(f => { const p = route.getPointAtLength(L * f);
+      [0.28, 0.44, 0.6, 0.75, 0.89].forEach(f => { const p = route.getPointAtLength(L * f);
         el("circle", { cx: p.x, cy: p.y, r: 6, fill: "#fff", stroke: C.accent, "stroke-width": 2.4 }, g); });
       el("rect", { x: 850, y: 330, width: 230, height: 70, fill: "#fff", stroke: C.accent, "stroke-width": 2.2 }, g);
       text(965, 372, "the next Altair", "lab", { anchor: "middle", parent: g, bold: true, size: 18, fill: C.accent });
@@ -584,7 +584,7 @@ const SLIDES = [
       // the same route, in short: Avenger underneath, Altair on top
       const g2 = layer(2);
       const X = 880;
-      text(X, 110, "in short", "kk", { parent: g2 });
+      text(X, 300, "in short", "kk", { parent: g2 });
       el("rect", { x: X, y: 760, width: 250, height: 60, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, g2);
       text(X + 125, 796, "Avenger", "lab", { anchor: "middle", parent: g2, bold: true });
       // Avenger's schema, with Vega-Lite as one part of it
@@ -627,7 +627,9 @@ const SLIDES = [
 
       box("sch", 470, 300, 240, 120, { s: 1, kind: "acc", label: "schema", sub: "JSON Schema + CEL", bold: true, size: 20 });
       edge("b0", "sch", { s: 1, kind: "acc", from: "l", to: "r", label: "exports" });
-      edge("sch", "a1", { s: 1, kind: "acc", from: "l", to: "r", label: "generates" });
+      const gg = layer(1);
+      el("path", { d: "M470,360 C420,360 400,337 346,337", class: "edge acc", "marker-end": "url(#arrA)" }, gg);
+      text(408, 344, "generates", "elab", { anchor: "middle", parent: gg });
 
       const g2 = layer(2);
       [["validator hook", 80], ["schema source", 130], ["Arrow data path", 180]].forEach(([t, dy], k) => {
@@ -690,7 +692,7 @@ const SLIDES = [
       const g2 = layer(2);
       el("rect", { x: 845, y: 160, width: 270, height: 40, fill: "#fff", stroke: C.line }, g2);
       text(860, 186, "which share is building?", "lab", { parent: g2, size: 15 });
-      bars(845, 240, [["mark → arc", 0.94, "0.94", C.accent, null, true], ["highlight", 0.04, "0.04"], ["zoom", 0.01, "0.01"], ["no change", 0.01, "0.01"]],
+      bars(845, 240, [["mark → arc", 0.94, "", C.accent, null, true], ["highlight", 0.04, ""], ["zoom", 0.01, ""], ["no change", 0.01, ""]],
            { parent: g2, max: 1, labelW: 100, trackW: 110, rowH: 30 });
       G.arc(980, 460, 60, [5, 2, 2, 4, 5, 3], { parent: g2, hi: 4 });
 
@@ -714,7 +716,7 @@ const SLIDES = [
     big: "8", bigsub: "scenarios, one set of crates",
     rows: [["a very large file", "17.3M rows", 0], ["a live stream", "rows arriving", 0], ["a chart language", "74 lines", 0],
            ["coordinate systems", "5", 0], ["pipelines", "text · lazy", 0], ["decisions", "typed choices", 0],
-           ["validation", "4 languages", 0], ["Altair", "117 gallery charts", 0]],
+           ["validation", "Rust · Python · JS", 0], ["Altair", "117 gallery charts", 0]],
     steps: 2,
     nerds: `<b>the large file is only large</b>
 <em>a 105 MB point-cloud tile with 17.3M rows; any wide, long table would do</em>
@@ -813,7 +815,7 @@ const SLIDES = [
       el("rect", { x: 60, y: 290, width: 330, height: 44, fill: "#fff", stroke: C.line }, g);
       text(76, 318, "only the buildings, as a map", "lab", { parent: g, size: 15 });
       el("path", { d: "M390,312 L440,312", class: "edge", "marker-end": "url(#arr)" }, g);
-      bars(460, 290, [["mark → map", 0.96, "0.96", C.accent, null, true], ["subset", 0.9, "building", C.accent, null, true], ["zoom", 0.01, "keep"]],
+      bars(460, 290, [["mark → map", 0.96, "", C.accent, null, true], ["subset", 0.9, "building", C.accent, null, true], ["zoom", 0.01, "keep"]],
            { parent: g, max: 1, labelW: 110, trackW: 120, rowH: 30 });
       el("path", { d: "M800,312 L850,312", class: "edge", "marker-end": "url(#arr)" }, g);
       G.code(860, 280, 260, ["! filter class = 6", "! chart point", "! color h:Q"], { parent: g, hi: 1 });
@@ -828,13 +830,15 @@ const SLIDES = [
   // 9 ---------------------------------------------------------------- schema everywhere
   {
     title: "The schema everywhere",
-    big: "4", bigsub: "languages check before Rust runs",
-    rows: [["Rust", "10 µs", 1], ["Python", "13.8 µs", 1], ["wasm", "8.5 µs", 1], ["JavaScript, CEL", "3.6 µs", 1],
+    big: "1", bigsub: "exported schema, read before any Rust runs",
+    rows: [["validate in Rust", "6.5 µs", 1], ["from Python", "13.5 µs", 1], ["Python module", "1 MB", 1],
            ["portable agrees with Rust", "99 % of 3,330", 1], ["findings", "23 · 24", 2]],
     steps: 4,
     nerds: `<b>the export</b>
 <code>cargo run -p avenger-vegalite-spec --features schema --example json_schema</code>
-<b>the validator for pipelines</b>
+<b>does the portable check agree with Rust?</b>
+<code>python crates/avenger-altair/bench/schema_parity.py &lt;avenger checkout&gt;</code>
+<b>the same idea for pipelines</b>  <em>crates/avenger-validate</em>
 <code>cargo run --release -p avenger-validate -- corpus experiments/07-chart-decisions/results 20</code>
 <code>cargo test --release -p avenger-validate</code>`,
     draw() {
@@ -847,9 +851,9 @@ const SLIDES = [
       el("rect", { x: 430, y: 290, width: 250, height: 110, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g);
       text(555, 330, "JSON Schema", "lab", { anchor: "middle", parent: g, bold: true });
       text(555, 360, "+ rules as CEL", "lab", { anchor: "middle", parent: g, fill: C.accent });
-      [["Python", 300], ["JavaScript", 360], ["Altair's generator", 420], ["Rust · pyo3 · wasm", 480]].forEach(([t, y]) => {
+      [["Python · jsonschema + cel-python", 300], ["JavaScript · ajv + cel-js", 360], ["Altair's generator", 420], ["a check of the Rust types", 480]].forEach(([t, y]) => {
         el("path", { d: `M680,345 C720,345 720,${y} 760,${y}`, fill: "none", stroke: C.accent, "stroke-width": 1.6, "marker-end": "url(#arrA)" }, g);
-        el("rect", { x: 770, y: y - 20, width: 260, height: 40, fill: "#fff", stroke: C.line }, g);
+        el("rect", { x: 770, y: y - 20, width: 330, height: 40, fill: "#fff", stroke: C.line }, g);
         text(785, y + 6, t, "lab", { parent: g, size: 15 });
       });
       marker(60, 590, "23", "an array accepted for an object", 2); marker(520, 590, "24", "schema + CEL export, local", 2);
@@ -860,8 +864,8 @@ const SLIDES = [
   // 10 --------------------------------------------------------------- altair
   {
     title: "Altair from the schema",
-    big: "0 / 117", bigsub: "gallery charts compile today",
-    rows: [["asks of Altair", "3 changes", 0], ["validation", "6.5 µs · 705 µs", 1], ["classes from the schema", "35 + 9", 1], ["1M rows", "48 ms · 2.2 s", 1],
+    big: "5", bigsub: "steps, three of them ask of Altair",
+    rows: [["gallery compiling today", "0 / 117", 2], ["validation", "6.5 µs · 705 µs", 1], ["classes from the schema", "35 + 9", 1], ["1M rows", "48 ms · 2.2 s", 1],
            ["notebook frame", "22 ms", 1], ["first needs", "layer · marks", 2], ["findings", "18 · 19 · 21", 2]],
     steps: 3,
     nerds: `<b>the five steps, and what Altair needs</b>  <em>experiments/09-altair-on-avenger/README.md</em>
@@ -897,8 +901,7 @@ const SLIDES = [
       });
       const g2 = layer(2);
       bars(300, 690, [["layer", 41, "41", C.accent], ["a mark other than bar", 41, "41", C.accent], ["composition", 19, "19", C.accent], ["colour", 8, "8", C.accent]],
-           { parent: g2, max: 45, head: "first refusal in the gallery", labelW: 200, trackW: 360, rowH: 32 });
-      text(60, 740, "0 / 117", "bignum", { parent: g2 });
+           { parent: g2, max: 45, head: "what the gallery asks for first", labelW: 200, trackW: 360, rowH: 32 });
     },
   },
 
@@ -1030,12 +1033,13 @@ const SLIDES = [
       const gy = ground(820, { x: 60, w: 1060, s: 0 });
       box("dest", 440, 80, 300, 70, { s: 0, kind: "acc", label: "the next Altair", sub: "generated from Avenger's schema", size: 18, bold: true });
       const g1 = layer(1);
-      const way = [[300, gy("data")], [330, 560], [470, 470], [560, 360], [600, 250], [590, 150]];
-      el("path", { d: `M${way[0]} C300,620 330,600 330,560 S420,500 470,470 S560,400 560,360 S610,290 600,250 S590,180 590,150`,
+      const route = el("path", { d: `M300,${gy("data")} C300,640 330,600 330,560 S420,500 470,470 S560,400 560,360 S610,290 600,250 S590,180 590,150`,
                    fill: "none", stroke: C.accent, "stroke-width": 3 }, g1);
-      [["the schema exported", 330, 560], ["a validator hook", 470, 470], ["the API from the schema", 560, 360], ["beyond Vega-Lite", 600, 250]].forEach(([t, x, y]) => {
-        el("circle", { cx: x, cy: y, r: 7, fill: "#fff", stroke: C.accent, "stroke-width": 2.4 }, g1);
-        text(x - 18, y + 5, t, "lab", { anchor: "end", parent: g1, size: 15 });
+      const L = route.getTotalLength();
+      [["opt-in backend", 0.3], ["validator hook", 0.46], ["API from the schema", 0.61], ["data without JSON", 0.76], ["notebook interaction", 0.9]].forEach(([t, f]) => {
+        const p = route.getPointAtLength(L * f);
+        el("circle", { cx: p.x, cy: p.y, r: 7, fill: "#fff", stroke: C.accent, "stroke-width": 2.4 }, g1);
+        text(p.x - 18, p.y + 5, t, "lab", { anchor: "end", parent: g1, size: 15 });
       });
       const g2 = layer(2);
       [`M820,${gy("describe")} C820,520 760,300 680,150`, `M1000,${gy("draw")} C1020,480 900,260 720,140`,
@@ -1058,7 +1062,8 @@ function render() {
   EDGE_LAYER = el("g", {});
   S.draw();
   wireHover(S.hover);
-  document.getElementById("kicker").textContent = String(cur + 1).padStart(2, "0") + " / " + SLIDES.length;
+  const part = cur === 0 ? "" : cur <= 5 ? "part 1 · " : cur <= 11 ? "part 2 · " : "part 3 · ";
+  document.getElementById("kicker").textContent = part + String(cur + 1).padStart(2, "0") + " / " + SLIDES.length;
   document.getElementById("title").textContent = S.title;
   document.getElementById("big").textContent = S.big || "";
   document.getElementById("bigsub").textContent = S.bigsub || "";
