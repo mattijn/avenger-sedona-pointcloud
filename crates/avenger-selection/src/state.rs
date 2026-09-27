@@ -39,9 +39,9 @@ impl Contribution {
 
 /// A pending update carrying its destination selection, validated when applied to a set.
 #[derive(Clone, Debug)]
-pub struct SelectionUpdate(Update);
+pub struct SelectionUpdate(pub(crate) Update);
 #[derive(Clone, Debug)]
-enum Update {
+pub(crate) enum Update {
     Set(Producer, SelectionValue),
     Toggle(Producer, SelectionValue),
     Clear(ProducerAddress),
@@ -130,7 +130,7 @@ impl NamedSelection {
                                     address,
                                     Arc::new(Contribution::from_canonical(
                                         old.producer.clone(),
-                                        SelectionValue { tuples: retained },
+                                        SelectionValue { tuples: retained, gesture: None },
                                     )?),
                                 );
                             }
@@ -147,7 +147,7 @@ impl NamedSelection {
                             producer.address().clone(),
                             Arc::new(Contribution::from_canonical(
                                 producer.clone(),
-                                SelectionValue { tuples: selected },
+                                SelectionValue { tuples: selected, gesture: None },
                             )?),
                         );
                     }

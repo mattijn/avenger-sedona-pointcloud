@@ -200,7 +200,7 @@ fn selection_on(view: &View, size: f64, pu: Expr, pv: Expr) -> (Expr, usize) {
     .unwrap()
     .with_pixel_grids([(u.clone(), gu.clone()), (v.clone(), gv.clone())])
     .unwrap();
-    let value = SelectionValue::polygon((&u, &gu), (&v, &gv), &view.ring()).unwrap();
+    let value = SelectionValue::polygon(&producer, &u, &v, &view.ring()).unwrap();
     let tuples = value.as_tuples().len();
     let state = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap().set(&producer, value).unwrap();
     let filter = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::membership(&sel, EmptySelection::MatchNone));
@@ -281,7 +281,7 @@ async fn soft(view: &View, points: &[RecordBatch]) -> DFResult<()> {
     let lasso = ProducerDefinition::new(sel.clone(), ProducerId::new("lasso").unwrap(), ViewId::new("map").unwrap(),
         [Projection::new(uid.clone(), view.px(&view.a)).unwrap(), Projection::new(vid.clone(), view.px(&view.b)).unwrap()]).unwrap()
         .with_pixel_grids([(uid.clone(), grid(1.0)), (vid.clone(), grid(1.0))]).unwrap();
-    let value = SelectionValue::polygon((&uid, &grid(1.0)), (&vid, &grid(1.0)), &view.ring()).unwrap();
+    let value = SelectionValue::polygon(&lasso, &uid, &vid, &view.ring()).unwrap();
     let state = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap().set(&lasso, value).unwrap();
     let degree = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::membership(&sel, EmptySelection::MatchNone)).degree(&state, width).unwrap();
     let (t, _) = best(3, || async { let df = mem.table("pts").await?.select(vec![degree.clone().alias("d")])?; count(df.filter(col("d").gt(lit(0.0)))?).await }).await?;
@@ -294,7 +294,7 @@ async fn soft(view: &View, points: &[RecordBatch]) -> DFResult<()> {
 /// values of bin/layer_roundtrip.rs find their lines in one query each; the
 /// keys then select those lines' raw points. On a growing tile, as a stream
 /// delivers it, the chart rebuilds the lines and the keys.
-async fn series(ctx: &SessionContext, tile: &str) -> DFResult<()> {
+async fn series(ctx: &SessionContext, tile: &str) -> DFResult<(Vec<ProducerDefinition>, Vec<avenger_selection::SelectionUpdate>)> {
     use avenger_selection::SeriesTest;
     println!("\n## series: experiment 7's flight lines");
     let raw = ctx.sql(&format!("SELECT point_source_id, gps_time FROM '{tile}' ORDER BY gps_time")).await?.collect().await?;
@@ -339,6 +339,7 @@ async fn series(ctx: &SessionContext, tile: &str) -> DFResult<()> {
     let fm = SessionContext::new();
     fm.register_table("flight", Arc::new(MemTable::try_new(flight[0].schema(), vec![flight.clone()])?))?;
     let o = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    let (mut defs, mut updates) = (Vec::new(), Vec::new());
     for (label, test) in &tests {
         let want: Vec<i64> = lines.iter().filter(|(_, pts)| match test {
             SeriesTest::Crosses { from, to } => pts.windows(2).any(|w| o(*from, *to, w[0]) * o(*from, *to, w[1]) <= 0.0 && o(w[0], w[1], *from) * o(w[0], w[1], *to) <= 0.0),
@@ -360,7 +361,10 @@ async fn series(ctx: &SessionContext, tile: &str) -> DFResult<()> {
         let sel = SelectionId::new("series").unwrap();
         let producer = ProducerDefinition::new(sel.clone(), ProducerId::new("brush").unwrap(), ViewId::new("lines").unwrap(),
             [Projection::new(key.clone(), col("point_source_id")).unwrap()]).unwrap();
-        let state = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap().set(&producer, SeriesTest::value(&key, keys.clone())).unwrap();
+        let update = avenger_selection::SelectionUpdate::set(&producer, test.value(&key, keys.clone()));
+        let state = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap().apply(update.clone()).unwrap();
+        defs.push(producer.clone());
+        updates.push(update);
         let pred = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::cross_filter([&sel])).predicate(&state).unwrap();
         let (t_pts, n_pts) = best(3, || async { count(mem.table("input").await?.filter(pred.clone())?).await }).await?;
         println!("{label}: lines {got:?} in {t_keys:.1} ms; experiment 7's loop agrees: {}; their raw points: {n_pts} in {t_pts:.0} ms",
@@ -386,6 +390,188 @@ async fn series(ctx: &SessionContext, tile: &str) -> DFResult<()> {
         }
         println!("first {:>3.0} % of the points: {n_lines} lines in {n_fl} rows, rebuilt in {t_b:>5.0} ms; the three key sets in {:>5.1} ms ({:?} lines)", q * 100.0, ms(t0), k);
     }
+    Ok((defs, updates))
+}
+
+/// The regions of dense voxels, joined across faces, edges and corners, and
+/// the one with the most points: experiment 7's CloudLasso (layer/model.rs
+/// `lasso_take`), on voxel counts.
+fn largest_region(count: &HashMap<(i64, i64, i64), usize>, structure: f64) -> (std::collections::HashSet<(i64, i64, i64)>, usize) {
+    use std::collections::HashSet;
+    let top = count.values().copied().max().unwrap_or(0);
+    let dense: HashSet<(i64, i64, i64)> = count.iter().filter(|(_, c)| **c as f64 >= structure * top as f64).map(|(v, _)| *v).collect();
+    let (mut seen, mut best, mut best_n, mut regions) = (HashSet::new(), HashSet::new(), 0, 0);
+    for v in &dense {
+        if !seen.insert(*v) {
+            continue;
+        }
+        regions += 1;
+        let (mut stack, mut region, mut n) = (vec![*v], HashSet::new(), 0);
+        while let Some(c) = stack.pop() {
+            region.insert(c);
+            n += count[&c];
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    for dz in -1..=1 {
+                        let q = (c.0 + dx, c.1 + dy, c.2 + dz);
+                        if dense.contains(&q) && seen.insert(q) {
+                            stack.push(q);
+                        }
+                    }
+                }
+            }
+        }
+        if n > best_n {
+            (best, best_n) = (region, n);
+        }
+    }
+    (best, regions)
+}
+
+/// CloudLasso on the raw points of the tilted view, as experiment 7's
+/// `select lasso ... --structure 0.3` asks: of the points in the lasso, only
+/// those in the largest region of voxels at least 0.3 times as full as the
+/// fullest. The chart counts the voxels through DataFusion, finds the region,
+/// and hands its voxels back as cells; the selection intersects them with
+/// the lasso. Voxels are 1/40 of the window across and 1/10 of its height.
+/// Returns the definitions and updates, for the log.
+async fn cloud_lasso(view: &View, win: [f64; 4], hz: (f64, f64), points: &[RecordBatch]) -> DFResult<(Vec<ProducerDefinition>, Vec<avenger_selection::SelectionUpdate>)> {
+    use avenger_selection::{Gesture, SelectionUpdate};
+    let structure = 0.3;
+    println!("\n## CloudLasso in the tilted view (structure {structure})");
+    let mem = SessionContext::new();
+    mem.register_table("pts", Arc::new(MemTable::try_new(points[0].schema(), vec![points.to_vec()])?))?;
+    let sel = SelectionId::new("cloud").unwrap();
+    let (u, v) = (ProjectionId::new("u").unwrap(), ProjectionId::new("v").unwrap());
+    let lasso = ProducerDefinition::new(sel.clone(), ProducerId::new("lasso").unwrap(), ViewId::new("map").unwrap(),
+        [Projection::new(u.clone(), view.px(&view.a)).unwrap(), Projection::new(v.clone(), view.px(&view.b)).unwrap()]).unwrap()
+        .with_pixel_grids([(u.clone(), grid(1.0)), (v.clone(), grid(1.0))]).unwrap();
+    let axis = |lo: f64, hi: f64, n: f64| {
+        let d: ArrayRef = Arc::new(Float64Array::from(vec![lo, hi]));
+        let r: ArrayRef = Arc::new(Float64Array::from(vec![0.0, n]));
+        PixelGrid::new(BuiltinScale::Linear, d, r, HashMap::new(), 0.0, 1.0).unwrap()
+    };
+    let (gx, gy, gz) = (axis(win[0], win[1], 40.0), axis(win[2], win[3], 40.0), axis(hz.0, hz.1, 10.0));
+    let (px, py, pz) = (ProjectionId::new("vx").unwrap(), ProjectionId::new("vy").unwrap(), ProjectionId::new("vz").unwrap());
+    let voxels = ProducerDefinition::new(sel.clone(), ProducerId::new("voxels").unwrap(), ViewId::new("map").unwrap(),
+        [Projection::new(px.clone(), col("x")).unwrap(), Projection::new(py.clone(), col("y")).unwrap(), Projection::new(pz.clone(), col("z")).unwrap()]).unwrap()
+        .with_pixel_grids([(px.clone(), gx.clone()), (py.clone(), gy.clone()), (pz.clone(), gz.clone())]).unwrap();
+    let consumer = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::membership(&sel, EmptySelection::MatchNone));
+
+    let t_all = Instant::now();
+    let ring = view.ring();
+    let gesture = Gesture::new("polygon", ring.iter().copied()).with_param("structure", structure);
+    let lasso_value = SelectionValue::polygon(&lasso, &u, &v, &ring).unwrap().with_gesture(gesture);
+    let set_lasso = SelectionUpdate::set(&lasso, lasso_value);
+    let state = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap().apply(set_lasso.clone()).unwrap();
+    // The chart's step: voxel counts of the points in the lasso.
+    let t0 = Instant::now();
+    let counts = mem.table("pts").await?
+        .filter(consumer.predicate(&state).unwrap())?
+        .aggregate(vec![gx.cell_expr(col("x")).alias("i"), gy.cell_expr(col("y")).alias("j"), gz.cell_expr(col("z")).alias("k")],
+                   vec![datafusion::functions_aggregate::expr_fn::count(lit(1)).alias("n")])?
+        .collect().await?;
+    let t_count = ms(t0);
+    let mut count: HashMap<(i64, i64, i64), usize> = HashMap::new();
+    let mut n_in = 0;
+    for b in &counts {
+        let c = |n: &str| b.column_by_name(n).unwrap().as_any().downcast_ref::<arrow::array::Int64Array>().unwrap().clone();
+        let (i, j, k, n) = (c("i"), c("j"), c("k"), c("n"));
+        for r in 0..b.num_rows() {
+            count.insert((i.value(r), j.value(r), k.value(r)), n.value(r) as usize);
+            n_in += n.value(r) as usize;
+        }
+    }
+    let t0 = Instant::now();
+    let (best, regions) = largest_region(&count, structure);
+    let t_region = ms(t0);
+    let cells: Vec<Vec<i64>> = best.iter().map(|c| vec![c.0, c.1, c.2]).collect();
+    let set_voxels = SelectionUpdate::set(&voxels, SelectionValue::cells(&voxels, &[&px, &py, &pz], cells).unwrap());
+    let state = state.apply(set_voxels.clone()).unwrap();
+    let pred = consumer.predicate(&state).unwrap();
+    let t0 = Instant::now();
+    let n_sel = count_mem(&mem, pred.clone()).await?;
+    let t_sel = ms(t0);
+    let t_total = ms(t_all);
+    println!("the crate and the chart: {n_in} points in the lasso, {} voxels, {regions} dense regions; the largest has {} voxels; {n_sel} points selected",
+             count.len(), best.len());
+    println!("  voxel counts {t_count:.0} ms, regions {t_region:.1} ms, selecting {t_sel:.0} ms; {t_total:.0} ms in all");
+
+    // Experiment 7's algorithm in plain Rust, on the same points.
+    let t0 = Instant::now();
+    let (mut rc, mut inside) = (HashMap::new(), Vec::new());
+    let vox = |x: f64, y: f64, z: f64| (((x - win[0]) / (win[1] - win[0]) * 40.0).floor() as i64, ((y - win[2]) / (win[3] - win[2]) * 40.0).floor() as i64,
+        ((z - hz.0) / (hz.1 - hz.0) * 10.0).floor() as i64);
+    for b in points {
+        let (x, y, z) = (column(b, "x"), column(b, "y"), column(b, "z"));
+        for i in 0..b.num_rows() {
+            let (xi, yi, zi) = (x.value(i), y.value(i), z.value(i));
+            // The pixel cell's centre, as the crate's lasso decides.
+            let c = [view.at(&view.a, xi, yi, zi).floor() + 0.5, view.at(&view.b, xi, yi, zi).floor() + 0.5];
+            if in_ring(c, &ring) {
+                let k = vox(xi, yi, zi);
+                *rc.entry(k).or_insert(0usize) += 1;
+                inside.push(k);
+            }
+        }
+    }
+    let (rbest, rregions) = largest_region(&rc, structure);
+    let r_sel = inside.iter().filter(|k| rbest.contains(k)).count();
+    println!("experiment 7's loop:     {} points in the lasso, {} voxels, {rregions} dense regions; the largest has {} voxels; {r_sel} points selected ({:.0} ms)",
+             inside.len(), rc.len(), rbest.len(), ms(t0));
+    Ok((vec![lasso, voxels], vec![set_lasso, set_voxels]))
+}
+
+async fn count_mem(mem: &SessionContext, f: Expr) -> DFResult<usize> {
+    count(mem.table("pts").await?.filter(f)?).await
+}
+
+/// A selection log: CloudLasso's and the series' updates, then a clear and a
+/// toggle, written one JSON object per line to out/selection_log.jsonl, read
+/// back against the chart's definitions and replayed. The replayed state must
+/// give the same predicates and select the same points.
+async fn log_roundtrip(cloud_defs: &[ProducerDefinition], cloud: &[avenger_selection::SelectionUpdate],
+                       series_defs: &[ProducerDefinition], series: &[avenger_selection::SelectionUpdate], points: &[RecordBatch]) -> DFResult<()> {
+    use avenger_selection::{Producers, SelectionUpdate};
+    println!("\n## a selection log");
+    let mut updates: Vec<SelectionUpdate> = cloud.to_vec();
+    updates.extend(series.iter().cloned());
+    updates.push(SelectionUpdate::clear(&cloud_defs[1]));
+    updates.push(cloud[1].clone());
+    updates.push(SelectionUpdate::toggle(&series_defs[0], avenger_selection::SelectionValue::tuple([(
+        ProjectionId::new("line").unwrap(), avenger_selection::ValueTest::equal(33_i64))])));
+    let t0 = Instant::now();
+    let lines: Vec<String> = updates.iter().map(|u| serde_json::to_string(&u.to_json().unwrap()).unwrap()).collect();
+    let t_write = ms(t0);
+    std::fs::create_dir_all("out").ok();
+    std::fs::write("out/selection_log.jsonl", lines.join("\n") + "\n").ok();
+    let text = std::fs::read_to_string("out/selection_log.jsonl").unwrap();
+    let producers = Producers::new(cloud_defs.iter().chain(series_defs).cloned());
+    let t0 = Instant::now();
+    let replayed: Vec<SelectionUpdate> = text.lines().map(|l| SelectionUpdate::from_json(&serde_json::from_str(l).unwrap(), &producers).unwrap()).collect();
+    let t_read = ms(t0);
+    let (cloud_sel, series_sel) = (SelectionId::new("cloud").unwrap(), SelectionId::new("series").unwrap());
+    let start = SelectionSet::new([(cloud_sel.clone(), Resolution::Intersect), (series_sel.clone(), Resolution::Intersect)]).unwrap();
+    let (mut a, mut b) = (start.clone(), start);
+    let mut same = true;
+    for (u, r) in updates.into_iter().zip(replayed) {
+        a = a.apply(u).unwrap();
+        b = b.apply(r).unwrap();
+        for sel in [&cloud_sel, &series_sel] {
+            let f = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::membership(sel, EmptySelection::MatchNone));
+            same &= format!("{}", f.predicate(&a).unwrap()) == format!("{}", f.predicate(&b).unwrap());
+            same &= a.contributions(sel).unwrap().collect::<Vec<_>>() == b.contributions(sel).unwrap().collect::<Vec<_>>();
+        }
+    }
+    let mem = SessionContext::new();
+    mem.register_table("pts", Arc::new(MemTable::try_new(points[0].schema(), vec![points.to_vec()])?))?;
+    let f = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::membership(&cloud_sel, EmptySelection::MatchNone));
+    let (na, nb) = (count_mem(&mem, f.predicate(&a).unwrap()).await?, count_mem(&mem, f.predicate(&b).unwrap()).await?);
+    let bytes: Vec<usize> = lines.iter().map(|l| l.len()).collect();
+    println!("{} updates, {} bytes (the lasso {} bytes, the CloudLasso voxels {} bytes); written in {t_write:.1} ms, read back in {t_read:.1} ms",
+             lines.len(), bytes.iter().sum::<usize>(), bytes[0], bytes[1]);
+    println!("replayed: same predicates and contributions, gestures included: {}; CloudLasso points {na} recorded, {nb} replayed",
+             if same { "yes" } else { "NO" });
     Ok(())
 }
 
@@ -497,9 +683,13 @@ async fn main() -> DFResult<()> {
     }
     let tilt = tilted(win, hlo, hhi, 30.0, 35.0);
     measure(&ctx, &tilt, &part).await?;
+    let (cloud_defs, cloud_updates) = cloud_lasso(&tilt, win, (hlo, hhi), &part).await?;
+    let part_for_log = part.clone();
     drop(part);
 
-    series(&ctx, &tile).await?;
+    let (series_defs, series_updates) = series(&ctx, &tile).await?;
+    log_roundtrip(&cloud_defs, &cloud_updates, &series_defs, &series_updates, &part_for_log).await?;
+    drop(part_for_log);
 
     // 3: from the file, flat lasso at 1 px. A bounding box in data units,
     // one cell wider than the lasso, derived from the ring through the view.

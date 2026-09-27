@@ -571,10 +571,61 @@ is documented to default its offset to 1, but builds a NULL literal that
 (`datafusion-functions-window` 54.1, `lead_lag.rs` and `utils.rs`). The
 line brush passes `Some(1)`.
 
-Still to come, each needing an addition rather than a helper: CloudLasso, which the
-chart must resolve and hand over as keys; the gesture kept with a
-contribution for drawing its outline; and serialisation, so a selection can
-be written in a pipeline log.
+### 28. CloudLasso: the chart finds the region, the crate takes its voxels
+
+CloudLasso (Yu et al. 2012) keeps, of the points in a lasso, those in the
+largest connected region of dense voxels. Finding regions is a graph walk, not
+a predicate, so it stays with the chart. The crate does the rest:
+`SelectionValue::cells` (added here) turns the region's voxels into tuples on
+three gridded projections (x, y and z, 40 × 40 × 10 voxels over the window),
+and the selection intersects them with the lasso's own contribution. The
+chart's step is one grouped count through DataFusion. Experiment 7's
+`select lasso … --yaw 30 --elevation 35 --structure 0.3` on the raw points of
+its 500 m window (4.2M points):
+
+| | Points in the lasso | Voxels | Dense regions | Largest region | Selected | Time |
+|---|---|---|---|---|---|---|
+| crate and chart | 1,097,131 | 1,855 | 8 | 422 voxels | 721,463 | 272 ms |
+| experiment 7's loop, same points | 1,097,132 | 1,858 | 8 | 421 voxels | 720,791 | 194 ms |
+
+The crate's grids map values through the scale kernel in Float32, the loop
+in Float64, so a few points on voxel boundaries fall on the other side: the
+selections differ by 672 points, 0.09 %. The 272 ms are 84 ms of voxel
+counts, 0.6 ms of region finding and 158 ms of selecting, the 422 voxels
+going through the cell lookup of finding 25.
+
+### 29. What was drawn, and a log to replay it
+
+Two gaps closed together, since a log needs the gesture. A value can carry a
+`Gesture` (a kind, points in the chart's units, named numbers such as
+CloudLasso's density share); `polygon` attaches its ring and `SeriesTest`
+its segment or box. A contribution keeps the gesture through `set`, so the
+chart can draw the outline; `toggle` drops it, because the outline no longer
+describes the tuples. `SelectionUpdate::to_json` and `from_json` (added here)
+write an update as one JSON object, with each scalar as its Arrow type and a
+string (`{"type": "Int64", "value": "5"}`), and read it back against the
+chart's producer definitions, which hold expressions and scales and are not
+written. The crate's tests replay NaN keys, nulls, UTC timestamps, excluded and
+unbounded bounds and gestures to identical predicates. While writing the
+tests, a value built from other grids than its producer's selected the wrong
+rows without complaint; `polygon` and `cells` now read the grids from the
+producer, so the two cannot disagree.
+
+On the tile, eight updates (CloudLasso's two, the series keys, a clear, a
+toggle) replay to the same predicates and contributions, and the replayed
+CloudLasso selects the same 721,463 points. The log is large: **427 KB**, of
+which the lasso is 32 KB (108 tuples) and CloudLasso's voxels 197 KB. It
+records the outcome, tuple by tuple. Recording the gesture instead (the
+lasso's ring is four points) would be a few hundred bytes, with the tuples
+rebuilt on replay; but for CloudLasso the rebuild depends on the data, so on a
+stream the replay would select other points. Which of the two a log should
+hold is a design choice for the chart language, not something to settle here.
+**Measure:** as for 25; the log is written to `out/selection_log.jsonl`.
+
+Still to come: soft series selections, which need a degree per key; the
+preaggregation split with a polygon, a degree or a CloudLasso contribution,
+none of which were run through it; and wiring the log into the pipeline text
+of experiments 6 and 7, whose `select` lines use their own syntax.
 
 ## What worked well
 

@@ -90,9 +90,25 @@ impl SeriesTest {
         Ok(keys)
     }
 
-    /// The keys as a selection value on the producer's key projection.
-    pub fn value(key: &ProjectionId, keys: Vec<ScalarValue>) -> SelectionValue {
-        SelectionValue::tuple([(key.clone(), ValueTest::OneOf(keys))])
+    /// The keys as a selection value on the producer's key projection,
+    /// carrying the test as its gesture (`"segment"` or `"timebox"`).
+    pub fn value(&self, key: &ProjectionId, keys: Vec<ScalarValue>) -> SelectionValue {
+        SelectionValue::tuple([(key.clone(), ValueTest::OneOf(keys))]).with_gesture(self.gesture())
+    }
+    /// The test as a gesture, in the series' data units.
+    pub fn gesture(&self) -> crate::Gesture {
+        match self {
+            SeriesTest::Crosses { from, to } => crate::Gesture::new("segment", [*from, *to]),
+            SeriesTest::Within { x, y } => crate::Gesture::new("timebox", [[x.0, y.0], [x.1, y.1]]),
+        }
+    }
+    /// The test back from its gesture, as a replayed log gives it.
+    pub fn from_gesture(g: &crate::Gesture) -> Option<Self> {
+        match (g.kind(), g.points()) {
+            ("segment", [a, b]) => Some(SeriesTest::Crosses { from: *a, to: *b }),
+            ("timebox", [a, b]) => Some(SeriesTest::Within { x: (a[0], b[0]), y: (a[1], b[1]) }),
+            _ => None,
+        }
     }
 }
 

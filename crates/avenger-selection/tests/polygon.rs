@@ -45,7 +45,7 @@ async fn selects_exactly_the_cells_whose_centre_lies_inside() {
         let (gx, gy) = (linear([1000.0, 1500.0], [0.0, 200.0], size), linear([2000.0, 2400.0], [200.0, 0.0], size));
         let (u, v) = (ProjectionId::new("x").unwrap(), ProjectionId::new("y").unwrap());
         let lasso = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), gx.clone()), (v.clone(), gy.clone())]).unwrap();
-        let value = SelectionValue::polygon((&u, &gx), (&v, &gy), &RING).unwrap();
+        let value = SelectionValue::polygon(&lasso, &u, &v, &RING).unwrap();
         let n_tuples = value.as_tuples().len();
         let s = state(Resolution::Intersect).set(&lasso, value).unwrap();
         let (xs, ys) = scatter();
@@ -72,9 +72,9 @@ async fn a_ring_off_the_grid_selects_nothing_and_stays_active() {
     let g = linear([0.0, 100.0], [0.0, 100.0], 1.0);
     let (u, v) = (ProjectionId::new("x").unwrap(), ProjectionId::new("y").unwrap());
     // Thinner than a cell: no centre falls inside.
-    let value = SelectionValue::polygon((&u, &g), (&v, &g), &[[10.2, 10.2], [10.4, 10.2], [10.3, 10.4]]).unwrap();
+    let lasso = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), g.clone()), (v.clone(), g)]).unwrap();
+    let value = SelectionValue::polygon(&lasso, &u, &v, &[[10.2, 10.2], [10.4, 10.2], [10.3, 10.4]]).unwrap();
     assert!(value.as_tuples().is_empty());
-    let lasso = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u, g.clone()), (v, g)]).unwrap();
     let s = state(Resolution::Intersect).set(&lasso, value).unwrap();
     let rows = batch(vec![("id", Arc::new(Int64Array::from(vec![0_i64]))), ("x", numbers(&[10.3])), ("y", numbers(&[10.3]))]);
     assert!(selected(rows, membership().predicate(&s).unwrap()).await.is_empty());
@@ -84,7 +84,11 @@ async fn a_ring_off_the_grid_selects_nothing_and_stays_active() {
 fn rejects_what_it_cannot_invert() {
     let g = linear([0.0, 100.0], [0.0, 100.0], 1.0);
     let (u, v) = (ProjectionId::new("x").unwrap(), ProjectionId::new("y").unwrap());
-    assert!(SelectionValue::polygon((&u, &g), (&v, &g), &[[0.0, 0.0], [1.0, 1.0]]).is_err());
+    let ok = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), g.clone()), (v.clone(), g.clone())]).unwrap();
+    assert!(SelectionValue::polygon(&ok, &u, &v, &[[0.0, 0.0], [1.0, 1.0]]).is_err());
+    // A projection without a grid in the definition.
+    let ungridded = producer("lasso", view("map"), &["x", "y"]);
+    assert!(SelectionValue::polygon(&ungridded, &u, &v, &RING).is_err());
     let t = PixelGrid::new(
         BuiltinScale::Time,
         Arc::new(TimestampMillisecondArray::from(vec![0_i64, 1000])),
@@ -94,5 +98,6 @@ fn rejects_what_it_cannot_invert() {
         1.0,
     )
     .unwrap();
-    assert!(SelectionValue::polygon((&u, &t), (&v, &g), &RING).is_err());
+    let timed = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), t), (v.clone(), g)]).unwrap();
+    assert!(SelectionValue::polygon(&timed, &u, &v, &RING).is_err());
 }

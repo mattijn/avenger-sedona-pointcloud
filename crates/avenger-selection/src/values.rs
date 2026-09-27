@@ -44,6 +44,8 @@ pub(crate) type Tuple = Vec<(ProjectionId, ValueTest)>;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SelectionValue {
     pub(crate) tuples: Vec<Tuple>,
+    // Not upstream (VENDORED.md): what was drawn, for the chart's outline.
+    pub(crate) gesture: Option<crate::Gesture>,
 }
 
 impl SelectionValue {
@@ -52,6 +54,7 @@ impl SelectionValue {
     pub fn tuple(terms: impl IntoIterator<Item = (ProjectionId, ValueTest)>) -> Self {
         Self {
             tuples: vec![terms.into_iter().collect()],
+            gesture: None,
         }
     }
 
@@ -66,11 +69,21 @@ impl SelectionValue {
                 .into_iter()
                 .map(|terms| terms.into_iter().collect())
                 .collect(),
+            gesture: None,
         }
     }
     /// Inspect correlated tuples and their projection/comparison pairs.
     pub fn as_tuples(&self) -> &[Vec<(ProjectionId, ValueTest)>] {
         &self.tuples
+    }
+    /// Not upstream (VENDORED.md): carry the gesture that made this value.
+    pub fn with_gesture(mut self, gesture: crate::Gesture) -> Self {
+        self.gesture = Some(gesture);
+        self
+    }
+    /// The gesture this value came from, if the chart attached one.
+    pub fn gesture(&self) -> Option<&crate::Gesture> {
+        self.gesture.as_ref()
     }
 }
 
@@ -328,6 +341,7 @@ pub(crate) fn canonical_value(
 ) -> Result<SelectionValue> {
     Ok(SelectionValue {
         tuples: canonical_tuples(producer, value.tuples)?,
+        gesture: value.gesture,
     })
 }
 

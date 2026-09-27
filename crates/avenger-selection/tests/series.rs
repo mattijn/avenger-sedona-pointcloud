@@ -98,7 +98,7 @@ async fn keys_select_rows_elsewhere_and_match_experiment_7() {
     // The keys as a selection, applied to another relation that shares them.
     let key = ProjectionId::new("line").unwrap();
     let p = producer("brush", view("lines"), &["line"]);
-    let st = state(Resolution::Intersect).set(&p, SeriesTest::value(&key, seg.iter().map(|k| ScalarValue::Int64(Some(*k))).collect())).unwrap();
+    let st = state(Resolution::Intersect).set(&p, SeriesTest::Crosses { from: a, to: b }.value(&key, seg.iter().map(|k| ScalarValue::Int64(Some(*k))).collect())).unwrap();
     let raw = batch(vec![
         ("id", Arc::new(Int64Array::from_iter_values(0..300))),
         ("line", Arc::new(Int64Array::from_iter_values(0..300))),

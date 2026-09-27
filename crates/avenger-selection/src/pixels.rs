@@ -455,5 +455,5 @@ pub(crate) fn effective_value(
             }
         }
     }
-    Ok(Some(SelectionValue { tuples }))
+    Ok(Some(SelectionValue { tuples, gesture: None }))
 }

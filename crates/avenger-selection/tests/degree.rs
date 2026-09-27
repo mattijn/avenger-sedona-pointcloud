@@ -63,7 +63,7 @@ async fn a_degree_of_one_is_exactly_the_predicate() {
     // A brush, and a lasso of many cell runs (the lookup path).
     let p = brush(1.0);
     let ring = [[10.0, 10.0], [90.0, 20.0], [60.0, 50.0], [85.0, 90.0], [15.0, 70.0]];
-    let lasso = SelectionValue::polygon((&pid("x"), &grid(1.0)), (&pid("y"), &grid(1.0)), &ring).unwrap();
+    let lasso = SelectionValue::polygon(&p, &pid("x"), &pid("y"), &ring).unwrap();
     assert!(lasso.as_tuples().len() >= 8);
     let mut s = 7_u64;
     let mut next = || {

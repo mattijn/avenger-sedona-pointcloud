@@ -18,8 +18,8 @@ draws with its own code (FINDINGS.md, "Selections in avenger-selection").
 The additions so far:
 
 - **`SelectionValue::polygon`** (`src/polygon.rs`, `tests/polygon.rs`): a
-  lasso drawn in pixels as one tuple per run of pixel cells, over two
-  gridded projections. A row is selected when its cell's centre lies inside
+  lasso drawn in pixels as one tuple per run of pixel cells, over two of the
+  producer's gridded projections. A row is selected when its cell's centre lies inside
   (even-odd). No new kind of test: resolution, cross-filtering, toggles and
   the split see ranges, as for a two-dimensional brush.
 - **One lookup for many cell tuples** (`src/cell_boxes.rs`, and three lines
@@ -38,6 +38,15 @@ The additions so far:
   (`Crosses`) and a timebox (`Within`) over a whole series, run as one query
   that returns the passing keys; `SeriesTest::value` makes them a `one_of`
   on the key projection (FINDINGS.md 27).
+
+- **`SelectionValue::cells`** (`src/polygon.rs`): a set of grid cells, such
+  as CloudLasso's voxels, as one tuple per cell (FINDINGS.md 28). It and
+  `polygon` read their grids from the producer.
+- **`Gesture`** (`src/gesture.rs`): what was drawn, carried by a value and
+  kept by a contribution through `set`, dropped by `toggle` (FINDINGS.md 29).
+- **The selection log** (`src/log.rs`, `tests/log.rs`): `SelectionUpdate::to_json`
+  and `from_json`, against a `Producers` registry of the chart's definitions;
+  adds `serde_json` as a dependency (FINDINGS.md 29).
 
 Measured by `cargo run --release -p lidar-probes --bin probe_selection -- <tile>`.
 

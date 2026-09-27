@@ -8,24 +8,21 @@
 
 use datafusion::{arrow::datatypes::DataType, common::ScalarValue};
 
-use crate::{Error, PixelGrid, ProjectionId, Result, SelectionValue, ValueTest};
+use crate::{Error, PixelGrid, ProducerDefinition, ProjectionId, Result, SelectionValue, ValueTest};
 
 impl SelectionValue {
     /// Select the rows whose pixel cell has its centre inside `ring`.
     ///
     /// `ring` is in chart-local logical pixels, the space the pointer draws
     /// in, and is closed implicitly. Insideness uses the even-odd rule. Both
-    /// grids must be linear with a Float32 or Float64 domain and no options
-    /// beyond `clamp` and `round: false`, and the producer must declare the
-    /// two projections with these grids.
+    /// grids, read from the producer so that value and definition cannot
+    /// disagree, must be linear with a Float32 or Float64 domain and no
+    /// options beyond `clamp` and `round: false`.
     ///
     /// One tuple per run of cells, so the size of the predicate grows with
     /// the polygon's height in cells and with its concavity.
-    pub fn polygon(
-        u: (&ProjectionId, &PixelGrid),
-        v: (&ProjectionId, &PixelGrid),
-        ring: &[[f64; 2]],
-    ) -> Result<Self> {
+    pub fn polygon(producer: &ProducerDefinition, u: &ProjectionId, v: &ProjectionId, ring: &[[f64; 2]]) -> Result<Self> {
+        let (u, v) = ((u, grid_of(producer, u)?), (v, grid_of(producer, v)?));
         if ring.len() < 3 || ring.iter().flatten().any(|c| !c.is_finite()) {
             return Err(Error::InvalidValue(
                 "a polygon needs three or more finite points".into(),
@@ -58,8 +55,38 @@ impl SelectionValue {
                 ]);
             }
         }
+        Ok(SelectionValue::tuples(tuples).with_gesture(crate::Gesture::new("polygon", ring.iter().copied())))
+    }
+}
+
+impl SelectionValue {
+    /// Select the rows in the given cells: one tuple per cell, over one
+    /// gridded projection per dimension, such as the voxels CloudLasso keeps.
+    /// Each cell lists its index per projection, in the order of `ids`; the
+    /// grids come from the producer and follow the rules of `polygon`.
+    pub fn cells(producer: &ProducerDefinition, ids: &[&ProjectionId], cells: impl IntoIterator<Item = Vec<i64>>) -> Result<Self> {
+        let grids = ids.iter().map(|id| Ok((*id, grid_of(producer, id)?))).collect::<Result<Vec<_>>>()?;
+        let inverse = grids.iter().map(|(_, g)| Inverse::new(g)).collect::<Result<Vec<_>>>()?;
+        let mut tuples = Vec::new();
+        for cell in cells {
+            if cell.len() != grids.len() {
+                return Err(Error::InvalidValue(format!("a cell needs {} indices, one per grid", grids.len())));
+            }
+            let mut tuple = Vec::with_capacity(cell.len());
+            for ((c, (id, g)), inv) in cell.iter().zip(&grids).zip(&inverse) {
+                let v = inv.value(*c, g)?;
+                tuple.push(((*id).clone(), ValueTest::Range { lower: std::ops::Bound::Included(v.clone()), upper: std::ops::Bound::Included(v) }));
+            }
+            tuples.push(tuple);
+        }
         Ok(SelectionValue::tuples(tuples))
     }
+}
+
+fn grid_of<'a>(producer: &'a ProducerDefinition, id: &ProjectionId) -> Result<&'a PixelGrid> {
+    producer
+        .pixel_grid(id)
+        .ok_or_else(|| Error::InvalidDefinition(format!("{id} needs a pixel grid in the producer's definition")))
 }
 
 // Decreasing scales map the first cell to the larger value.

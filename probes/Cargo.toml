@@ -21,3 +21,4 @@ avenger-wgpu.workspace = true
 datafusion.workspace = true
 avenger-selection.workspace = true
 avenger-scales-datafusion.workspace = true
+serde_json.workspace = true

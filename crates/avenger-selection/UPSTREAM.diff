@@ -1,7 +1,7 @@
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/Cargo.toml avenger-selection/Cargo.toml
 --- avenger-selection/Cargo.toml	2026-09-27 20:28:43.478499040 +0000
-+++ avenger-selection/Cargo.toml	2026-09-27 19:16:18.693859527 +0000
-@@ -4,16 +4,20 @@
++++ avenger-selection/Cargo.toml	2026-09-27 21:33:27.692399446 +0000
+@@ -4,16 +4,22 @@
  edition = "2021"
  rust-version = "1.88"
  description = "Typed selections and consumer-specific DataFusion predicates"
@@ -17,6 +17,8 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 -thiserror = { workspace = true }
 +thiserror = "2.0.12"
  half = "2"
++# Not upstream (VENDORED.md): the selection log.
++serde_json = "1"
  
  [dev-dependencies]
  datafusion = { version = "=54.1.0", default-features = false, features = ["sql"] }
@@ -314,12 +316,85 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        Ok(ColumnarValue::Array(Arc::new(out)))
 +    }
 +}
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/gesture.rs avenger-selection/src/gesture.rs
+--- avenger-selection/src/gesture.rs	1970-01-01 00:00:00.000000000 +0000
++++ avenger-selection/src/gesture.rs	2026-09-27 21:32:25.034460013 +0000
+@@ -0,0 +1,65 @@
++//! The gesture a selection came from, kept beside its tuples.
++//!
++//! Not upstream: added in this repo (VENDORED.md). Tuples are what a
++//! selection means; they are not what was drawn. A lasso becomes runs of
++//! cells, a line brush a set of keys, and neither gives back the outline a
++//! chart draws over the data. A value can carry the gesture that made it,
++//! and a contribution keeps it through `set`. `toggle` drops it, since after
++//! adding or removing tuples the outline no longer describes them.
++
++use std::hash::{Hash, Hasher};
++
++/// What was drawn, in the chart's own terms: a kind (`"polygon"`,
++/// `"segment"`, `"box"`, …), points in the units the chart drew them in, and
++/// named numbers such as a soft width or CloudLasso's density share.
++#[derive(Clone, Debug)]
++pub struct Gesture {
++    kind: String,
++    points: Vec<[f64; 2]>,
++    params: Vec<(String, f64)>,
++}
++
++impl Gesture {
++    pub fn new(kind: impl Into<String>, points: impl IntoIterator<Item = [f64; 2]>) -> Self {
++        Self { kind: kind.into(), points: points.into_iter().collect(), params: Vec::new() }
++    }
++    /// Add a named number. A repeated name replaces the earlier value.
++    pub fn with_param(mut self, name: impl Into<String>, value: f64) -> Self {
++        let name = name.into();
++        self.params.retain(|(n, _)| *n != name);
++        self.params.push((name, value));
++        self.params.sort_by(|a, b| a.0.cmp(&b.0));
++        self
++    }
++    pub fn kind(&self) -> &str {
++        &self.kind
++    }
++    pub fn points(&self) -> &[[f64; 2]] {
++        &self.points
++    }
++    pub fn params(&self) -> &[(String, f64)] {
++        &self.params
++    }
++    pub fn param(&self, name: &str) -> Option<f64> {
++        self.params.iter().find(|(n, _)| n == name).map(|(_, v)| *v)
++    }
++    fn bits(&self) -> (&str, Vec<[u64; 2]>, Vec<(&str, u64)>) {
++        (
++            &self.kind,
++            self.points.iter().map(|p| [p[0].to_bits(), p[1].to_bits()]).collect(),
++            self.params.iter().map(|(n, v)| (n.as_str(), v.to_bits())).collect(),
++        )
++    }
++}
++// Bitwise, so a replayed gesture equals the one recorded.
++impl PartialEq for Gesture {
++    fn eq(&self, other: &Self) -> bool {
++        self.bits() == other.bits()
++    }
++}
++impl Eq for Gesture {}
++impl Hash for Gesture {
++    fn hash<H: Hasher>(&self, state: &mut H) {
++        self.bits().hash(state)
++    }
++}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/lib.rs avenger-selection/src/lib.rs
 --- avenger-selection/src/lib.rs	2026-09-27 19:07:15.626710854 +0000
-+++ avenger-selection/src/lib.rs	2026-09-27 21:07:33.010344116 +0000
-@@ -4,7 +4,11 @@
++++ avenger-selection/src/lib.rs	2026-09-27 21:33:34.614587741 +0000
+@@ -2,9 +2,15 @@
+ 
+ mod definitions;
  mod error;
++mod gesture;
  mod identity;
++mod log;
  mod pixels;
 +mod polygon;
 +mod cell_boxes;
@@ -329,18 +404,252 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
  mod resolve;
  mod split;
  mod state;
-@@ -14,6 +18,7 @@
+@@ -12,8 +18,11 @@
+ 
+ pub use definitions::{ProducerDefinition, Projection, Resolution};
  pub use error::{Error, Result};
++pub use gesture::Gesture;
++pub use log::Producers;
  pub use identity::{ProducerId, ProjectionId, SelectionId, ViewId};
  pub use pixels::PixelGrid;
 +pub use series::SeriesTest;
  pub use resolve::{ConsumerFilter, EmptySelection, SelectionFilter, SelectionMode};
  pub use split::{PredicateSplit, SelectionPredicates, SplitReason};
  pub use state::{Contribution, SelectionSet, SelectionUpdate};
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/log.rs avenger-selection/src/log.rs
+--- avenger-selection/src/log.rs	1970-01-01 00:00:00.000000000 +0000
++++ avenger-selection/src/log.rs	2026-09-27 21:33:40.743823740 +0000
+@@ -0,0 +1,216 @@
++//! Selection updates written as JSON and read back, for a pipeline log.
++//!
++//! Not upstream: added in this repo (VENDORED.md). A log records what the
++//! user did, not the chart's definitions: producer definitions hold
++//! DataFusion expressions and captured scales, which the chart rebuilds from
++//! its own specification. So an update is written as its producer's address
++//! (selection, producer, view), the operation, and the raw value with its
++//! gesture; reading it back looks the definition up in `Producers`. Replayed
++//! into the same definitions, a log gives the same state, and so the same
++//! predicates.
++//!
++//! Scalars are written as their Arrow type and their value cast to a string,
++//! which DataFusion casts back: `{"type": "Int64", "value": "5"}`. Binary
++//! values, which do not cast to a string, are refused.
++
++use std::{collections::BTreeMap, ops::Bound, str::FromStr};
++
++use datafusion::{
++    arrow::{compute::cast, datatypes::DataType},
++    common::ScalarValue,
++};
++use serde_json::{json, Map, Value};
++
++use crate::{
++    identity::ProducerAddress,
++    state::Update,
++    Error, Gesture, ProducerDefinition, ProducerId, ProjectionId, Result, SelectionId, SelectionUpdate,
++    SelectionValue, ValueTest, ViewId,
++};
++
++/// The chart's producer definitions, by address, for reading a log back.
++#[derive(Clone, Debug, Default)]
++pub struct Producers(BTreeMap<ProducerAddress, ProducerDefinition>);
++impl Producers {
++    pub fn new(definitions: impl IntoIterator<Item = ProducerDefinition>) -> Self {
++        Self(definitions.into_iter().map(|d| (d.address().clone(), d)).collect())
++    }
++    fn get(&self, address: &ProducerAddress) -> Result<&ProducerDefinition> {
++        self.0.get(address).ok_or_else(|| {
++            Error::InvalidUpdate(format!(
++                "the log names producer {} of view {} in selection {}, which the chart does not define",
++                address.producer, address.origin, address.selection
++            ))
++        })
++    }
++}
++
++impl SelectionUpdate {
++    /// This update as one JSON object, for one line of a log.
++    pub fn to_json(&self) -> Result<Value> {
++        let address = |a: &ProducerAddress| {
++            json!({"selection": a.selection.as_str(), "producer": a.producer.as_str(), "view": a.origin.as_str()})
++        };
++        Ok(match &self.0 {
++            Update::Set(p, v) | Update::Toggle(p, v) => {
++                let mut o = address(p.address());
++                o["op"] = json!(if matches!(self.0, Update::Set(..)) { "set" } else { "toggle" });
++                o["value"] = value_json(v)?;
++                o
++            }
++            Update::Clear(a) => {
++                let mut o = address(a);
++                o["op"] = json!("clear");
++                o
++            }
++            Update::ClearAll(id) => json!({"op": "clear_all", "selection": id.as_str()}),
++        })
++    }
++
++    /// Read one logged update back against the chart's definitions.
++    pub fn from_json(v: &Value, producers: &Producers) -> Result<Self> {
++        let s = |k: &str| v.get(k).and_then(Value::as_str).ok_or_else(|| bad(format!("an update needs a string {k}")));
++        let address = || -> Result<ProducerAddress> {
++            Ok(ProducerAddress {
++                selection: SelectionId::new(s("selection")?)?,
++                producer: ProducerId::new(s("producer")?)?,
++                origin: ViewId::new(s("view")?)?,
++            })
++        };
++        Ok(match s("op")? {
++            op @ ("set" | "toggle") => {
++                let producer = producers.get(&address()?)?;
++                let value = value_from(v.get("value").ok_or_else(|| bad("a set or toggle needs a value"))?)?;
++                if op == "set" { SelectionUpdate::set(producer, value) } else { SelectionUpdate::toggle(producer, value) }
++            }
++            "clear" => SelectionUpdate::clear(producers.get(&address()?)?),
++            "clear_all" => SelectionUpdate::clear_all(&SelectionId::new(s("selection")?)?),
++            other => return Err(bad(format!("unknown operation {other}"))),
++        })
++    }
++}
++
++fn bad(m: impl Into<String>) -> Error {
++    Error::InvalidUpdate(format!("selection log: {}", m.into()))
++}
++
++fn value_json(v: &SelectionValue) -> Result<Value> {
++    let tuples = v
++        .as_tuples()
++        .iter()
++        .map(|t| t.iter().map(|(id, test)| term_json(id, test)).collect::<Result<Vec<_>>>())
++        .collect::<Result<Vec<_>>>()?;
++    Ok(json!({"tuples": tuples, "gesture": v.gesture().map(gesture_json).transpose()?}))
++}
++fn value_from(v: &Value) -> Result<SelectionValue> {
++    let tuples = v
++        .get("tuples")
++        .and_then(Value::as_array)
++        .ok_or_else(|| bad("a value needs tuples"))?
++        .iter()
++        .map(|t| t.as_array().ok_or_else(|| bad("a tuple is a list of terms"))?.iter().map(term_from).collect::<Result<Vec<_>>>())
++        .collect::<Result<Vec<_>>>()?;
++    let value = SelectionValue::tuples(tuples);
++    Ok(match v.get("gesture") {
++        None | Some(Value::Null) => value,
++        Some(g) => value.with_gesture(gesture_from(g)?),
++    })
++}
++
++fn term_json(id: &ProjectionId, test: &ValueTest) -> Result<Value> {
++    let bound = |b: &Bound<ScalarValue>| -> Result<Value> {
++        Ok(match b {
++            Bound::Unbounded => Value::Null,
++            Bound::Included(v) => json!({"included": scalar_json(v)?}),
++            Bound::Excluded(v) => json!({"excluded": scalar_json(v)?}),
++        })
++    };
++    Ok(match test {
++        ValueTest::Equal(v) => json!({"projection": id.as_str(), "test": "equal", "value": scalar_json(v)?}),
++        ValueTest::OneOf(vs) => json!({"projection": id.as_str(), "test": "one_of",
++            "values": vs.iter().map(scalar_json).collect::<Result<Vec<_>>>()?}),
++        ValueTest::Range { lower, upper } => json!({"projection": id.as_str(), "test": "range",
++            "lower": bound(lower)?, "upper": bound(upper)?}),
++    })
++}
++fn term_from(v: &Value) -> Result<(ProjectionId, ValueTest)> {
++    let id = ProjectionId::new(v.get("projection").and_then(Value::as_str).ok_or_else(|| bad("a term needs a projection"))?)?;
++    let bound = |b: Option<&Value>| -> Result<Bound<ScalarValue>> {
++        match b {
++            None | Some(Value::Null) => Ok(Bound::Unbounded),
++            Some(b) => match (b.get("included"), b.get("excluded")) {
++                (Some(s), None) => Ok(Bound::Included(scalar_from(s)?)),
++                (None, Some(s)) => Ok(Bound::Excluded(scalar_from(s)?)),
++                _ => Err(bad("a bound is included or excluded")),
++            },
++        }
++    };
++    let test = match v.get("test").and_then(Value::as_str) {
++        Some("equal") => ValueTest::Equal(scalar_from(v.get("value").ok_or_else(|| bad("equal needs a value"))?)?),
++        Some("one_of") => ValueTest::OneOf(
++            v.get("values").and_then(Value::as_array).ok_or_else(|| bad("one_of needs values"))?.iter().map(scalar_from).collect::<Result<_>>()?,
++        ),
++        Some("range") => ValueTest::Range { lower: bound(v.get("lower"))?, upper: bound(v.get("upper"))? },
++        other => return Err(bad(format!("unknown test {other:?}"))),
++    };
++    Ok((id, test))
++}
++
++fn scalar_json(v: &ScalarValue) -> Result<Value> {
++    let t = v.data_type();
++    if matches!(t, DataType::Binary | DataType::LargeBinary | DataType::BinaryView | DataType::FixedSizeBinary(_)) {
++        return Err(bad(format!("{t} values are not written to the log yet")));
++    }
++    let value = if v.is_null() {
++        Value::Null
++    } else {
++        let s = cast(&v.to_array()?, &DataType::Utf8).map_err(datafusion::common::DataFusionError::from)?;
++        Value::String(ScalarValue::try_from_array(&s, 0)?.to_string())
++    };
++    Ok(json!({"type": t.to_string(), "value": value}))
++}
++fn scalar_from(v: &Value) -> Result<ScalarValue> {
++    let t = v.get("type").and_then(Value::as_str).ok_or_else(|| bad("a scalar needs a type"))?;
++    let t = DataType::from_str(t).map_err(|e| bad(format!("type {t}: {e}")))?;
++    Ok(match v.get("value") {
++        None | Some(Value::Null) => ScalarValue::try_from(&t)?,
++        Some(Value::String(s)) => {
++            let value = ScalarValue::try_from_string(s.clone(), &t)?;
++            if value.is_null() {
++                return Err(bad(format!("{s} does not read as {t}")));
++            }
++            value
++        }
++        Some(_) => return Err(bad("a scalar's value is a string or null")),
++    })
++}
++
++fn gesture_json(g: &Gesture) -> Result<Value> {
++    let finite = g.points().iter().flatten().chain(g.params().iter().map(|(_, v)| v)).all(|v| v.is_finite());
++    if !finite {
++        return Err(bad("a gesture's numbers must be finite"));
++    }
++    let params: Map<String, Value> = g.params().iter().map(|(n, v)| (n.clone(), json!(v))).collect();
++    Ok(json!({"kind": g.kind(), "points": g.points(), "params": params}))
++}
++fn gesture_from(v: &Value) -> Result<Gesture> {
++    let kind = v.get("kind").and_then(Value::as_str).ok_or_else(|| bad("a gesture needs a kind"))?;
++    let num = |x: &Value| x.as_f64().ok_or_else(|| bad("a gesture's numbers are numbers"));
++    let points = v
++        .get("points")
++        .and_then(Value::as_array)
++        .ok_or_else(|| bad("a gesture needs points"))?
++        .iter()
++        .map(|p| match p.as_array().map(Vec::as_slice) {
++            Some([x, y]) => Ok([num(x)?, num(y)?]),
++            _ => Err(bad("a point is [x, y]")),
++        })
++        .collect::<Result<Vec<_>>>()?;
++    let mut g = Gesture::new(kind, points);
++    if let Some(ps) = v.get("params").and_then(Value::as_object) {
++        for (n, x) in ps {
++            g = g.with_param(n.clone(), num(x)?);
++        }
++    }
++    Ok(g)
++}
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/pixels.rs avenger-selection/src/pixels.rs
+--- avenger-selection/src/pixels.rs	2026-09-27 19:07:16.070710881 +0000
++++ avenger-selection/src/pixels.rs	2026-09-27 21:32:39.176225215 +0000
+@@ -455,5 +455,5 @@
+             }
+         }
+     }
+-    Ok(Some(SelectionValue { tuples }))
++    Ok(Some(SelectionValue { tuples, gesture: None }))
+ }
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/polygon.rs avenger-selection/src/polygon.rs
 --- avenger-selection/src/polygon.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/src/polygon.rs	2026-09-27 19:34:47.510809047 +0000
-@@ -0,0 +1,127 @@
++++ avenger-selection/src/polygon.rs	2026-09-27 21:38:54.583757146 +0000
+@@ -0,0 +1,154 @@
 +//! A polygon drawn on the screen, such as a lasso, as ordinary tuples.
 +//!
 +//! Not upstream: added in this repo (VENDORED.md). The polygon becomes one
@@ -351,24 +660,21 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +
 +use datafusion::{arrow::datatypes::DataType, common::ScalarValue};
 +
-+use crate::{Error, PixelGrid, ProjectionId, Result, SelectionValue, ValueTest};
++use crate::{Error, PixelGrid, ProducerDefinition, ProjectionId, Result, SelectionValue, ValueTest};
 +
 +impl SelectionValue {
 +    /// Select the rows whose pixel cell has its centre inside `ring`.
 +    ///
 +    /// `ring` is in chart-local logical pixels, the space the pointer draws
 +    /// in, and is closed implicitly. Insideness uses the even-odd rule. Both
-+    /// grids must be linear with a Float32 or Float64 domain and no options
-+    /// beyond `clamp` and `round: false`, and the producer must declare the
-+    /// two projections with these grids.
++    /// grids, read from the producer so that value and definition cannot
++    /// disagree, must be linear with a Float32 or Float64 domain and no
++    /// options beyond `clamp` and `round: false`.
 +    ///
 +    /// One tuple per run of cells, so the size of the predicate grows with
 +    /// the polygon's height in cells and with its concavity.
-+    pub fn polygon(
-+        u: (&ProjectionId, &PixelGrid),
-+        v: (&ProjectionId, &PixelGrid),
-+        ring: &[[f64; 2]],
-+    ) -> Result<Self> {
++    pub fn polygon(producer: &ProducerDefinition, u: &ProjectionId, v: &ProjectionId, ring: &[[f64; 2]]) -> Result<Self> {
++        let (u, v) = ((u, grid_of(producer, u)?), (v, grid_of(producer, v)?));
 +        if ring.len() < 3 || ring.iter().flatten().any(|c| !c.is_finite()) {
 +            return Err(Error::InvalidValue(
 +                "a polygon needs three or more finite points".into(),
@@ -401,8 +707,38 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +                ]);
 +            }
 +        }
++        Ok(SelectionValue::tuples(tuples).with_gesture(crate::Gesture::new("polygon", ring.iter().copied())))
++    }
++}
++
++impl SelectionValue {
++    /// Select the rows in the given cells: one tuple per cell, over one
++    /// gridded projection per dimension, such as the voxels CloudLasso keeps.
++    /// Each cell lists its index per projection, in the order of `ids`; the
++    /// grids come from the producer and follow the rules of `polygon`.
++    pub fn cells(producer: &ProducerDefinition, ids: &[&ProjectionId], cells: impl IntoIterator<Item = Vec<i64>>) -> Result<Self> {
++        let grids = ids.iter().map(|id| Ok((*id, grid_of(producer, id)?))).collect::<Result<Vec<_>>>()?;
++        let inverse = grids.iter().map(|(_, g)| Inverse::new(g)).collect::<Result<Vec<_>>>()?;
++        let mut tuples = Vec::new();
++        for cell in cells {
++            if cell.len() != grids.len() {
++                return Err(Error::InvalidValue(format!("a cell needs {} indices, one per grid", grids.len())));
++            }
++            let mut tuple = Vec::with_capacity(cell.len());
++            for ((c, (id, g)), inv) in cell.iter().zip(&grids).zip(&inverse) {
++                let v = inv.value(*c, g)?;
++                tuple.push(((*id).clone(), ValueTest::Range { lower: std::ops::Bound::Included(v.clone()), upper: std::ops::Bound::Included(v) }));
++            }
++            tuples.push(tuple);
++        }
 +        Ok(SelectionValue::tuples(tuples))
 +    }
++}
++
++fn grid_of<'a>(producer: &'a ProducerDefinition, id: &ProjectionId) -> Result<&'a PixelGrid> {
++    producer
++        .pixel_grid(id)
++        .ok_or_else(|| Error::InvalidDefinition(format!("{id} needs a pixel grid in the producer's definition")))
 +}
 +
 +// Decreasing scales map the first cell to the larger value.
@@ -486,8 +822,8 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
              combine(
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/series.rs avenger-selection/src/series.rs
 --- avenger-selection/src/series.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/src/series.rs	2026-09-27 21:14:28.264173666 +0000
-@@ -0,0 +1,146 @@
++++ avenger-selection/src/series.rs	2026-09-27 21:32:39.176695525 +0000
+@@ -0,0 +1,162 @@
 +//! Tests over a whole series: a line brush and a timebox.
 +//!
 +//! Not upstream: added in this repo (VENDORED.md). The crate's predicates are
@@ -580,9 +916,25 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        Ok(keys)
 +    }
 +
-+    /// The keys as a selection value on the producer's key projection.
-+    pub fn value(key: &ProjectionId, keys: Vec<ScalarValue>) -> SelectionValue {
-+        SelectionValue::tuple([(key.clone(), ValueTest::OneOf(keys))])
++    /// The keys as a selection value on the producer's key projection,
++    /// carrying the test as its gesture (`"segment"` or `"timebox"`).
++    pub fn value(&self, key: &ProjectionId, keys: Vec<ScalarValue>) -> SelectionValue {
++        SelectionValue::tuple([(key.clone(), ValueTest::OneOf(keys))]).with_gesture(self.gesture())
++    }
++    /// The test as a gesture, in the series' data units.
++    pub fn gesture(&self) -> crate::Gesture {
++        match self {
++            SeriesTest::Crosses { from, to } => crate::Gesture::new("segment", [*from, *to]),
++            SeriesTest::Within { x, y } => crate::Gesture::new("timebox", [[x.0, y.0], [x.1, y.1]]),
++        }
++    }
++    /// The test back from its gesture, as a replayed log gives it.
++    pub fn from_gesture(g: &crate::Gesture) -> Option<Self> {
++        match (g.kind(), g.points()) {
++            ("segment", [a, b]) => Some(SeriesTest::Crosses { from: *a, to: *b }),
++            ("timebox", [a, b]) => Some(SeriesTest::Within { x: (a[0], b[0]), y: (a[1], b[1]) }),
++            _ => None,
++        }
 +    }
 +}
 +
@@ -634,9 +986,93 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        Ok(ColumnarValue::Array(Arc::new(out)))
 +    }
 +}
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/state.rs avenger-selection/src/state.rs
+--- avenger-selection/src/state.rs	2026-09-27 19:07:17.742710980 +0000
++++ avenger-selection/src/state.rs	2026-09-27 21:33:27.692161345 +0000
+@@ -39,9 +39,9 @@
+ 
+ /// A pending update carrying its destination selection, validated when applied to a set.
+ #[derive(Clone, Debug)]
+-pub struct SelectionUpdate(Update);
++pub struct SelectionUpdate(pub(crate) Update);
+ #[derive(Clone, Debug)]
+-enum Update {
++pub(crate) enum Update {
+     Set(Producer, SelectionValue),
+     Toggle(Producer, SelectionValue),
+     Clear(ProducerAddress),
+@@ -130,7 +130,7 @@
+                                     address,
+                                     Arc::new(Contribution::from_canonical(
+                                         old.producer.clone(),
+-                                        SelectionValue { tuples: retained },
++                                        SelectionValue { tuples: retained, gesture: None },
+                                     )?),
+                                 );
+                             }
+@@ -147,7 +147,7 @@
+                             producer.address().clone(),
+                             Arc::new(Contribution::from_canonical(
+                                 producer.clone(),
+-                                SelectionValue { tuples: selected },
++                                SelectionValue { tuples: selected, gesture: None },
+                             )?),
+                         );
+                     }
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/values.rs avenger-selection/src/values.rs
+--- avenger-selection/src/values.rs	2026-09-27 19:07:18.194711007 +0000
++++ avenger-selection/src/values.rs	2026-09-27 21:32:39.175852691 +0000
+@@ -44,6 +44,8 @@
+ #[derive(Clone, Debug, Default, PartialEq, Eq)]
+ pub struct SelectionValue {
+     pub(crate) tuples: Vec<Tuple>,
++    // Not upstream (VENDORED.md): what was drawn, for the chart's outline.
++    pub(crate) gesture: Option<crate::Gesture>,
+ }
+ 
+ impl SelectionValue {
+@@ -52,6 +54,7 @@
+     pub fn tuple(terms: impl IntoIterator<Item = (ProjectionId, ValueTest)>) -> Self {
+         Self {
+             tuples: vec![terms.into_iter().collect()],
++            gesture: None,
+         }
+     }
+ 
+@@ -66,12 +69,22 @@
+                 .into_iter()
+                 .map(|terms| terms.into_iter().collect())
+                 .collect(),
++            gesture: None,
+         }
+     }
+     /// Inspect correlated tuples and their projection/comparison pairs.
+     pub fn as_tuples(&self) -> &[Vec<(ProjectionId, ValueTest)>] {
+         &self.tuples
+     }
++    /// Not upstream (VENDORED.md): carry the gesture that made this value.
++    pub fn with_gesture(mut self, gesture: crate::Gesture) -> Self {
++        self.gesture = Some(gesture);
++        self
++    }
++    /// The gesture this value came from, if the chart attached one.
++    pub fn gesture(&self) -> Option<&crate::Gesture> {
++        self.gesture.as_ref()
++    }
+ }
+ 
+ impl ValueTest {
+@@ -328,6 +341,7 @@
+ ) -> Result<SelectionValue> {
+     Ok(SelectionValue {
+         tuples: canonical_tuples(producer, value.tuples)?,
++        gesture: value.gesture,
+     })
+ }
+ 
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/tests/degree.rs avenger-selection/tests/degree.rs
 --- avenger-selection/tests/degree.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/tests/degree.rs	2026-09-27 20:41:40.345611417 +0000
++++ avenger-selection/tests/degree.rs	2026-09-27 21:38:44.117937177 +0000
 @@ -0,0 +1,122 @@
 +// Not upstream: tests for `ConsumerFilter::degree` (VENDORED.md).
 +mod common;
@@ -703,7 +1139,7 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    // A brush, and a lasso of many cell runs (the lookup path).
 +    let p = brush(1.0);
 +    let ring = [[10.0, 10.0], [90.0, 20.0], [60.0, 50.0], [85.0, 90.0], [15.0, 70.0]];
-+    let lasso = SelectionValue::polygon((&pid("x"), &grid(1.0)), (&pid("y"), &grid(1.0)), &ring).unwrap();
++    let lasso = SelectionValue::polygon(&p, &pid("x"), &pid("y"), &ring).unwrap();
 +    assert!(lasso.as_tuples().len() >= 8);
 +    let mut s = 7_u64;
 +    let mut next = || {
@@ -760,10 +1196,135 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    // Inactive: the empty policy, as a degree.
 +    assert_eq!(format!("{}", membership().degree(&s, 5.0).unwrap()), format!("{}", datafusion::logical_expr::lit(1.0)));
 +}
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/tests/log.rs avenger-selection/tests/log.rs
+--- avenger-selection/tests/log.rs	1970-01-01 00:00:00.000000000 +0000
++++ avenger-selection/tests/log.rs	2026-09-27 21:38:44.118383696 +0000
+@@ -0,0 +1,121 @@
++// Not upstream: tests for gestures, the selection log and `cells` (VENDORED.md).
++mod common;
++
++use avenger_scales_datafusion::BuiltinScale;
++use avenger_selection::*;
++use common::*;
++use datafusion::{
++    arrow::array::{ArrayRef, Float64Array, Int64Array},
++    arrow::datatypes::TimeUnit,
++    common::ScalarValue,
++    logical_expr::col,
++};
++use std::{collections::HashMap, ops::Bound, sync::Arc};
++
++fn numbers(values: &[f64]) -> ArrayRef {
++    Arc::new(Float64Array::from(values.to_vec()))
++}
++fn grid(size: f64) -> PixelGrid {
++    PixelGrid::new(BuiltinScale::Linear, numbers(&[0.0, 100.0]), numbers(&[0.0, 100.0]), HashMap::new(), 0.0, size).unwrap()
++}
++fn pid(name: &str) -> ProjectionId {
++    ProjectionId::new(name).unwrap()
++}
++fn map_producer(name: &str) -> ProducerDefinition {
++    producer(name, view("map"), &["x", "y"]).with_pixel_grids([(pid("x"), grid(1.0)), (pid("y"), grid(1.0))]).unwrap()
++}
++const RING: [[f64; 2]; 5] = [[10.0, 10.0], [90.0, 20.0], [60.0, 50.0], [85.0, 90.0], [15.0, 70.0]];
++
++#[test]
++fn a_gesture_survives_set_and_leaves_with_toggle() {
++    let lasso = map_producer("lasso");
++    let value = SelectionValue::polygon(&lasso, &pid("x"), &pid("y"), &RING).unwrap();
++    assert_eq!(value.gesture().unwrap().kind(), "polygon");
++    let value = value.clone().with_gesture(value.gesture().unwrap().clone().with_param("structure", 0.3));
++    let s = state(Resolution::Intersect).set(&lasso, value).unwrap();
++    let c = s.contributions(&id()).unwrap().next().unwrap();
++    let g = c.value().gesture().unwrap();
++    assert_eq!((g.points(), g.param("structure")), (&RING[..], Some(0.3)));
++    // Toggling a tuple changes what the outline stood for: the gesture goes.
++    let keys = producer("keys", view("legend"), &["class"]);
++    let s = state(Resolution::Intersect)
++        .set(&keys, values("class", [2_i64.into(), 6_i64.into()]).with_gesture(Gesture::new("legend", [])))
++        .unwrap()
++        .toggle(&keys, values("class", [3_i64.into()]))
++        .unwrap();
++    assert!(s.contributions(&id()).unwrap().next().unwrap().value().gesture().is_none());
++}
++
++#[tokio::test]
++async fn a_log_replays_to_the_same_predicates() {
++    let other = SelectionId::new("other").unwrap();
++    let lasso = map_producer("lasso");
++    let brush = map_producer("brush");
++    let keys = producer("keys", view("legend"), &["class", "name"]);
++    let when = ProducerDefinition::new(other.clone(), ProducerId::new("time").unwrap(), view("clock"),
++        [Projection::new(pid("t"), col("t")).unwrap()]).unwrap();
++    let defs = [lasso.clone(), brush.clone(), keys.clone(), when.clone()];
++    let ts = |v: i64| ScalarValue::TimestampMillisecond(Some(v), Some("UTC".into()));
++    let updates = vec![
++        SelectionUpdate::set(&lasso, SelectionValue::polygon(&lasso, &pid("x"), &pid("y"), &RING).unwrap()),
++        SelectionUpdate::set(&keys, SelectionValue::tuples([
++            [(pid("class"), ValueTest::equal(6_i64)), (pid("name"), ValueTest::one_of(["Building", "Bâtiment"]))],
++            [(pid("class"), ValueTest::equal(f64::NAN)), (pid("name"), ValueTest::equal(ScalarValue::Utf8(None)))],
++        ]).with_gesture(Gesture::new("legend", [[1.5, -2.25]]).with_param("soft", 0.1))),
++        SelectionUpdate::toggle(&keys, SelectionValue::tuple([(pid("class"), ValueTest::equal(2_i64)), (pid("name"), ValueTest::equal("Ground"))])),
++        SelectionUpdate::set(&brush, SelectionValue::tuple([
++            (pid("x"), ValueTest::Range { lower: Bound::Excluded(ScalarValue::Float64(Some(0.1 + 0.2))), upper: Bound::Unbounded }),
++            (pid("y"), ValueTest::range(20.0..40.0)),
++        ])),
++        SelectionUpdate::set(&when, SelectionValue::tuple([(pid("t"), ValueTest::range(ts(1_700_000_000_123)..ts(1_700_000_060_000)))])),
++        SelectionUpdate::clear(&brush),
++        SelectionUpdate::clear_all(&other),
++        SelectionUpdate::set(&when, SelectionValue::tuple([(pid("t"), ValueTest::range(ts(-5)..=ts(5)))])),
++    ];
++    let start = SelectionSet::new([(id(), Resolution::Intersect), (other.clone(), Resolution::Union)]).unwrap();
++    let lines: Vec<String> = updates.iter().map(|u| serde_json::to_string(&u.to_json().unwrap()).unwrap()).collect();
++    let producers = Producers::new(defs);
++    let replayed: Vec<SelectionUpdate> = lines
++        .iter()
++        .map(|l| SelectionUpdate::from_json(&serde_json::from_str(l).unwrap(), &producers).unwrap())
++        .collect();
++    let (mut a, mut b) = (start.clone(), start);
++    for (u, r) in updates.into_iter().zip(replayed) {
++        a = a.apply(u).unwrap();
++        b = b.apply(r).unwrap();
++        for sel in [id(), other.clone()] {
++            let f = filter(view("points"), SelectionFilter::membership(&sel, EmptySelection::MatchNone));
++            assert_eq!(format!("{}", f.predicate(&a).unwrap()), format!("{}", f.predicate(&b).unwrap()));
++            let (ca, cb): (Vec<_>, Vec<_>) = (a.contributions(&sel).unwrap().collect(), b.contributions(&sel).unwrap().collect());
++            assert_eq!(ca, cb, "contributions, gestures included, after {}", lines.len());
++        }
++    }
++    // A timestamp keeps its unit and zone; a replayed log names what it misses.
++    assert!(lines.iter().any(|l| l.contains("Timestamp") && l.contains("UTC")));
++    let _ = TimeUnit::Millisecond;
++    let err = SelectionUpdate::from_json(&serde_json::from_str(&lines[0]).unwrap(), &Producers::default()).unwrap_err();
++    assert!(err.to_string().contains("producer lasso of view map"), "{err}");
++}
++
++#[tokio::test]
++async fn cells_select_exactly_their_rows() {
++    let (gx, gy) = (grid(4.0), grid(4.0));
++    let p = producer("voxels", view("map"), &["x", "y"]).with_pixel_grids([(pid("x"), gx.clone()), (pid("y"), gy.clone())]).unwrap();
++    let cells = vec![vec![1, 2], vec![3, 4], vec![3, 5]];
++    let v = SelectionValue::cells(&p, &[&pid("x"), &pid("y")], cells.clone()).unwrap();
++    let s = state(Resolution::Intersect).set(&p, v).unwrap();
++    let pts: Vec<(f64, f64)> = (0..25).flat_map(|i| (0..25).map(move |j| (i as f64 * 4.0 + 1.3, j as f64 * 4.0 + 2.1))).collect();
++    let rows = batch(vec![
++        ("id", Arc::new(Int64Array::from_iter_values(0..pts.len() as i64))),
++        ("x", numbers(&pts.iter().map(|p| p.0).collect::<Vec<_>>())),
++        ("y", numbers(&pts.iter().map(|p| p.1).collect::<Vec<_>>())),
++    ]);
++    let want: Vec<i64> = pts
++        .iter()
++        .enumerate()
++        .filter(|(_, p)| cells.contains(&vec![(p.0 / 4.0).floor() as i64, (p.1 / 4.0).floor() as i64]))
++        .map(|(i, _)| i as i64)
++        .collect();
++    assert_eq!(want.len(), 3);
++    assert_eq!(selected(rows, membership().predicate(&s).unwrap()).await, want);
++}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/tests/polygon.rs avenger-selection/tests/polygon.rs
 --- avenger-selection/tests/polygon.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/tests/polygon.rs	2026-09-27 19:35:17.430810826 +0000
-@@ -0,0 +1,98 @@
++++ avenger-selection/tests/polygon.rs	2026-09-27 21:38:44.117803419 +0000
+@@ -0,0 +1,103 @@
 +// Not upstream: tests for `SelectionValue::polygon` (VENDORED.md).
 +mod common;
 +
@@ -811,7 +1372,7 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        let (gx, gy) = (linear([1000.0, 1500.0], [0.0, 200.0], size), linear([2000.0, 2400.0], [200.0, 0.0], size));
 +        let (u, v) = (ProjectionId::new("x").unwrap(), ProjectionId::new("y").unwrap());
 +        let lasso = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), gx.clone()), (v.clone(), gy.clone())]).unwrap();
-+        let value = SelectionValue::polygon((&u, &gx), (&v, &gy), &RING).unwrap();
++        let value = SelectionValue::polygon(&lasso, &u, &v, &RING).unwrap();
 +        let n_tuples = value.as_tuples().len();
 +        let s = state(Resolution::Intersect).set(&lasso, value).unwrap();
 +        let (xs, ys) = scatter();
@@ -838,9 +1399,9 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    let g = linear([0.0, 100.0], [0.0, 100.0], 1.0);
 +    let (u, v) = (ProjectionId::new("x").unwrap(), ProjectionId::new("y").unwrap());
 +    // Thinner than a cell: no centre falls inside.
-+    let value = SelectionValue::polygon((&u, &g), (&v, &g), &[[10.2, 10.2], [10.4, 10.2], [10.3, 10.4]]).unwrap();
++    let lasso = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), g.clone()), (v.clone(), g)]).unwrap();
++    let value = SelectionValue::polygon(&lasso, &u, &v, &[[10.2, 10.2], [10.4, 10.2], [10.3, 10.4]]).unwrap();
 +    assert!(value.as_tuples().is_empty());
-+    let lasso = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u, g.clone()), (v, g)]).unwrap();
 +    let s = state(Resolution::Intersect).set(&lasso, value).unwrap();
 +    let rows = batch(vec![("id", Arc::new(Int64Array::from(vec![0_i64]))), ("x", numbers(&[10.3])), ("y", numbers(&[10.3]))]);
 +    assert!(selected(rows, membership().predicate(&s).unwrap()).await.is_empty());
@@ -850,7 +1411,11 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +fn rejects_what_it_cannot_invert() {
 +    let g = linear([0.0, 100.0], [0.0, 100.0], 1.0);
 +    let (u, v) = (ProjectionId::new("x").unwrap(), ProjectionId::new("y").unwrap());
-+    assert!(SelectionValue::polygon((&u, &g), (&v, &g), &[[0.0, 0.0], [1.0, 1.0]]).is_err());
++    let ok = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), g.clone()), (v.clone(), g.clone())]).unwrap();
++    assert!(SelectionValue::polygon(&ok, &u, &v, &[[0.0, 0.0], [1.0, 1.0]]).is_err());
++    // A projection without a grid in the definition.
++    let ungridded = producer("lasso", view("map"), &["x", "y"]);
++    assert!(SelectionValue::polygon(&ungridded, &u, &v, &RING).is_err());
 +    let t = PixelGrid::new(
 +        BuiltinScale::Time,
 +        Arc::new(TimestampMillisecondArray::from(vec![0_i64, 1000])),
@@ -860,11 +1425,12 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        1.0,
 +    )
 +    .unwrap();
-+    assert!(SelectionValue::polygon((&u, &t), (&v, &g), &RING).is_err());
++    let timed = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), t), (v.clone(), g)]).unwrap();
++    assert!(SelectionValue::polygon(&timed, &u, &v, &RING).is_err());
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/tests/series.rs avenger-selection/tests/series.rs
 --- avenger-selection/tests/series.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/tests/series.rs	2026-09-27 21:13:30.810392592 +0000
++++ avenger-selection/tests/series.rs	2026-09-27 21:32:39.176790945 +0000
 @@ -0,0 +1,107 @@
 +// Not upstream: tests for `SeriesTest` (VENDORED.md).
 +mod common;
@@ -966,7 +1532,7 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    // The keys as a selection, applied to another relation that shares them.
 +    let key = ProjectionId::new("line").unwrap();
 +    let p = producer("brush", view("lines"), &["line"]);
-+    let st = state(Resolution::Intersect).set(&p, SeriesTest::value(&key, seg.iter().map(|k| ScalarValue::Int64(Some(*k))).collect())).unwrap();
++    let st = state(Resolution::Intersect).set(&p, SeriesTest::Crosses { from: a, to: b }.value(&key, seg.iter().map(|k| ScalarValue::Int64(Some(*k))).collect())).unwrap();
 +    let raw = batch(vec![
 +        ("id", Arc::new(Int64Array::from_iter_values(0..300))),
 +        ("line", Arc::new(Int64Array::from_iter_values(0..300))),
