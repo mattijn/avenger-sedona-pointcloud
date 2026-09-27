@@ -101,6 +101,27 @@
   .hot:hover .box { stroke: var(--accent); }
   .axis { stroke: var(--grid); stroke-width: 1; }
   .track { fill: var(--track); }
+  /* Touch: big fixed controls outside the scaled stage, so a finger fits. */
+  html { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  #touch, #rotate { display: none; }
+  body.touch #touch { display: block; }
+  #touch button {
+    position: fixed; z-index: 10; border: none; background: transparent; color: #949494;
+    font: inherit; padding: 0; cursor: pointer;
+  }
+  #tprev, #tnext { top: 0; bottom: 0; width: max(64px, calc((100vw - 100vh * 16 / 9) / 2)); font-size: 44px; }
+  #tprev { left: 0; } #tnext { right: 0; }
+  #tprev:active, #tnext:active { background: rgba(0, 153, 204, 0.08); color: #0099cc; }
+  #tnerd {
+    top: 10px; right: 10px; width: 56px; height: 56px; font-size: 22px;
+    border: 1px solid #b8b8b8 !important; background: rgba(255, 255, 255, 0.9) !important;
+  }
+  #tnerd.on { color: #0099cc; border-color: #0099cc !important; }
+  #tcount { position: fixed; z-index: 10; bottom: 10px; right: 14px; font-size: 16px; color: #949494; }
+  @media (orientation: portrait) {
+    body.touch #rotate { display: flex; position: fixed; inset: 0; z-index: 20; background: #fff;
+                         align-items: center; justify-content: center; }
+  }
 </style>
 </head>
 <body>
@@ -121,6 +142,21 @@
       <div id="nav"><button id="prev" aria-label="back">‹</button> <button id="next" aria-label="next">›</button> <button id="nerdbtn">stats for nerds</button></div>
     </div>
   </aside>
+</div>
+
+<div id="touch">
+  <button id="tprev" aria-label="back">‹</button>
+  <button id="tnext" aria-label="next">›</button>
+  <button id="tnerd" aria-label="stats for nerds">{ }</button>
+  <div id="tcount"></div>
+</div>
+<div id="rotate" aria-label="turn the phone sideways">
+  <svg width="160" height="160" viewBox="0 0 160 160">
+    <rect x="58" y="30" width="44" height="80" fill="none" stroke="#b8b8b8" stroke-width="3"/>
+    <rect x="40" y="88" width="80" height="44" fill="none" stroke="#0099cc" stroke-width="3"/>
+    <path d="M118,52 a34,34 0 0 1 12,30" fill="none" stroke="#0099cc" stroke-width="3"/>
+    <path d="M124,80 l6,8 l6,-9" fill="none" stroke="#0099cc" stroke-width="3"/>
+  </svg>
 </div>
 
 <script>
@@ -357,6 +393,7 @@ function defs() {
 
 // Hover a node: everything not connected to it fades.
 function wireHover(hoverText) {
+  if (document.body.classList.contains("touch")) return;   // a tap is not a hover
   svg.querySelectorAll(".hot").forEach(n => {
     const id = n.getAttribute("data-id");
     n.addEventListener("mouseenter", () => {
@@ -1056,7 +1093,9 @@ function show() {
   document.querySelectorAll("svg [data-s]").forEach(e => {
     e.classList.toggle("on", Number(e.getAttribute("data-s")) <= step);
   });
-  history.replaceState(null, "", "#" + (cur + 1) + (step ? "." + step : ""));
+  history.replaceState(null, "", location.search + "#" + (cur + 1) + (step ? "." + step : ""));
+  const tc = document.getElementById("tcount");
+  if (tc) tc.textContent = (cur + 1) + " / " + SLIDES.length;
 }
 
 function go(i, s) {
@@ -1086,6 +1125,34 @@ document.addEventListener("keydown", e => {
 document.getElementById("next").onclick = next;
 document.getElementById("prev").onclick = prev;
 document.getElementById("nerdbtn").onclick = () => nerds.classList.toggle("on");
+
+
+// Touch: tap the slide to go on (its left third goes back), swipe either
+// way, or use the big controls in the margins. ?touch forces this look.
+const coarse = window.matchMedia("(pointer: coarse)").matches || /[?&]touch\b/.test(location.search);
+if (coarse) document.body.classList.add("touch");
+document.getElementById("tprev").onclick = prev;
+document.getElementById("tnext").onclick = next;
+document.getElementById("tnerd").onclick = () => {
+  nerds.classList.toggle("on");
+  document.getElementById("tnerd").classList.toggle("on", nerds.classList.contains("on"));
+};
+let t0 = null;
+const stage = document.getElementById("stage");
+stage.addEventListener("touchstart", e => { t0 = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() }; }, { passive: true });
+stage.addEventListener("touchend", e => {
+  if (!t0) return;
+  const t = e.changedTouches[0], dx = t.clientX - t0.x, dy = t.clientY - t0.y;
+  const quick = Date.now() - t0.t < 600;
+  t0 = null;
+  if (e.target.closest("button, #dots i")) return;
+  if (nerds.classList.contains("on")) { nerds.classList.remove("on"); document.getElementById("tnerd").classList.remove("on"); return; }
+  if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) { dx < 0 ? next() : prev(); return; }
+  if (quick && Math.abs(dx) < 12 && Math.abs(dy) < 12) {
+    const r = stage.getBoundingClientRect();
+    (t.clientX - r.left) < r.width * 0.3 ? prev() : next();
+  }
+}, { passive: true });
 
 function fit() {
   const st = document.getElementById("stage");
