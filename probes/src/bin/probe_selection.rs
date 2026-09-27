@@ -370,6 +370,61 @@ async fn series(ctx: &SessionContext, tile: &str) -> DFResult<(Vec<ProducerDefin
         println!("{label}: lines {got:?} in {t_keys:.1} ms; experiment 7's loop agrees: {}; their raw points: {n_pts} in {t_pts:.0} ms",
                  if got == want { "yes".to_string() } else { format!("NO, it has {want:?}") });
     }
+    // Soft series, with experiment 7's values (`--soft 0.2`, `--soft 0.1`) and
+    // its unit square: x over 0..ceil(max t), y over nice(0, max n).
+    let tmax = lines.values().flatten().map(|p| p[0]).fold(0.0, f64::max).ceil();
+    let nmax = lines.values().flatten().map(|p| p[1]).fold(0.0, f64::max);
+    let nice_hi = {
+        let step = 10f64.powf((nmax / 5.0).log10().floor());
+        let step = [1.0, 2.0, 5.0, 10.0].iter().map(|m| m * step).find(|st| nmax / st <= 6.0).unwrap_or(step * 10.0);
+        (nmax / step).ceil() * step
+    };
+    let scale = [1.0 / tmax, 1.0 / nice_hi];
+    for (label, test, soft) in [("soft line brush", &tests[0].1, 0.2), ("soft timebox", &tests[1].1, 0.1)] {
+        let t0 = Instant::now();
+        let got = test.degrees(fm.table("flight").await?, col("line"), col("t"), col("n"), scale, soft).await.unwrap();
+        let t_deg = ms(t0);
+        // Experiment 7's formulas (layer/model.rs), in the same unit square.
+        let unit = |p: [f64; 2]| [p[0] * scale[0], p[1] * scale[1]];
+        let want: Vec<(i64, f64)> = lines.iter().map(|(l, pts)| {
+            let d = match test {
+                SeriesTest::Crosses { from, to } => {
+                    if pts.windows(2).any(|w| o(*from, *to, w[0]) * o(*from, *to, w[1]) <= 0.0 && o(w[0], w[1], *from) * o(w[0], w[1], *to) <= 0.0) { 1.0 } else {
+                        let (ua, ub) = (unit(*from), unit(*to));
+                        let seg = |p: [f64; 2]| {
+                            let (vx, vy) = (ub[0] - ua[0], ub[1] - ua[1]);
+                            let t = (((p[0] - ua[0]) * vx + (p[1] - ua[1]) * vy) / (vx * vx + vy * vy).max(1e-12)).clamp(0.0, 1.0);
+                            (p[0] - (ua[0] + t * vx)).hypot(p[1] - (ua[1] + t * vy))
+                        };
+                        (1.0 - pts.iter().map(|p| seg(unit(*p))).fold(f64::MAX, f64::min) / soft).clamp(0.0, 1.0)
+                    }
+                }
+                SeriesTest::Within { x, y } => {
+                    let within: Vec<&[f64; 2]> = pts.iter().filter(|p| p[0] >= x.0 && p[0] <= x.1).collect();
+                    if within.is_empty() { 0.0 } else { within.iter().filter(|p| p[1] >= y.0 && p[1] <= y.1).count() as f64 / within.len() as f64 }
+                }
+            };
+            (*l, d)
+        }).filter(|(_, d)| *d > 0.0).collect();
+        let got_l: Vec<(i64, f64)> = got.iter().map(|(k, d)| (match k.cast_to(&DataType::Int64).unwrap() { datafusion::common::ScalarValue::Int64(Some(v)) => v, _ => -1 }, *d)).collect();
+        let worst = got_l.iter().zip(&want).map(|(a, b)| if a.0 == b.0 { (a.1 - b.1).abs() } else { f64::INFINITY }).fold(0.0, f64::max);
+        let same = got_l.len() == want.len() && worst < 1e-9;
+        // The degrees on the raw points, through degree().
+        let key = ProjectionId::new("line").unwrap();
+        let sel = SelectionId::new("series").unwrap();
+        let producer = ProducerDefinition::new(sel.clone(), ProducerId::new("brush").unwrap(), ViewId::new("lines").unwrap(),
+            [Projection::new(key.clone(), col("point_source_id")).unwrap()]).unwrap();
+        let value = test.soft_value(&key, got.clone(), scale, soft);
+        let update = avenger_selection::SelectionUpdate::set(&producer, value);
+        let state = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap().apply(update.clone()).unwrap();
+        let degree = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::cross_filter([&sel])).degree(&state, 1.0).unwrap();
+        let (t_pts, n_faded) = best(3, || async { let df = mem.table("input").await?.select(vec![degree.clone().alias("d")])?; count(df.filter(col("d").gt(lit(0.0)).and(col("d").lt(lit(1.0))))?).await }).await?;
+        println!("{label} (soft {soft}): degrees {:?} in {t_deg:.1} ms; experiment 7's formula agrees: {}; {n_faded} raw points faded, degrees for all in {t_pts:.0} ms",
+                 got_l.iter().map(|(l, d)| format!("{l}: {d:.3}")).collect::<Vec<_>>(), if same { "yes".to_string() } else { format!("NO, it has {want:?}") });
+        defs.push(producer);
+        updates.push(update);
+    }
+
     // As a stream would deliver the tile, in gps_time order: rebuild the
     // lines and the keys after each quarter of the points. (Quarters of the
     // flight time would not do: the lines are minutes apart.)
@@ -595,8 +650,19 @@ async fn log_roundtrip(cloud_defs: &[ProducerDefinition], cloud: &[avenger_selec
                 "cloudlasso" => { let v = redraw_cloud.voxels(&b).await?.0; d.redraw(v) }
                 "segment" | "timebox" => {
                     let test = SeriesTest::from_gesture(&d.gesture).unwrap();
-                    let keys = test.keys(flight.table("flight").await?, col("line"), col("t"), col("n")).await.unwrap();
-                    d.redraw(test.value(&ProjectionId::new("line").unwrap(), keys))
+                    let key = ProjectionId::new("line").unwrap();
+                    let rows = flight.table("flight").await?;
+                    match d.gesture.param("soft") {
+                        None => {
+                            let keys = test.keys(rows, col("line"), col("t"), col("n")).await.unwrap();
+                            d.redraw(test.value(&key, keys))
+                        }
+                        Some(w) => {
+                            let scale = [d.gesture.param("sx").unwrap(), d.gesture.param("sy").unwrap()];
+                            let degrees = test.degrees(rows, col("line"), col("t"), col("n"), scale, w).await.unwrap();
+                            d.redraw(test.soft_value(&key, degrees, scale, w))
+                        }
+                    }
                 }
                 other => panic!("no redraw for {other}"),
             },

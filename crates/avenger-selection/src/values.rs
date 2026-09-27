@@ -46,6 +46,8 @@ pub struct SelectionValue {
     pub(crate) tuples: Vec<Tuple>,
     // Not upstream (VENDORED.md): what was drawn, for the chart's outline.
     pub(crate) gesture: Option<crate::Gesture>,
+    // Not upstream (VENDORED.md): degrees for keys selected only in part.
+    pub(crate) partial: Option<crate::degree::KeyDegrees>,
 }
 
 impl SelectionValue {
@@ -55,6 +57,7 @@ impl SelectionValue {
         Self {
             tuples: vec![terms.into_iter().collect()],
             gesture: None,
+            partial: None,
         }
     }
 
@@ -70,6 +73,7 @@ impl SelectionValue {
                 .map(|terms| terms.into_iter().collect())
                 .collect(),
             gesture: None,
+            partial: None,
         }
     }
     /// Inspect correlated tuples and their projection/comparison pairs.
@@ -80,6 +84,18 @@ impl SelectionValue {
     pub fn with_gesture(mut self, gesture: crate::Gesture) -> Self {
         self.gesture = Some(gesture);
         self
+    }
+    /// Not upstream (VENDORED.md): degrees in (0, 1) for rows the tuples do
+    /// not select, by the value of one ungridded projection, such as the
+    /// series a soft line brush comes near. `predicate` ignores them;
+    /// `degree` gives them. Degrees outside (0, 1) are refused when applied.
+    pub fn with_partial(mut self, projection: ProjectionId, degrees: impl IntoIterator<Item = (ScalarValue, f64)>) -> Self {
+        self.partial = Some(crate::degree::KeyDegrees { projection, degrees: degrees.into_iter().collect() });
+        self
+    }
+    /// The partial degrees, if any: the projection and (value, degree) pairs.
+    pub fn partial(&self) -> Option<(&ProjectionId, &[(ScalarValue, f64)])> {
+        self.partial.as_ref().map(|p| (&p.projection, p.degrees.as_slice()))
     }
     /// The gesture this value came from, if the chart attached one.
     pub fn gesture(&self) -> Option<&crate::Gesture> {
@@ -342,6 +358,7 @@ pub(crate) fn canonical_value(
     Ok(SelectionValue {
         tuples: canonical_tuples(producer, value.tuples)?,
         gesture: value.gesture,
+        partial: value.partial.map(|p| p.canonical(producer)).transpose()?,
     })
 }
 

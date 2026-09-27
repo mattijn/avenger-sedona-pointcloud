@@ -37,7 +37,9 @@ The additions so far:
 - **`SeriesTest`** (`src/series.rs`, `tests/series.rs`): a line brush
   (`Crosses`) and a timebox (`Within`) over a whole series, run as one query
   that returns the passing keys; `SeriesTest::value` makes them a `one_of`
-  on the key projection (FINDINGS.md 27).
+  on the key projection (FINDINGS.md 27). `SeriesTest::degrees` and
+  `soft_value` give soft series, with partial degrees per key
+  (`SelectionValue::with_partial`, read by `degree`; FINDINGS.md 30).
 
 - **`SelectionValue::cells`** (`src/polygon.rs`): a set of grid cells, such
   as CloudLasso's voxels, as one tuple per cell (FINDINGS.md 28). It and

@@ -80,9 +80,32 @@ fn contribution(c: &ResolvedContribution, width: f64) -> Result<Expr> {
     let tuples = c.contribution.effective_value().as_tuples();
     let producer = c.contribution.producer();
     let ranges = tuples.iter().flatten().any(|(_, t)| matches!(t, ValueTest::Range { .. }));
+    let partial = c.contribution.value().partial.as_ref();
     if !ranges {
         let p = crate::predicate::contribution(c);
-        return Ok(when(p, lit(1.0)).otherwise(lit(0.0))?);
+        // Rows the tuples leave out take their key's partial degree, if any.
+        let rest = match partial {
+            None => lit(0.0),
+            Some(k) => {
+                let i = producer.projections().iter().position(|p| p.id() == &k.projection).expect("checked when applied");
+                let key = c.projections[i].clone();
+                let mut degrees = k.degrees.iter();
+                match degrees.next() {
+                    None => lit(0.0),
+                    Some((v, d)) => {
+                        let mut case = when(key.clone().eq(lit(v.clone())), lit(*d));
+                        for (v, d) in degrees {
+                            case = case.when(key.clone().eq(lit(v.clone())), lit(*d));
+                        }
+                        case.otherwise(lit(0.0))?
+                    }
+                }
+            }
+        };
+        return Ok(when(p, lit(1.0)).otherwise(rest)?);
+    }
+    if partial.is_some() {
+        return Err(Error::InvalidDefinition("partial degrees go with keys, not with ranges".into()));
     }
     let mut sizes = Vec::new();
     for p in producer.projections() {
@@ -165,5 +188,43 @@ impl ScalarUDFImpl for CellDegree {
             })
             .collect();
         Ok(ColumnarValue::Array(Arc::new(out)))
+    }
+}
+
+/// Degrees in (0, 1) for keys a value selects only in part (not upstream).
+#[derive(Clone, Debug)]
+pub(crate) struct KeyDegrees {
+    pub(crate) projection: crate::ProjectionId,
+    pub(crate) degrees: Vec<(datafusion::common::ScalarValue, f64)>,
+}
+impl PartialEq for KeyDegrees {
+    fn eq(&self, other: &Self) -> bool {
+        self.projection == other.projection
+            && self.degrees.len() == other.degrees.len()
+            && self.degrees.iter().zip(&other.degrees).all(|((a, x), (b, y))| a == b && x.to_bits() == y.to_bits())
+    }
+}
+impl Eq for KeyDegrees {}
+impl KeyDegrees {
+    /// Checked against the producer, sorted by key, one degree per key.
+    pub(crate) fn canonical(self, producer: &crate::ProducerDefinition) -> Result<Self> {
+        if !producer.projections().iter().any(|p| p.id() == &self.projection) {
+            return Err(Error::InvalidValue(format!("partial degrees name {}, which the producer does not project", self.projection)));
+        }
+        if producer.pixel_grid(&self.projection).is_some() {
+            return Err(Error::InvalidValue(format!("partial degrees need an ungridded key, and {} has a pixel grid", self.projection)));
+        }
+        if let Some((_, d)) = self.degrees.iter().find(|(_, d)| !(d.is_finite() && *d > 0.0 && *d < 1.0)) {
+            return Err(Error::InvalidValue(format!("a partial degree lies in (0, 1), not {d}")));
+        }
+        let mut keys: Vec<_> = self.degrees.iter().map(|(k, _)| k.clone()).collect();
+        let n = keys.len();
+        keys = crate::values::canonical_values(keys)?;
+        if keys.len() != n {
+            return Err(Error::InvalidValue("partial degrees name a key twice".into()));
+        }
+        let mut degrees = self.degrees;
+        degrees.sort_by(|a, b| crate::values::scalar_cmp(&a.0, &b.0));
+        Ok(Self { projection: self.projection, degrees })
     }
 }

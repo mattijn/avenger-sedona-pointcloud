@@ -145,8 +145,8 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/degree.rs avenger-selection/src/degree.rs
 --- avenger-selection/src/degree.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/src/degree.rs	2026-09-27 20:49:30.000812236 +0000
-@@ -0,0 +1,169 @@
++++ avenger-selection/src/degree.rs	2026-09-27 22:06:53.694262880 +0000
+@@ -0,0 +1,230 @@
 +//! A degree of interest in [0, 1], beside the yes-or-no predicate.
 +//!
 +//! Not upstream: added in this repo (VENDORED.md). Soft selection (Doleisch
@@ -229,9 +229,32 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    let tuples = c.contribution.effective_value().as_tuples();
 +    let producer = c.contribution.producer();
 +    let ranges = tuples.iter().flatten().any(|(_, t)| matches!(t, ValueTest::Range { .. }));
++    let partial = c.contribution.value().partial.as_ref();
 +    if !ranges {
 +        let p = crate::predicate::contribution(c);
-+        return Ok(when(p, lit(1.0)).otherwise(lit(0.0))?);
++        // Rows the tuples leave out take their key's partial degree, if any.
++        let rest = match partial {
++            None => lit(0.0),
++            Some(k) => {
++                let i = producer.projections().iter().position(|p| p.id() == &k.projection).expect("checked when applied");
++                let key = c.projections[i].clone();
++                let mut degrees = k.degrees.iter();
++                match degrees.next() {
++                    None => lit(0.0),
++                    Some((v, d)) => {
++                        let mut case = when(key.clone().eq(lit(v.clone())), lit(*d));
++                        for (v, d) in degrees {
++                            case = case.when(key.clone().eq(lit(v.clone())), lit(*d));
++                        }
++                        case.otherwise(lit(0.0))?
++                    }
++                }
++            }
++        };
++        return Ok(when(p, lit(1.0)).otherwise(rest)?);
++    }
++    if partial.is_some() {
++        return Err(Error::InvalidDefinition("partial degrees go with keys, not with ranges".into()));
 +    }
 +    let mut sizes = Vec::new();
 +    for p in producer.projections() {
@@ -314,6 +337,44 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +            })
 +            .collect();
 +        Ok(ColumnarValue::Array(Arc::new(out)))
++    }
++}
++
++/// Degrees in (0, 1) for keys a value selects only in part (not upstream).
++#[derive(Clone, Debug)]
++pub(crate) struct KeyDegrees {
++    pub(crate) projection: crate::ProjectionId,
++    pub(crate) degrees: Vec<(datafusion::common::ScalarValue, f64)>,
++}
++impl PartialEq for KeyDegrees {
++    fn eq(&self, other: &Self) -> bool {
++        self.projection == other.projection
++            && self.degrees.len() == other.degrees.len()
++            && self.degrees.iter().zip(&other.degrees).all(|((a, x), (b, y))| a == b && x.to_bits() == y.to_bits())
++    }
++}
++impl Eq for KeyDegrees {}
++impl KeyDegrees {
++    /// Checked against the producer, sorted by key, one degree per key.
++    pub(crate) fn canonical(self, producer: &crate::ProducerDefinition) -> Result<Self> {
++        if !producer.projections().iter().any(|p| p.id() == &self.projection) {
++            return Err(Error::InvalidValue(format!("partial degrees name {}, which the producer does not project", self.projection)));
++        }
++        if producer.pixel_grid(&self.projection).is_some() {
++            return Err(Error::InvalidValue(format!("partial degrees need an ungridded key, and {} has a pixel grid", self.projection)));
++        }
++        if let Some((_, d)) = self.degrees.iter().find(|(_, d)| !(d.is_finite() && *d > 0.0 && *d < 1.0)) {
++            return Err(Error::InvalidValue(format!("a partial degree lies in (0, 1), not {d}")));
++        }
++        let mut keys: Vec<_> = self.degrees.iter().map(|(k, _)| k.clone()).collect();
++        let n = keys.len();
++        keys = crate::values::canonical_values(keys)?;
++        if keys.len() != n {
++            return Err(Error::InvalidValue("partial degrees name a key twice".into()));
++        }
++        let mut degrees = self.degrees;
++        degrees.sort_by(|a, b| crate::values::scalar_cmp(&a.0, &b.0));
++        Ok(Self { projection: self.projection, degrees })
 +    }
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/gesture.rs avenger-selection/src/gesture.rs
@@ -714,13 +775,13 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/pixels.rs avenger-selection/src/pixels.rs
 --- avenger-selection/src/pixels.rs	2026-09-27 19:07:16.070710881 +0000
-+++ avenger-selection/src/pixels.rs	2026-09-27 21:32:39.176225215 +0000
++++ avenger-selection/src/pixels.rs	2026-09-27 22:06:34.682581850 +0000
 @@ -455,5 +455,5 @@
              }
          }
      }
 -    Ok(Some(SelectionValue { tuples }))
-+    Ok(Some(SelectionValue { tuples, gesture: None }))
++    Ok(Some(SelectionValue { tuples, gesture: None, partial: None }))
  }
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/polygon.rs avenger-selection/src/polygon.rs
 --- avenger-selection/src/polygon.rs	1970-01-01 00:00:00.000000000 +0000
@@ -914,8 +975,8 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
              combine(
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/series.rs avenger-selection/src/series.rs
 --- avenger-selection/src/series.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/src/series.rs	2026-09-27 21:32:39.176695525 +0000
-@@ -0,0 +1,162 @@
++++ avenger-selection/src/series.rs	2026-09-27 22:07:30.841918781 +0000
+@@ -0,0 +1,275 @@
 +//! Tests over a whole series: a line brush and a timebox.
 +//!
 +//! Not upstream: added in this repo (VENDORED.md). The crate's predicates are
@@ -1008,6 +1069,80 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        Ok(keys)
 +    }
 +
++    /// Soft selection over whole series (experiment 7's `--soft`): each
++    /// series' degree in (0, 1], in key order, leaving out series at 0.
++    ///
++    /// A line brush gives 1 to a series that crosses it, and otherwise
++    /// falls linearly with its nearest vertex's distance to the segment, to 0
++    /// at `width`. Distances are measured after multiplying x and y by
++    /// `scale`: pixels per data unit, or `1 / span` for the plot's unit
++    /// square as experiment 7 measures. A timebox gives the share of a
++    /// series' vertices within its x-range whose y lies in its y-range; it
++    /// has no distance, and ignores `scale` and `width`.
++    pub async fn degrees(&self, rows: DataFrame, key: Expr, x: Expr, y: Expr, scale: [f64; 2], width: f64) -> Result<Vec<(ScalarValue, f64)>> {
++        use datafusion::functions_aggregate::expr_fn::{bool_or, min};
++        if !(scale.iter().all(|s| s.is_finite() && *s > 0.0) && width.is_finite() && width > 0.0) {
++            return Err(Error::InvalidValue("soft series need a positive scale and width".into()));
++        }
++        let f64 = |e: Expr| datafusion::logical_expr::cast(e, DataType::Float64);
++        let rows = rows.select(vec![key.alias("k"), f64(x).alias("x"), f64(y).alias("y")])?;
++        let (agg, degree): (DataFrame, Box<dyn Fn(&[f64]) -> f64>) = match self {
++            SeriesTest::Crosses { from, to } => {
++                let prev = |c: &str| {
++                    lag(col(c), Some(1), None).partition_by(vec![col("k")]).order_by(vec![col("x").sort(true, false)]).build()
++                };
++                let near = ScalarUDF::from(Distance {
++                    segment: [from[0], from[1], to[0], to[1]].map(f64::to_bits),
++                    scale: scale.map(f64::to_bits),
++                    signature: Signature::uniform(2, vec![DataType::Float64], Volatility::Immutable),
++                });
++                let agg = rows
++                    .window(vec![prev("x")?.alias("px"), prev("y")?.alias("py")])?
++                    .aggregate(
++                        vec![col("k")],
++                        vec![
++                            bool_or(crosses(*from, *to).call(vec![col("px"), col("py"), col("x"), col("y")])).alias("a"),
++                            min(near.call(vec![col("x"), col("y")])).alias("b"),
++                        ],
++                    )?;
++                (agg, Box::new(move |v: &[f64]| if v[0] > 0.0 { 1.0 } else { (1.0 - v[1] / width).max(0.0) }))
++            }
++            SeriesTest::Within { x, y } => {
++                let in_x = col("x").between(lit(x.0), lit(x.1));
++                let in_y = col("y").between(lit(y.0), lit(y.1));
++                let one = |c: Expr| when(c, lit(1.0)).otherwise(lit(0.0));
++                let agg = rows.aggregate(vec![col("k")], vec![sum(one(in_x.clone())?).alias("a"), sum(one(in_x.and(in_y))?).alias("b")])?;
++                (agg, Box::new(|v: &[f64]| if v[0] > 0.0 { v[1] / v[0] } else { 0.0 }))
++            }
++        };
++        let mut out = Vec::new();
++        for b in agg.sort(vec![col("k").sort(true, false)])?.collect().await? {
++            let num = |c: &str| -> Result<datafusion::arrow::array::Float64Array> {
++                let a = cast(b.column_by_name(c).unwrap(), &DataType::Float64).map_err(datafusion::common::DataFusionError::from)?;
++                Ok(a.as_any().downcast_ref::<Float64Array>().unwrap().clone())
++            };
++            let (a, bb) = (num("a")?, num("b")?);
++            let k = b.column_by_name("k").unwrap();
++            for i in 0..b.num_rows() {
++                let d = degree(&[if a.is_null(i) { 0.0 } else { a.value(i) }, if bb.is_null(i) { f64::INFINITY } else { bb.value(i) }]);
++                if d > 0.0 {
++                    out.push((ScalarValue::try_from_array(k, i)?, d));
++                }
++            }
++        }
++        Ok(out)
++    }
++
++    /// Soft degrees as a selection value: the series at 1 as tuples, the
++    /// rest as partial degrees, and the gesture with `soft` (the width) and
++    /// `sx`, `sy` (the scale), so a log can draw it again.
++    pub fn soft_value(&self, key: &ProjectionId, degrees: Vec<(ScalarValue, f64)>, scale: [f64; 2], width: f64) -> SelectionValue {
++        let (full, part): (Vec<_>, Vec<_>) = degrees.into_iter().partition(|(_, d)| *d >= 1.0);
++        SelectionValue::tuple([(key.clone(), ValueTest::OneOf(full.into_iter().map(|(k, _)| k).collect()))])
++            .with_partial(key.clone(), part)
++            .with_gesture(self.gesture().with_param("soft", width).with_param("sx", scale[0]).with_param("sy", scale[1]))
++    }
++
 +    /// The keys as a selection value on the producer's key projection,
 +    /// carrying the test as its gesture (`"segment"` or `"timebox"`).
 +    pub fn value(&self, key: &ProjectionId, keys: Vec<ScalarValue>) -> SelectionValue {
@@ -1078,9 +1213,48 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        Ok(ColumnarValue::Array(Arc::new(out)))
 +    }
 +}
++
++/// The distance from (x, y) to the segment, after scaling both axes.
++#[derive(Debug, PartialEq, Eq, Hash)]
++struct Distance {
++    segment: [u64; 4],
++    scale: [u64; 2],
++    signature: Signature,
++}
++impl ScalarUDFImpl for Distance {
++    fn name(&self) -> &str {
++        "avenger_selection_segment_distance"
++    }
++    fn signature(&self) -> &Signature {
++        &self.signature
++    }
++    fn return_type(&self, _: &[DataType]) -> DFResult<DataType> {
++        Ok(DataType::Float64)
++    }
++    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
++        let rows = args.number_rows;
++        let cols = args.args.iter().map(|a| Ok(cast(&a.clone().into_array(rows)?, &DataType::Float64)?)).collect::<DFResult<Vec<_>>>()?;
++        let (x, y) = (cols[0].as_any().downcast_ref::<Float64Array>().unwrap(), cols[1].as_any().downcast_ref::<Float64Array>().unwrap());
++        let [ax, ay, bx, by] = self.segment.map(f64::from_bits);
++        let [sx, sy] = self.scale.map(f64::from_bits);
++        let (ax, ay, bx, by) = (ax * sx, ay * sy, bx * sx, by * sy);
++        let (vx, vy) = (bx - ax, by - ay);
++        let out: Float64Array = (0..rows)
++            .map(|i| {
++                if x.is_null(i) || y.is_null(i) {
++                    return None;
++                }
++                let (px, py) = (x.value(i) * sx, y.value(i) * sy);
++                let t = (((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy).max(1e-12)).clamp(0.0, 1.0);
++                Some((px - (ax + t * vx)).hypot(py - (ay + t * vy)))
++            })
++            .collect();
++        Ok(ColumnarValue::Array(Arc::new(out)))
++    }
++}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/state.rs avenger-selection/src/state.rs
 --- avenger-selection/src/state.rs	2026-09-27 19:07:17.742710980 +0000
-+++ avenger-selection/src/state.rs	2026-09-27 21:33:27.692161345 +0000
++++ avenger-selection/src/state.rs	2026-09-27 22:06:34.686654776 +0000
 @@ -39,9 +39,9 @@
  
  /// A pending update carrying its destination selection, validated when applied to a set.
@@ -1098,7 +1272,7 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
                                      Arc::new(Contribution::from_canonical(
                                          old.producer.clone(),
 -                                        SelectionValue { tuples: retained },
-+                                        SelectionValue { tuples: retained, gesture: None },
++                                        SelectionValue { tuples: retained, gesture: None, partial: None },
                                      )?),
                                  );
                              }
@@ -1107,35 +1281,39 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
                              Arc::new(Contribution::from_canonical(
                                  producer.clone(),
 -                                SelectionValue { tuples: selected },
-+                                SelectionValue { tuples: selected, gesture: None },
++                                SelectionValue { tuples: selected, gesture: None, partial: None },
                              )?),
                          );
                      }
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/values.rs avenger-selection/src/values.rs
 --- avenger-selection/src/values.rs	2026-09-27 19:07:18.194711007 +0000
-+++ avenger-selection/src/values.rs	2026-09-27 21:32:39.175852691 +0000
-@@ -44,6 +44,8 @@
++++ avenger-selection/src/values.rs	2026-09-27 22:06:34.687285674 +0000
+@@ -44,6 +44,10 @@
  #[derive(Clone, Debug, Default, PartialEq, Eq)]
  pub struct SelectionValue {
      pub(crate) tuples: Vec<Tuple>,
 +    // Not upstream (VENDORED.md): what was drawn, for the chart's outline.
 +    pub(crate) gesture: Option<crate::Gesture>,
++    // Not upstream (VENDORED.md): degrees for keys selected only in part.
++    pub(crate) partial: Option<crate::degree::KeyDegrees>,
  }
  
  impl SelectionValue {
-@@ -52,6 +54,7 @@
+@@ -52,6 +56,8 @@
      pub fn tuple(terms: impl IntoIterator<Item = (ProjectionId, ValueTest)>) -> Self {
          Self {
              tuples: vec![terms.into_iter().collect()],
 +            gesture: None,
++            partial: None,
          }
      }
  
-@@ -66,12 +69,22 @@
+@@ -66,12 +72,35 @@
                  .into_iter()
                  .map(|terms| terms.into_iter().collect())
                  .collect(),
 +            gesture: None,
++            partial: None,
          }
      }
      /// Inspect correlated tuples and their projection/comparison pairs.
@@ -1147,6 +1325,18 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        self.gesture = Some(gesture);
 +        self
 +    }
++    /// Not upstream (VENDORED.md): degrees in (0, 1) for rows the tuples do
++    /// not select, by the value of one ungridded projection, such as the
++    /// series a soft line brush comes near. `predicate` ignores them;
++    /// `degree` gives them. Degrees outside (0, 1) are refused when applied.
++    pub fn with_partial(mut self, projection: ProjectionId, degrees: impl IntoIterator<Item = (ScalarValue, f64)>) -> Self {
++        self.partial = Some(crate::degree::KeyDegrees { projection, degrees: degrees.into_iter().collect() });
++        self
++    }
++    /// The partial degrees, if any: the projection and (value, degree) pairs.
++    pub fn partial(&self) -> Option<(&ProjectionId, &[(ScalarValue, f64)])> {
++        self.partial.as_ref().map(|p| (&p.projection, p.degrees.as_slice()))
++    }
 +    /// The gesture this value came from, if the chart attached one.
 +    pub fn gesture(&self) -> Option<&crate::Gesture> {
 +        self.gesture.as_ref()
@@ -1154,11 +1344,12 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
  }
  
  impl ValueTest {
-@@ -328,6 +341,7 @@
+@@ -328,6 +357,8 @@
  ) -> Result<SelectionValue> {
      Ok(SelectionValue {
          tuples: canonical_tuples(producer, value.tuples)?,
 +        gesture: value.gesture,
++        partial: value.partial.map(|p| p.canonical(producer)).transpose()?,
      })
  }
  
@@ -1553,8 +1744,8 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/tests/series.rs avenger-selection/tests/series.rs
 --- avenger-selection/tests/series.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/tests/series.rs	2026-09-27 21:32:39.176790945 +0000
-@@ -0,0 +1,107 @@
++++ avenger-selection/tests/series.rs	2026-09-27 22:08:01.002586981 +0000
+@@ -0,0 +1,151 @@
 +// Not upstream: tests for `SeriesTest` (VENDORED.md).
 +mod common;
 +
@@ -1661,4 +1852,48 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        ("line", Arc::new(Int64Array::from_iter_values(0..300))),
 +    ]);
 +    assert_eq!(selected(raw, cross(view("points")).predicate(&st).unwrap()).await, seg);
++}
++
++#[tokio::test]
++async fn soft_series_follow_experiment_7() {
++    // Line 1 crosses the brush; line 2 passes 1 unit above its top end;
++    // line 5 passes 3 units away; line 2's nearest vertex decides.
++    let rows = [(1, 0.0, 0.0), (1, 2.0, 2.0), (2, 0.0, 4.0), (2, 2.0, 4.0), (5, 0.0, 6.0), (5, 2.0, 6.0)];
++    let brush = SeriesTest::Crosses { from: [1.0, -1.0], to: [1.0, 3.0] };
++    let df = SessionContext::new().read_batch(series(&rows)).unwrap();
++    let d = brush.degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 2.0).await.unwrap();
++    // Line 2: nearest vertex (0, 4) or (2, 4) is sqrt(1 + 1) from (1, 3).
++    let want = 1.0 - 2f64.sqrt() / 2.0;
++    assert_eq!(d.len(), 2);
++    assert_eq!(d[0], (ScalarValue::Int64(Some(1)), 1.0));
++    assert_eq!(d[1].0, ScalarValue::Int64(Some(2)));
++    assert!((d[1].1 - want).abs() < 1e-12);
++    // A timebox gives the share inside.
++    let tb = SeriesTest::Within { x: (0.0, 2.0), y: (0.0, 5.0) };
++    let df = SessionContext::new().read_batch(series(&rows)).unwrap();
++    let d = tb.degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 1.0).await.unwrap();
++    assert_eq!(d, vec![(ScalarValue::Int64(Some(1)), 1.0), (ScalarValue::Int64(Some(2)), 1.0)]);
++    let tb = SeriesTest::Within { x: (0.0, 2.0), y: (0.0, 1.0) };
++    let df = SessionContext::new().read_batch(series(&rows)).unwrap();
++    let d = tb.degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 1.0).await.unwrap();
++    assert_eq!(d, vec![(ScalarValue::Int64(Some(1)), 0.5)]);
++
++    // As a value: the predicate takes line 1, the degree line 2 in part,
++    // on rows of another relation keyed by line.
++    let key = ProjectionId::new("line").unwrap();
++    let p = producer("brush", view("lines"), &["line"]);
++    let df = SessionContext::new().read_batch(series(&rows)).unwrap();
++    let d = brush.degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 2.0).await.unwrap();
++    let st = state(Resolution::Intersect).set(&p, brush.soft_value(&key, d, [1.0, 1.0], 2.0)).unwrap();
++    let raw = batch(vec![("id", Arc::new(Int64Array::from(vec![0_i64, 1, 2]))), ("line", Arc::new(Int64Array::from(vec![1_i64, 2, 5])))]);
++    let f = cross(view("points"));
++    let out = SessionContext::new().read_batch(raw.clone()).unwrap()
++        .select(vec![f.degree(&st, 1.0).unwrap().alias("d")]).unwrap().collect().await.unwrap();
++    let got = out[0].column(0).as_any().downcast_ref::<Float64Array>().unwrap().values().to_vec();
++    assert_eq!(got[0], 1.0);
++    assert!((got[1] - want).abs() < 1e-12);
++    assert_eq!(got[2], 0.0);
++    assert_eq!(selected(raw, f.predicate(&st).unwrap()).await, vec![0]);
++    let g = st.contributions(&id()).unwrap().next().unwrap().value().gesture().unwrap().clone();
++    assert_eq!((g.param("soft"), SeriesTest::from_gesture(&g)), (Some(2.0), Some(brush)));
 +}

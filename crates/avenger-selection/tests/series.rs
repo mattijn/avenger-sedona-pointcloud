@@ -105,3 +105,47 @@ async fn keys_select_rows_elsewhere_and_match_experiment_7() {
     ]);
     assert_eq!(selected(raw, cross(view("points")).predicate(&st).unwrap()).await, seg);
 }
+
+#[tokio::test]
+async fn soft_series_follow_experiment_7() {
+    // Line 1 crosses the brush; line 2 passes 1 unit above its top end;
+    // line 5 passes 3 units away; line 2's nearest vertex decides.
+    let rows = [(1, 0.0, 0.0), (1, 2.0, 2.0), (2, 0.0, 4.0), (2, 2.0, 4.0), (5, 0.0, 6.0), (5, 2.0, 6.0)];
+    let brush = SeriesTest::Crosses { from: [1.0, -1.0], to: [1.0, 3.0] };
+    let df = SessionContext::new().read_batch(series(&rows)).unwrap();
+    let d = brush.degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 2.0).await.unwrap();
+    // Line 2: nearest vertex (0, 4) or (2, 4) is sqrt(1 + 1) from (1, 3).
+    let want = 1.0 - 2f64.sqrt() / 2.0;
+    assert_eq!(d.len(), 2);
+    assert_eq!(d[0], (ScalarValue::Int64(Some(1)), 1.0));
+    assert_eq!(d[1].0, ScalarValue::Int64(Some(2)));
+    assert!((d[1].1 - want).abs() < 1e-12);
+    // A timebox gives the share inside.
+    let tb = SeriesTest::Within { x: (0.0, 2.0), y: (0.0, 5.0) };
+    let df = SessionContext::new().read_batch(series(&rows)).unwrap();
+    let d = tb.degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 1.0).await.unwrap();
+    assert_eq!(d, vec![(ScalarValue::Int64(Some(1)), 1.0), (ScalarValue::Int64(Some(2)), 1.0)]);
+    let tb = SeriesTest::Within { x: (0.0, 2.0), y: (0.0, 1.0) };
+    let df = SessionContext::new().read_batch(series(&rows)).unwrap();
+    let d = tb.degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 1.0).await.unwrap();
+    assert_eq!(d, vec![(ScalarValue::Int64(Some(1)), 0.5)]);
+
+    // As a value: the predicate takes line 1, the degree line 2 in part,
+    // on rows of another relation keyed by line.
+    let key = ProjectionId::new("line").unwrap();
+    let p = producer("brush", view("lines"), &["line"]);
+    let df = SessionContext::new().read_batch(series(&rows)).unwrap();
+    let d = brush.degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 2.0).await.unwrap();
+    let st = state(Resolution::Intersect).set(&p, brush.soft_value(&key, d, [1.0, 1.0], 2.0)).unwrap();
+    let raw = batch(vec![("id", Arc::new(Int64Array::from(vec![0_i64, 1, 2]))), ("line", Arc::new(Int64Array::from(vec![1_i64, 2, 5])))]);
+    let f = cross(view("points"));
+    let out = SessionContext::new().read_batch(raw.clone()).unwrap()
+        .select(vec![f.degree(&st, 1.0).unwrap().alias("d")]).unwrap().collect().await.unwrap();
+    let got = out[0].column(0).as_any().downcast_ref::<Float64Array>().unwrap().values().to_vec();
+    assert_eq!(got[0], 1.0);
+    assert!((got[1] - want).abs() < 1e-12);
+    assert_eq!(got[2], 0.0);
+    assert_eq!(selected(raw, f.predicate(&st).unwrap()).await, vec![0]);
+    let g = st.contributions(&id()).unwrap().next().unwrap().value().gesture().unwrap().clone();
+    assert_eq!((g.param("soft"), SeriesTest::from_gesture(&g)), (Some(2.0), Some(brush)));
+}

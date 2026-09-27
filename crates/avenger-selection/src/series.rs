@@ -90,6 +90,80 @@ impl SeriesTest {
         Ok(keys)
     }
 
+    /// Soft selection over whole series (experiment 7's `--soft`): each
+    /// series' degree in (0, 1], in key order, leaving out series at 0.
+    ///
+    /// A line brush gives 1 to a series that crosses it, and otherwise
+    /// falls linearly with its nearest vertex's distance to the segment, to 0
+    /// at `width`. Distances are measured after multiplying x and y by
+    /// `scale`: pixels per data unit, or `1 / span` for the plot's unit
+    /// square as experiment 7 measures. A timebox gives the share of a
+    /// series' vertices within its x-range whose y lies in its y-range; it
+    /// has no distance, and ignores `scale` and `width`.
+    pub async fn degrees(&self, rows: DataFrame, key: Expr, x: Expr, y: Expr, scale: [f64; 2], width: f64) -> Result<Vec<(ScalarValue, f64)>> {
+        use datafusion::functions_aggregate::expr_fn::{bool_or, min};
+        if !(scale.iter().all(|s| s.is_finite() && *s > 0.0) && width.is_finite() && width > 0.0) {
+            return Err(Error::InvalidValue("soft series need a positive scale and width".into()));
+        }
+        let f64 = |e: Expr| datafusion::logical_expr::cast(e, DataType::Float64);
+        let rows = rows.select(vec![key.alias("k"), f64(x).alias("x"), f64(y).alias("y")])?;
+        let (agg, degree): (DataFrame, Box<dyn Fn(&[f64]) -> f64>) = match self {
+            SeriesTest::Crosses { from, to } => {
+                let prev = |c: &str| {
+                    lag(col(c), Some(1), None).partition_by(vec![col("k")]).order_by(vec![col("x").sort(true, false)]).build()
+                };
+                let near = ScalarUDF::from(Distance {
+                    segment: [from[0], from[1], to[0], to[1]].map(f64::to_bits),
+                    scale: scale.map(f64::to_bits),
+                    signature: Signature::uniform(2, vec![DataType::Float64], Volatility::Immutable),
+                });
+                let agg = rows
+                    .window(vec![prev("x")?.alias("px"), prev("y")?.alias("py")])?
+                    .aggregate(
+                        vec![col("k")],
+                        vec![
+                            bool_or(crosses(*from, *to).call(vec![col("px"), col("py"), col("x"), col("y")])).alias("a"),
+                            min(near.call(vec![col("x"), col("y")])).alias("b"),
+                        ],
+                    )?;
+                (agg, Box::new(move |v: &[f64]| if v[0] > 0.0 { 1.0 } else { (1.0 - v[1] / width).max(0.0) }))
+            }
+            SeriesTest::Within { x, y } => {
+                let in_x = col("x").between(lit(x.0), lit(x.1));
+                let in_y = col("y").between(lit(y.0), lit(y.1));
+                let one = |c: Expr| when(c, lit(1.0)).otherwise(lit(0.0));
+                let agg = rows.aggregate(vec![col("k")], vec![sum(one(in_x.clone())?).alias("a"), sum(one(in_x.and(in_y))?).alias("b")])?;
+                (agg, Box::new(|v: &[f64]| if v[0] > 0.0 { v[1] / v[0] } else { 0.0 }))
+            }
+        };
+        let mut out = Vec::new();
+        for b in agg.sort(vec![col("k").sort(true, false)])?.collect().await? {
+            let num = |c: &str| -> Result<datafusion::arrow::array::Float64Array> {
+                let a = cast(b.column_by_name(c).unwrap(), &DataType::Float64).map_err(datafusion::common::DataFusionError::from)?;
+                Ok(a.as_any().downcast_ref::<Float64Array>().unwrap().clone())
+            };
+            let (a, bb) = (num("a")?, num("b")?);
+            let k = b.column_by_name("k").unwrap();
+            for i in 0..b.num_rows() {
+                let d = degree(&[if a.is_null(i) { 0.0 } else { a.value(i) }, if bb.is_null(i) { f64::INFINITY } else { bb.value(i) }]);
+                if d > 0.0 {
+                    out.push((ScalarValue::try_from_array(k, i)?, d));
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Soft degrees as a selection value: the series at 1 as tuples, the
+    /// rest as partial degrees, and the gesture with `soft` (the width) and
+    /// `sx`, `sy` (the scale), so a log can draw it again.
+    pub fn soft_value(&self, key: &ProjectionId, degrees: Vec<(ScalarValue, f64)>, scale: [f64; 2], width: f64) -> SelectionValue {
+        let (full, part): (Vec<_>, Vec<_>) = degrees.into_iter().partition(|(_, d)| *d >= 1.0);
+        SelectionValue::tuple([(key.clone(), ValueTest::OneOf(full.into_iter().map(|(k, _)| k).collect()))])
+            .with_partial(key.clone(), part)
+            .with_gesture(self.gesture().with_param("soft", width).with_param("sx", scale[0]).with_param("sy", scale[1]))
+    }
+
     /// The keys as a selection value on the producer's key projection,
     /// carrying the test as its gesture (`"segment"` or `"timebox"`).
     pub fn value(&self, key: &ProjectionId, keys: Vec<ScalarValue>) -> SelectionValue {
@@ -155,6 +229,45 @@ impl ScalarUDFImpl for Crosses {
                 }
                 let (p1, p2) = ([c[0].value(i), c[1].value(i)], [c[2].value(i), c[3].value(i)]);
                 Some(o(q1, q2, p1) * o(q1, q2, p2) <= 0.0 && o(p1, p2, q1) * o(p1, p2, q2) <= 0.0)
+            })
+            .collect();
+        Ok(ColumnarValue::Array(Arc::new(out)))
+    }
+}
+
+/// The distance from (x, y) to the segment, after scaling both axes.
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct Distance {
+    segment: [u64; 4],
+    scale: [u64; 2],
+    signature: Signature,
+}
+impl ScalarUDFImpl for Distance {
+    fn name(&self) -> &str {
+        "avenger_selection_segment_distance"
+    }
+    fn signature(&self) -> &Signature {
+        &self.signature
+    }
+    fn return_type(&self, _: &[DataType]) -> DFResult<DataType> {
+        Ok(DataType::Float64)
+    }
+    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
+        let rows = args.number_rows;
+        let cols = args.args.iter().map(|a| Ok(cast(&a.clone().into_array(rows)?, &DataType::Float64)?)).collect::<DFResult<Vec<_>>>()?;
+        let (x, y) = (cols[0].as_any().downcast_ref::<Float64Array>().unwrap(), cols[1].as_any().downcast_ref::<Float64Array>().unwrap());
+        let [ax, ay, bx, by] = self.segment.map(f64::from_bits);
+        let [sx, sy] = self.scale.map(f64::from_bits);
+        let (ax, ay, bx, by) = (ax * sx, ay * sy, bx * sx, by * sy);
+        let (vx, vy) = (bx - ax, by - ay);
+        let out: Float64Array = (0..rows)
+            .map(|i| {
+                if x.is_null(i) || y.is_null(i) {
+                    return None;
+                }
+                let (px, py) = (x.value(i) * sx, y.value(i) * sy);
+                let t = (((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy).max(1e-12)).clamp(0.0, 1.0);
+                Some((px - (ax + t * vx)).hypot(py - (ay + t * vy)))
             })
             .collect();
         Ok(ColumnarValue::Array(Arc::new(out)))

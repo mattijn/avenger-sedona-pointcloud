@@ -631,7 +631,37 @@ same gestures select what they would select now; **not checked**, since the
 probe replays on the same data.
 **Measure:** as for 25; the log is written to `out/selection_log.jsonl`.
 
-Still to come: soft series selections, which need a degree per key; the
+### 30. Soft series: a degree per key
+
+Experiment 7's soft line brush gives a series that crosses it 1, and otherwise
+a degree that falls with its nearest vertex's distance to the segment; its
+soft timebox gives each series the share of its vertices, within the time
+window, that stay inside the box. Both are a degree per series, which the
+crate could not carry: `degree()` gave keys 1 or 0. A value can now carry
+partial degrees in (0, 1) for keys its tuples leave out
+(`SelectionValue::with_partial`, added here). `predicate` ignores them, so a
+degree of 1 is still exactly the predicate; `degree` gives them.
+`SeriesTest::degrees` computes them in one query (a `lag` window, a
+crossing test and a vertex distance, grouped by key), with distances in a
+space the chart chooses: pixels, or experiment 7's unit square.
+`soft_value` keeps the series at 1 as tuples and the rest as partial degrees,
+with the width and scale in the gesture, so the log draws it again.
+
+On the flight lines, with experiment 7's values (`--soft 0.2` and
+`--soft 0.1`) and its unit square:
+
+| Test | Degrees | Experiment 7's formula | Raw points faded | Degrees for 17.3M points |
+|---|---|---|---|---|
+| soft line brush 18.9,185000 → 21.6,145000 | line 31: 1, line 32: 0.001 | agrees | 4,960,959 | 29 ms |
+| soft timebox t 14..18, n 120000..200000 | line 31: 0.778, line 32: 0.222 | agrees | 12,376,221 | 32 ms |
+
+The timebox that selects no line (finding 27) still fades two of them in
+part. Both soft selections go into the log as gestures; it now holds ten
+updates in 1,838 bytes and replays to the same contributions, partial
+degrees included. **Not checked:** partial degrees on a contribution with
+ranges, which are refused.
+
+Still to come: the
 preaggregation split with a polygon, a degree or a CloudLasso contribution,
 none of which were run through it; and wiring the log into the pipeline text
 of experiments 6 and 7, whose `select` lines use their own syntax.
