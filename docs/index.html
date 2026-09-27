@@ -674,7 +674,7 @@ const FIND = {
        saw: "avenger-format-number and -datetime became avenger-format plus -number-d3 and -datetime-d3.",
        why: "Three small changes here, all found by the compiler.",
        m: "cargo build --release --workspace" },
-  16: { t: "geo 0.29 blocks SedonaDB's predicates", s: "open", f: "shape",
+  16: { t: "A geo version keeps SedonaDB's predicates out", s: "open", f: "shape",
        saw: "sedona-geo needs geo 0.33; avenger-geo, -geometry and -guides need geo 0.29, and their i_float versions cannot resolve together.",
        why: "With geo 0.33, spatial predicates such as st_contains could sit next to Avenger in one DataFusion session.",
        m: "add sedona-geo to experiments/06-pipelines/Cargo.toml, then cargo metadata" },
@@ -690,7 +690,7 @@ const FIND = {
        saw: "Every Altair chart carries config.view; the spec types refuse the key, so no Altair chart passes as written.",
        why: "Reading config.view, and reporting the rest, would let Altair's output through unchanged. Written out by the bridge for now.",
        m: "python crates/avenger-altair/bench/coverage.py <altair>/tests/examples_methods_syntax" },
-  20: { t: "SVG export spends 340 ms on the font", s: "open", f: "encode",
+  20: { t: "SVG export is slow on the font", s: "open", f: "encode",
        saw: "For an 8-bar chart, PNG export takes 14 ms and SVG 341 ms; 139 KB of the 148 KB SVG is one embedded font.",
        why: "Referencing fonts, or caching the subset, would make SVG as cheap as it is in Vega.",
        m: "avenger-altair render <spec> out.svg 10" },
@@ -942,9 +942,9 @@ const SLIDES = [
     links: [["big", "classes"], ["live", "liveGif"], ["lang", "watch"], ["crd", "tour"], ["pipe", "hill"],
             ["dec", "autopilot"], ["val", "writer"], ["alt", "notebook"]],
     big: "8", bigsub: "scenarios, one set of crates",
-    rows: [["a very large file", "17.3M rows", 0], ["a live stream", "rows arriving", 0], ["a chart language", "74 lines", 0],
-           ["coordinate systems", "5", 0], ["pipelines", "text · lazy", 0], ["decisions", "typed choices", 0],
-           ["validation", "Rust · Python", 0], ["Altair", "117 gallery charts", 0]],
+    rows: [["a very large file", "millions of rows", 0], ["a live stream", "rows arriving", 0], ["a chart language", "plain text", 0],
+           ["coordinate systems", "polar · 3D · maps", 0], ["pipelines", "text · lazy", 0], ["decisions", "typed choices", 0],
+           ["validation", "Rust · Python", 0], ["Altair", "its gallery", 0]],
     steps: 2,
     nerds: `<b>the large file is only large</b>
 <em>a 105 MB point-cloud tile with 17.3M rows; any wide, long table would do</em>
@@ -965,10 +965,10 @@ const SLIDES = [
   // 1 ---------------------------------------------------------------- modules
   {
     title: "The current stack of Avenger crates",
-    big: "38", bigsub: "crates at f4890be, 32 of them on this route",
-    rows: [["on this route", "32", 0], ["not used here", "6", 0], ["carried here, with additions", "vegalite-spec", 0],
-           ["no Avenger dependencies", "11 crates", 0], ["build on common", "16 of 38", 0],
-           ["repin #120 → #124", "no code changes", 0], ["repin #124 → #130", "one line", 0]],
+    big: "38", bigsub: "crates, most of them on this route",
+    rows: [["on this route", "solid outline", 0], ["not used here", "dashed", 0], ["carried here, with additions", "vegalite-spec", 0],
+           ["bottom row", "no other Avenger crate", 0], ["common", "shared by many", 0],
+           ["each repin so far", "little or no code change", 0]],
     steps: 1,
     hover: {},
     nerds: `<b>every crate in Avenger's workspace at the pin</b>
@@ -976,7 +976,9 @@ const SLIDES = [
 <b>how they build on each other</b>  <em>the avenger-* dependencies in each crate's Cargo.toml at f4890be</em>
 <code>git -C ../avenger show f4890be:avenger-common/Cargo.toml</code>
 <b>the ones this route pulls in</b>  <em>this repo's Cargo.lock: 31 from Avenger, vegalite-spec patched to crates/</em>
-<code>grep -A2 '^name = "avenger-' Cargo.lock</code>`,
+<code>grep -A2 '^name = "avenger-' Cargo.lock</code>
+<b>measured</b>
+<em>at f4890be: 32 of 38 on this route, 6 unused · 11 with no Avenger dependencies · 16 build on common · repin #120 → #124 no code changes, #124 → #130 one line</em>`,
     draw() {
       const top = 40, step = 70;
       const g0 = layer(0);
@@ -1010,15 +1012,16 @@ const SLIDES = [
   // 6 ---------------------------------------------------------------- graphics
   {
     title: "Grammar of graphics",
-    big: "6", bigsub: "methods in one trait, for every coordinate system",
-    rows: [["cartesian · polar · 3D · map · fisheye", "5", 1], ["Lambert-93 against a conic map", "0.27 px", 1],
-           ["findings", "5", 2]],
+    big: "5", bigsub: "coordinate systems, one trait",
+    rows: [["one chart", "cartesian · polar · 3D · map", 1], ["the French map projection", "within a pixel", 1]],
     steps: 4,
     nerds: `<b>the coordinate trait</b>  <em>experiments/05-coordinate-systems</em>
 <code>cargo run --release -p lidar-coords --bin coords -- ${T} experiments/05-coordinate-systems/images</code>
 <code>cargo run --release -p lidar-coords --bin coords_live -- ${T}</code>
 <b>the findings</b>
-<code>cargo run --release -p lidar-probes --bin probe_guides</code>`,
+<code>cargo run --release -p lidar-probes --bin probe_guides</code>
+<b>measured</b>
+<em>a trait of six methods · Lambert-93 against the conic map within 0.27 px at 300 px</em>`,
     draw() {
       bands();
       let x = 60;
@@ -1040,14 +1043,15 @@ const SLIDES = [
   {
     title: "Grammar of interaction",
     big: "1", bigsub: "pipeline that records every interaction",
-    rows: [["render, 300k marks", "21 ms", 2], ["hit-test index", "387 ms", 2], ["rebuilds per 1,022 batches", "140", 1],
-           ["findings", "4", 2]],
+    rows: [["drawing", "a small part of each frame", 2], ["the hit-test index", "the rest", 2], ["on a live stream", "rebuilt batch after batch", 1]],
     steps: 4,
     nerds: `<b>interaction as commands</b>  <em>experiments/06-pipelines, 07-chart-decisions</em>
 <code>cargo run --release -p lidar-pipeline --bin cqrs_check -- ${T} out</code>
 <code>cargo run --release -p lidar-decide --bin layer_roundtrip</code>
 <b>the frame budget</b>
-<code>cargo run --release -p lidar-probes --bin probe_render</code>`,
+<code>cargo run --release -p lidar-probes --bin probe_render</code>
+<b>measured</b>
+<em>300k marks: render 21 ms, hit-test index 387 ms · 140 index rebuilds over 1,022 batches</em>`,
     draw() {
       bands();
       let x = 60;
@@ -1074,13 +1078,14 @@ const SLIDES = [
   // 8 ---------------------------------------------------------------- vocabulary
   {
     title: "A chart vocabulary",
-    big: "19 / 19", bigsub: "requests met by typed choices",
-    rows: [["typed choices", "19 / 19", 1], ["rules alone", "13 / 19", 1], ["an LLM writes, when choices end", "25 / 25", 1],
-           ["findings", "2", 2]],
+    big: "all", bigsub: "requests met by typed choices",
+    rows: [["typed choices", "every request", 1], ["rules alone", "two in three", 1], ["past the choices", "an LLM writes valid ones", 1]],
     steps: 4,
     nerds: `<b>choices and writing</b>  <em>experiments/07-chart-decisions</em>
 <code>cargo run --release -p lidar-decide --bin decide_eval</code>
-<code>cargo run --release -p lidar-decide --bin writer_eval</code>`,
+<code>cargo run --release -p lidar-decide --bin writer_eval</code>
+<b>measured</b>
+<em>typed choices 19 / 19 · rules alone 13 / 19 · written by an LLM 25 / 25 valid</em>`,
     draw() {
       bands();
       let x = 60;
@@ -1105,8 +1110,7 @@ const SLIDES = [
   {
     title: "The schema everywhere",
     big: "1", bigsub: "exported schema, read before any Rust runs",
-    rows: [["validate in Rust", "6.5 µs", 1], ["from Python", "13.5 µs", 1], ["Python module", "1 MB", 1],
-           ["portable agrees with Rust", "99 % of 3,330", 1], ["findings", "2", 2]],
+    rows: [["validate, in Rust or Python", "microseconds", 1], ["the Python module", "small", 1], ["Python and Rust", "agree on nearly every case", 1]],
     steps: 4,
     nerds: `<b>the export</b>
 <code>cargo run -p avenger-vegalite-spec --features schema --example json_schema</code>
@@ -1114,7 +1118,9 @@ const SLIDES = [
 <code>python crates/avenger-altair/bench/schema_parity.py &lt;avenger checkout&gt;</code>
 <b>the same idea for pipelines</b>  <em>crates/avenger-validate</em>
 <code>cargo run --release -p avenger-validate -- corpus experiments/07-chart-decisions/results 20</code>
-<code>cargo test --release -p avenger-validate</code>`,
+<code>cargo test --release -p avenger-validate</code>
+<b>measured</b>
+<em>6.5 µs in Rust, 13.5 µs from Python · a 1 MB module · 99 % agreement over 3,330 cases</em>`,
     draw() {
       bands();
       chip("k0", 60, 100, "vegalite-spec", { s: 0 });
@@ -1139,19 +1145,21 @@ const SLIDES = [
   {
     title: "Altair from the schema",
     big: "5", bigsub: "steps, three of them ask of Altair",
-    rows: [["gallery compiling today", "0 / 117", 2], ["validation", "6.5 µs · 705 µs", 1], ["classes from the schema", "35 + 9", 1], ["1M rows", "48 ms · 2.2 s", 1],
-           ["notebook frame", "22 ms", 1], ["first needs", "layer · marks", 2], ["findings", "3", 2]],
+    rows: [["Altair's gallery today", "none compiles yet", 2], ["validation", "about 100× faster", 1], ["classes", "generated from the schema", 1],
+           ["a million rows", "45× faster as Arrow", 1], ["notebook interaction", "live", 1], ["first needs", "layer · marks", 2]],
     steps: 3,
     nerds: `<b>the five steps, and what Altair needs</b>  <em>experiments/09-altair-on-avenger/README.md</em>
 <em>a validator registry beside the renderer registry · the schema source configurable in</em>
 <em>generate_schema_wrapper.py · a data path that hands Arrow to a backend instead of rows</em>
 <code>cd crates/avenger-altair &amp;&amp; maturin develop --release</code>
-<code>python crates/avenger-altair/bench/coverage.py ~/vega/altair/tests/examples_methods_syntax</code>`,
+<code>python crates/avenger-altair/bench/coverage.py ~/vega/altair/tests/examples_methods_syntax</code>
+<b>measured</b>
+<em>0 of 117 gallery charts compile · validation 6.5 µs against Altair's 705 µs · 35 + 9 classes · 1M rows: 48 ms as Arrow, 2.2 s as JSON rows · 22 ms a notebook frame · the gallery asks for layer 41, another mark 41, composition 19, colour 8</em>`,
     draw() {
       // [step, tried in the spike, what it asks of Altair, detail]
       const steps = [["opt-in backend", true, null, "a plug-in on today's Altair"],
         ["validator hook", false, "a validator registry", "beside alt.renderers"],
-        ["API from the schema", true, "a schema-source option", "35 + 9 classes"],
+        ["API from the schema", true, "a schema-source option", "classes generated"],
         ["data without JSON", true, "Arrow to the renderer", "a data transformer"],
         ["notebook interaction", true, null, "an anywidget view"]];
       const g0 = layer(0);
@@ -1174,7 +1182,7 @@ const SLIDES = [
         el("circle", { cx: x + 100, cy: i % 2 ? y : y + h, r: 5, fill: tried ? C.accent : C.ink }, gg);
       });
       const g2 = layer(2);
-      bars(300, 690, [["layer", 41, "41", C.accent], ["a mark other than bar", 41, "41", C.accent], ["composition", 19, "19", C.accent], ["colour", 8, "8", C.accent]],
+      bars(300, 690, [["layer", 41, "", C.accent], ["a mark other than bar", 41, "", C.accent], ["composition", 19, "", C.accent], ["colour", 8, "", C.accent]],
            { parent: g2, max: 45, head: "what the gallery asks for first", labelW: 200, trackW: 360, rowH: 32 });
     },
   },
@@ -1183,14 +1191,15 @@ const SLIDES = [
   {
     title: "Fast, streaming, independent",
     big: "Arrow", bigsub: "across every boundary",
-    rows: [["fold a batch", "2–7 ms", 1], ["merge a window", "2–11 ms", 1], ["window from chunk statistics", "69 ms", 1],
-           ["findings", "3", 2]],
+    rows: [["each new batch", "folded in within a frame", 1], ["the rolling window", "merged within a frame", 1], ["a window query", "skips chunks", 1]],
     steps: 4,
     nerds: `<b>Arrow across the boundary</b>
 <code>LARGE_ALL=1 python crates/avenger-altair/bench/large.py 1000000</code>
 <b>a live stream</b>
 <code>cargo run --release -p lidar-stream --bin stream_server -- ${T}</code>
-<code>cargo run --release -p lidar-stream --bin stream_live -- --speed 8 --window 12</code>`,
+<code>cargo run --release -p lidar-stream --bin stream_live -- --speed 8 --window 12</code>
+<b>measured</b>
+<em>fold a 16k-point batch 2–7 ms · merge a 12 s window 2–11 ms · a window from chunk statistics 69 ms, against 1.0 s for a full scan</em>`,
     draw() {
       bands();
       let x = 60;
@@ -1207,7 +1216,7 @@ const SLIDES = [
       G.bars(560, 300, 240, 160, [2, 3, 5, 4, 6, 7, 5, 8, 6, 7], { parent: g, hi: 9 });
       bars(840, 320, [["Arrow", 48, "48 ms", C.accent, null, true], ["VegaFusion", 500, "0.5 s", C.blue3], ["JSON rows", 2200, "2.2 s", C.blue1]],
            { parent: g, log: true, min: 10, max: 3000, labelW: 100, trackW: 110, rowH: 34 });
-      marker(60, 590, "16", "geo versions keep a crate out", 2); marker(430, 590, "20", "SVG: 340 ms on the font", 2);
+      marker(60, 590, "16", "geo versions keep a crate out", 2); marker(430, 590, "20", "SVG: slow on the font", 2);
       marker(790, 590, "22", "shared buffers charged per batch", 2);
       fork(120, 790, "Arrow and DataFusion underneath", ["a data layer of its own", "rows as JSON"], 3);
     },
