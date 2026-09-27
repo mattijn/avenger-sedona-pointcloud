@@ -423,7 +423,7 @@ const T = "data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz";
 
 // ---------------------------------------------------------------- shared
 
-// Avenger's crates as used in this repo, grouped the way D3's modules are.
+// Avenger's crates as used in this repo, grouped by family.
 const CRATES = [
   ["describe", ["chart", "chart-definition", "vegalite-spec", "vegalite-compiler"]],
   ["draw", ["wgpu", "winit-wgpu", "app", "resource"]],
@@ -552,22 +552,20 @@ const SLIDES = [
         });
       });
       const gm = layer(1);
-      [0, 1].forEach(k => el("rect", { x: 90 + (6 + k) * 112 - 30, y: 190, width: 60, height: 150, fill: "none", stroke: C.line, "stroke-dasharray": "3 5" }, gm));
+      el("rect", { x: 772, y: 190, width: 56, height: 150, fill: "none", stroke: C.line, "stroke-dasharray": "3 5" }, gm);
 
-      // the same shape, one layer lower: D3
+      // the same route, in short: Avenger underneath, Altair on top
       const g2 = layer(2);
       const X = 880;
-      text(X, 110, "the same shape", "kk", { parent: g2 });
-      el("rect", { x: X, y: 760, width: 250, height: 60, fill: "#fff", stroke: C.ink, "stroke-width": 1.4 }, g2);
-      text(X + 125, 796, "D3 modules", "lab", { anchor: "middle", parent: g2 });
-      ["Vega", "Vega-Lite", "Altair"].forEach((t, k) => {
-        el("rect", { x: X, y: 640 - k * 90, width: 120, height: 60, fill: "#fff", stroke: k === 2 ? C.accent : C.line, "stroke-width": k === 2 ? 2 : 1.2 }, g2);
-        text(X + 60, 676 - k * 90, t, "lab", { anchor: "middle", parent: g2, size: 15 });
-        el("line", { x1: X + 60, y1: 700 - k * 90, x2: X + 60, y2: 760 - (k ? 0 : 0) - k * 90 + (k ? -30 : 0), stroke: C.line }, g2);
-      });
-      [0, 1, 2].forEach(k => {
-        el("rect", { x: X + 140, y: 640 - k * 90, width: 110, height: 60, fill: "none", stroke: C.line, "stroke-dasharray": "3 5" }, g2);
-        el("line", { x1: X + 195, y1: 700 - k * 90, x2: X + 195, y2: 760, stroke: C.line, "stroke-dasharray": "3 5" }, g2);
+      text(X, 110, "in short", "kk", { parent: g2 });
+      el("rect", { x: X, y: 760, width: 250, height: 60, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, g2);
+      text(X + 125, 796, "Avenger", "lab", { anchor: "middle", parent: g2, bold: true });
+      ["chart-definition", "Vega-Lite spec", "the next Altair"].forEach((t, k) => {
+        const y = 640 - k * 110, top = k === 2;
+        el("line", { x1: X + 125, y1: y + 60, x2: X + 125, y2: k ? y + 110 : 760, stroke: top ? C.accent : C.ink, "stroke-width": 1.4 }, g2);
+        el("rect", { x: X + 25, y, width: 200, height: 60, fill: "#fff", stroke: top ? C.accent : C.ink,
+                     "stroke-width": top ? 2.2 : 1.4 }, g2);
+        text(X + 125, y + 36, t, "lab", { anchor: "middle", parent: g2, size: 15, bold: top, fill: top ? C.accent : null });
       });
     },
   },
