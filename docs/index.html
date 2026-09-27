@@ -90,6 +90,13 @@
   #mnext { right: 18px; top: 50%; margin-top: -28px; }
   #mcount { position: absolute; top: 30px; left: 90px; font-size: 14px; color: var(--kicker); }
   .media-link { cursor: pointer; }
+  #mframe { gap: 28px; }
+  #mframe .pipe { flex: 0 0 420px; align-self: center; background: #01579b; color: #b3e5fc; padding: 20px 22px;
+                  font-size: 14px; line-height: 1.55; max-height: 100%; overflow: auto; }
+  #mframe .pipe div { padding: 3px 0; }
+  #mframe .pipe .pk { color: var(--amber); margin-bottom: 6px; }
+  #mframe .pipe .hi { color: #fff; }
+  #mframe img, #mframe video { min-width: 0; }
   .finding { max-width: 820px; width: 100%; align-self: center; }
   .finding .fk { font-size: 15px; color: var(--kicker); margin-bottom: 8px; }
   .finding h2 { font-size: 34px; margin: 0 0 30px; line-height: 1.15; }
@@ -1304,8 +1311,20 @@ const E = {
   glyphs: ["experiments/05-coordinate-systems/images/glyphs.png", "a glyph at every point: nested systems", "cargo run --release -p lidar-coords --bin glyphs -- …"],
   tour: ["experiments/05-coordinate-systems/video/tour.mp4", "a tour through the coordinate systems", `cargo run --release -p lidar-coords --bin coords_live -- ${T} --tour out/tour_frames`],
   fisheye: ["experiments/05-coordinate-systems/video/fisheye_tour.mp4", "a fisheye following the pointer", `cargo run --release -p lidar-coords --bin coords_live -- ${T} --record out/fisheye_frames`],
-  hill: ["experiments/06-pipelines/images/hillshade.png", "a pipeline's hillshade step", 'cargo run --release -p lidar-pipeline --bin pipeline -- "read … ! hillshade … ! png …"'],
-  pchart: ["experiments/06-pipelines/images/chart.png", "a chart drawn from a pipeline", 'cargo run --release -p lidar-pipeline --bin pipeline -- "… ! chart bar …"'],
+  hill: ["experiments/06-pipelines/images/hillshade.png", "a pipeline's hillshade step", 'cargo run --release -p lidar-pipeline --bin pipeline -- "<the pipeline beside it>"',
+    // experiments/06-pipelines/README.md, "One chain uses the packages"
+    ['read tile --statistics', '! filter --vega "datum.x < 657400 && datum.y > 6867600"',
+     '! sql "SELECT floor(x) AS cx, floor(y) AS cy, max(z) AS h FROM input WHERE classification = 2 OR classification = 6 GROUP BY floor(x), floor(y)"',
+     '! hillshade --x cx --y cy --z h --cell 1', '! sql "SELECT cx, cy, h, hillshade, ST_AsText(ST_Point(cx, cy)) AS wkt FROM input"',
+     '! calc label --vega "\'shade \' + format(datum.hillshade, \'.0%\')"', '! png out/hillshade.png --x cx --y cy --value hillshade'], 3],
+  pchart: ["experiments/06-pipelines/images/chart.png", "a chart drawn from a pipeline", 'cargo run --release -p lidar-pipeline --bin pipeline -- "<the pipeline beside it>"',
+    // experiments/06-pipelines/results/pipeline.json: the data steps, then the command log
+    ['read data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz --statistics true', '! filter --vega "datum.classification == 6"',
+     '! calc height --vega "floor((datum.z - 42) / 2) * 2"',
+     '! sql "SELECT height, count(*) AS points FROM input WHERE height BETWEEN 0 AND 40 GROUP BY height ORDER BY height"',
+     '! calc label --vega "toString(datum.height) + \' m\'"', '! chart bar --x label --y points',
+     '! set title "Building points per 2 m of height above 42 m"', '! set x.title "height above 42 m"', '! set x.labelAngle -45',
+     '! set fill #c44e52', '! render chart.png'], 5],
   povw: ["experiments/06-pipelines/video/overview.mp4", "pipelines, an overview", "experiments/06-pipelines/README.md"],
   autopilot: ["experiments/07-chart-decisions/video/autopilot.mp4", "the autopilot: typed text drives the chart", "cargo run --release -p lidar-decide --bin autopilot_live -- --record …"],
   aptour: ["experiments/07-chart-decisions/video/autopilot_tour.mp4", "one chart, many marks, keyed transitions", "cargo run --release -p lidar-decide --bin autopilot_live -- --tour out/autopilot_live/tour"],
@@ -1328,7 +1347,7 @@ const MEDIA = {
   2: ["explorer", "liveGif", "povw", "aptour", "watch", "notebook"],
   3: ["altbars", "notebook"],
   4: ["morph", "lenses", "decisions", "camera"],
-  5: ["classes", "liveGif", "watch", "tour", "hill", "autopilot", "writer", "notebook"],
+  5: ["classes", "liveGif", "watch", "tour", "hill", "pchart", "autopilot", "writer", "notebook"],
   6: ["cbars", "morph", "maps", "glyphs", "tour", "fisheye"],
   7: ["ittour", "magnifier", "lenses", "soft", "lasso", "series"],
   8: ["aptour", "apshot", "decisions", "writer", "editor"],
@@ -1341,7 +1360,7 @@ const modal = document.getElementById("modal");
 function openMedia(list, i) {
   mList = list; mIdx = i;
   if (String(list[i]).startsWith("f:")) return openFinding(list, i);
-  const [src, title, cmd] = E[list[i]];
+  const [src, title, cmd, pipe, hi] = E[list[i]];
   const url = CDN + src, frame = document.getElementById("mframe");
   frame.innerHTML = "";
   const m = document.createElement(/\.mp4$/.test(src) ? "video" : "img");
@@ -1349,6 +1368,14 @@ function openMedia(list, i) {
   else m.alt = title;
   m.src = url;
   frame.appendChild(m);
+  if (pipe) {
+    const c = document.createElement("div");
+    c.className = "pipe";
+    const k = document.createElement("div"); k.className = "pk"; k.textContent = "the pipeline";
+    c.appendChild(k);
+    pipe.forEach((l, j) => { const d = document.createElement("div"); d.textContent = l; if (j === hi) d.className = "hi"; c.appendChild(d); });
+    frame.appendChild(c);
+  }
   document.getElementById("mtitle").textContent = title;
   document.getElementById("msrc").textContent = src;
   document.getElementById("mcmd").textContent = "how to reproduce: " + cmd;
