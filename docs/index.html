@@ -1,0 +1,1107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tile to pixel</title>
+<meta name="description" content="avenger-sedona-pointcloud: nine experiments, four crates and one findings ledger, drawn as one system.">
+<style>
+  /* Experiment 7's Theme::calm() (src/layer/theme.rs): white, black text,
+     greys, one accent colour, one typeface throughout (pipeline text
+     included), square corners, lines rather than filled areas, status in
+     grey italic, and a translucent dark overlay for stats for nerds. */
+  :root {
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --ink: #000000;
+    --muted: #595959;
+    --kicker: #949494;
+    --line: #b8b8b8;
+    --grid: rgba(184, 184, 184, 0.45);
+    --accent: #0099cc;
+    --track: #eeeeee;
+    --dark: rgba(0, 37, 50, 0.94);
+    --dark-text: #ffffff;
+    --dark-muted: #b8b8b8;
+    --dark-accent: #33b5e0;
+    --letterbox: #ececec;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--letterbox); overflow: hidden; }
+  body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: var(--ink); }
+  #stage {
+    position: absolute; left: 50%; top: 50%; width: 1600px; height: 900px;
+    transform-origin: 0 0; background: var(--bg); display: flex;
+    box-shadow: 0 0 0 1px #dcdcdc;
+  }
+  #main { position: relative; width: 1180px; height: 900px; }
+  #svg { width: 1180px; height: 900px; display: block; }
+  #panel {
+    width: 420px; height: 900px; background: var(--panel); padding: 44px 36px 30px;
+    border-left: 1px solid var(--line);
+    display: flex; flex-direction: column;
+  }
+  .kick { font-size: 14px; color: var(--kicker); letter-spacing: .02em; }
+  #title { font-size: 34px; font-weight: 700; margin: 6px 0 26px; line-height: 1.1; }
+  #big { font-size: 40px; font-weight: 700; line-height: 1; min-height: 40px; }
+  #bigsub { font-size: 15px; color: var(--muted); margin: 6px 0 22px; min-height: 18px; }
+  #rows { border-top: 1px solid var(--line); padding-top: 16px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; font-size: 16px; line-height: 1.95;
+         opacity: 0; transition: opacity .45s; }
+  .row.on { opacity: 1; }
+  .row span:first-child { color: var(--muted); }
+  .row span:last-child { font-weight: 700; text-align: right; }
+  #hover { margin-top: 18px; min-height: 48px; font-size: 16px; font-style: italic; color: var(--muted); }
+  #foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between;
+          font-size: 13px; color: var(--kicker); }
+  #dots { display: flex; gap: 6px; }
+  #dots i { width: 8px; height: 8px; border: 1px solid var(--line); display: block; cursor: pointer; }
+  #dots i.on { background: var(--ink); border-color: var(--ink); }
+  #nav button { font: inherit; font-size: 13px; background: none; border: 1px solid var(--line);
+                color: var(--muted); padding: 3px 10px; cursor: pointer; }
+  #nav button:hover { border-color: var(--accent); color: var(--accent); }
+  #nerds {
+    position: absolute; inset: 16px; background: var(--dark); color: var(--dark-text);
+    font-size: 15px; line-height: 1.75;
+    padding: 22px 26px; white-space: pre-wrap; display: none; overflow: auto;
+  }
+  #nerds.on { display: block; }
+  #nerds b { color: var(--dark-accent); font-weight: 400; }
+  #nerds em { color: var(--dark-muted); font-style: normal; }
+  #nerds code { color: var(--dark-text); font-family: inherit; }
+
+  /* SVG */
+  svg text { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; fill: var(--ink); }
+  .lab { font-size: 17px; }
+  .sub { font-size: 13px; fill: var(--muted); }
+  .kk { font-size: 13px; fill: var(--kicker); letter-spacing: .02em; }
+  .num { font-size: 13px; fill: var(--muted); }
+  .val { font-size: 14px; font-weight: 700; }
+  .mono { font-size: 14px; }
+  .bignum { font-size: 44px; font-weight: 700; }
+  .elab { font-size: 13px; fill: var(--muted); paint-order: stroke; stroke: #fff; stroke-width: 5px; stroke-linejoin: round; }
+  .box { fill: #fff; stroke: var(--line); stroke-width: 1.2; }
+  .box.acc { stroke: var(--accent); stroke-width: 2; }
+  .box.warn { stroke: var(--accent); stroke-width: 2.4; }
+  .box.ext { stroke-dasharray: 5 4; }
+  .box.ghost { stroke-dasharray: 3 4; fill: none; }
+  .box.dark { fill: #002532; stroke: none; }
+  #nav button.on { border-color: var(--accent); color: var(--accent); }
+  .edge { fill: none; stroke: #949494; stroke-width: 1.3; }
+  .edge.acc { stroke: var(--accent); stroke-width: 2; }
+  .edge.warn { stroke: var(--accent); stroke-width: 1.8; }
+  .edge.dash { stroke-dasharray: 5 5; }
+  .flow { stroke-dasharray: 6 7; animation: flow 1.1s linear infinite; }
+  @keyframes flow { to { stroke-dashoffset: -13; } }
+  [data-s] { opacity: 0; transition: opacity .5s; }
+  [data-s].on { opacity: 1; }
+  .dim { transition: opacity .25s; }
+  svg.focus .dim:not(.hl) { opacity: .14; }
+  .hot { cursor: default; }
+  .hot:hover .box { stroke: var(--accent); }
+  .axis { stroke: var(--grid); stroke-width: 1; }
+  .track { fill: var(--track); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="main">
+    <svg id="svg" viewBox="0 0 1180 900" aria-label="slide"></svg>
+    <div id="nerds"></div>
+  </div>
+  <aside id="panel">
+    <div class="kick" id="kicker"></div>
+    <div id="title"></div>
+    <div id="big"></div>
+    <div id="bigsub"></div>
+    <div id="rows"></div>
+    <div id="hover"></div>
+    <div id="foot">
+      <div id="dots"></div>
+      <div id="nav"><button id="prev" aria-label="back">‹</button> <button id="next" aria-label="next">›</button> <button id="nerdbtn">stats for nerds</button></div>
+    </div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+const NS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("svg");
+// Theme::calm(): blue and grey only.
+const C = {
+  ink: "#000", muted: "#595959", kicker: "#949494", line: "#b8b8b8", accent: "#0099cc",
+  bar: "#595959", barSoft: "#b8b8b8", track: "#eeeeee", warn: "#0099cc", grid: "rgba(184,184,184,0.45)",
+  dark: "#002532", darkText: "#ffffff", darkMuted: "#b8b8b8", darkAccent: "#33b5e0", tint: "#e5f5fa",
+};
+
+// ---------------------------------------------------------------- drawing
+
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs || {}) {
+    if (k === "text") e.textContent = attrs[k];
+    else if (attrs[k] !== undefined && attrs[k] !== null) e.setAttribute(k, attrs[k]);
+  }
+  (parent || svg).appendChild(e);
+  return e;
+}
+
+let NODES = {}, EDGES = [], EDGE_LAYER = null;
+
+function layer(s, parent) {
+  const g = el("g", {}, parent);
+  if (s !== undefined && s !== null) g.setAttribute("data-s", s);
+  return g;
+}
+
+function text(x, y, t, cls, o = {}) {
+  const e = el("text", { x, y, class: cls || "lab", "text-anchor": o.anchor || "start",
+                         style: (o.fill ? "fill:" + o.fill + ";" : "") + (o.size ? "font-size:" + o.size + "px;" : "")
+                                + (o.bold ? "font-weight:700;" : "") || null,
+                         "font-style": o.italic ? "italic" : null }, o.parent);
+  const lines = String(t).split("\n");
+  if (lines.length === 1) e.textContent = t;
+  else lines.forEach((l, i) => el("tspan", { x, dy: i ? (o.lh || 18) : 0, text: l }, e));
+  return e;
+}
+
+// A node: square corners, a line, a label and an optional sub-label.
+function box(id, x, y, w, h, o = {}) {
+  const g = layer(o.s, o.parent);
+  const inner = el("g", { class: "dim hot", "data-id": id }, g);
+  el("rect", { x, y, width: w, height: h, class: "box " + (o.kind || "") }, inner);
+  const cx = x + w / 2;
+  const light = o.kind && o.kind.includes("dark");
+  if (o.label !== undefined) {
+    const hasSub = o.sub !== undefined;
+    const ly = y + h / 2 + (hasSub ? -3 : 6);
+    text(o.align === "left" ? x + 14 : cx, ly, o.label, o.labcls || "lab",
+         { anchor: o.align === "left" ? "start" : "middle", parent: inner, bold: o.bold,
+           fill: light ? "#fff" : (o.labfill || null), size: o.size });
+    if (hasSub) text(o.align === "left" ? x + 14 : cx, ly + 19, o.sub, "sub",
+                     { anchor: o.align === "left" ? "start" : "middle", parent: inner,
+                       fill: light ? "#b8b8b8" : (o.subfill || null) });
+  }
+  if (o.title) el("title", { text: o.title }, inner);
+  NODES[id] = { x, y, w, h, cx, cy: y + h / 2, g: inner };
+  return inner;
+}
+
+function person(id, cx, cy, label, o = {}) {
+  const g = layer(o.s, o.parent);
+  const inner = el("g", { class: "dim hot", "data-id": id }, g);
+  el("circle", { cx, cy: cy - 22, r: 13, fill: "#fff", stroke: o.color || C.ink, "stroke-width": 1.5 }, inner);
+  el("path", { d: `M${cx - 26},${cy + 22} q0,-30 26,-30 q26,0 26,30`, fill: "#fff",
+               stroke: o.color || C.ink, "stroke-width": 1.5 }, inner);
+  text(cx, cy + 46, label, "lab", { anchor: "middle", parent: inner });
+  if (o.sub) text(cx, cy + 65, o.sub, "sub", { anchor: "middle", parent: inner });
+  NODES[id] = { x: cx - 34, y: cy - 40, w: 68, h: 66, cx, cy, g: inner };
+  return inner;
+}
+
+function anchor(n, tx, ty) {
+  const dx = tx - n.cx, dy = ty - n.cy;
+  if (!dx && !dy) return [n.cx, n.cy];
+  const t = Math.min(n.w / 2 / Math.abs(dx || 1e-9), n.h / 2 / Math.abs(dy || 1e-9));
+  return [n.cx + dx * t, n.cy + dy * t];
+}
+
+// An edge between two nodes; `bend` curves it sideways, `from`/`to` pick
+// a side ("t", "b", "l", "r") instead of the straight line between centres.
+function edge(a, b, o = {}) {
+  const A = NODES[a], B = NODES[b];
+  const side = (n, s, other) => s === "t" ? [n.cx + (o.dx1 || 0), n.y] : s === "b" ? [n.cx + (o.dx1 || 0), n.y + n.h]
+    : s === "l" ? [n.x, n.cy] : s === "r" ? [n.x + n.w, n.cy] : anchor(n, other.cx, other.cy);
+  const p1 = o.from ? side(A, o.from, B) : anchor(A, B.cx, B.cy);
+  let p2 = o.to ? (o.to === "t" ? [B.cx + (o.dx2 || 0), B.y] : o.to === "b" ? [B.cx + (o.dx2 || 0), B.y + B.h]
+    : o.to === "l" ? [B.x, B.cy] : [B.x + B.w, B.cy]) : anchor(B, A.cx, A.cy);
+  const g = layer(o.s, o.parent || EDGE_LAYER);
+  const inner = el("g", { class: "dim", "data-a": a, "data-b": b }, g);
+  let d;
+  if (o.curve === "v") {
+    const my = (p1[1] + p2[1]) / 2;
+    d = `M${p1[0]},${p1[1]} C${p1[0]},${my} ${p2[0]},${my} ${p2[0]},${p2[1]}`;
+  } else if (o.curve === "h") {
+    const mx = (p1[0] + p2[0]) / 2;
+    d = `M${p1[0]},${p1[1]} C${mx},${p1[1]} ${mx},${p2[1]} ${p2[0]},${p2[1]}`;
+  } else if (o.bend) {
+    const mx = (p1[0] + p2[0]) / 2, my = (p1[1] + p2[1]) / 2;
+    const nx = -(p2[1] - p1[1]), ny = p2[0] - p1[0], L = Math.hypot(nx, ny) || 1;
+    d = `M${p1[0]},${p1[1]} Q${mx + nx / L * o.bend},${my + ny / L * o.bend} ${p2[0]},${p2[1]}`;
+  } else if (o.via) {
+    d = `M${p1[0]},${p1[1]} ` + o.via.map(p => `L${p[0]},${p[1]}`).join(" ") + ` L${p2[0]},${p2[1]}`;
+  } else d = `M${p1[0]},${p1[1]} L${p2[0]},${p2[1]}`;
+  const kind = o.kind || "";
+  const marker = kind.includes("acc") ? "url(#arrA)" : kind.includes("warn") ? "url(#arrW)" : "url(#arr)";
+  const path = el("path", { d, class: "edge " + kind + (o.flow ? " flow" : ""),
+                            "marker-end": o.noarrow ? null : marker }, inner);
+  if (o.label) {
+    const len = path.getTotalLength ? path.getTotalLength() : 0;
+    const pt = len ? path.getPointAtLength(len * (o.at || 0.5)) : { x: (p1[0] + p2[0]) / 2, y: (p1[1] + p2[1]) / 2 };
+    text(pt.x + (o.lx || 0), pt.y + 4 + (o.ly || 0), o.label, "elab", { anchor: "middle", parent: inner });
+  }
+  EDGES.push({ a, b, g: inner });
+  return path;
+}
+
+function image(href, x, y, w, h, o = {}) {
+  const g = layer(o.s, o.parent);
+  const id = "clip" + Math.random().toString(36).slice(2);
+  const cp = el("clipPath", { id }, el("defs", {}, g));
+  el("rect", { x, y, width: w, height: h }, cp);
+  el("image", { href, x, y, width: w, height: h, preserveAspectRatio: o.fit || "xMidYMid slice",
+                "clip-path": `url(#${id})` }, g);
+  if (o.frame !== false) el("rect", { x, y, width: w, height: h, fill: "none", stroke: "#dcdfe3" }, g);
+  return g;
+}
+
+// Horizontal bars in the style of Jev's confidence bars.
+function bars(x, y, rows, o = {}) {
+  const g = layer(o.s, o.parent);
+  const lw = o.labelW || 150, tw = o.trackW || 260, rh = o.rowH || 30;
+  const max = o.max || Math.max(...rows.map(r => r[1]));
+  const min = o.min || 1;
+  const scale = v => o.log ? Math.max(0.004, (Math.log10(v) - Math.log10(min)) / (Math.log10(max) - Math.log10(min)))
+                           : v / max;
+  if (o.head) text(x, y - 14, o.head, "kk", { parent: g });
+  rows.forEach((r, i) => {
+    const yy = y + i * rh;
+    const rg = layer(r[4] !== undefined ? r[4] : null, g);
+    text(x, yy + 12, r[0], "lab", { parent: rg, size: 15, bold: !!r[5], fill: r[5] ? C.ink : C.muted });
+    el("rect", { x: x + lw, y: yy + 2, width: tw, height: 12, class: "track" }, rg);
+    el("rect", { x: x + lw, y: yy + 2, width: Math.max(2, tw * scale(r[1])), height: 12,
+                 fill: r[3] || C.bar }, rg);
+    text(x + lw + tw + 12, yy + 13, r[2], "val", { parent: rg, fill: r[3] === C.warn ? C.warn : null });
+  });
+  return g;
+}
+
+
+// Drawn pictures, in the calm theme's blue and grey. They stand for the
+// experiments' charts; they are not data.
+function rnd(seed) { let v = seed; return () => (v = (v * 16807) % 2147483647) / 2147483647; }
+
+const G = {
+  // A top view: blocks, streets, a diagonal road, buildings in the accent.
+  tile(x, y, w, h, o = {}) {
+    const g = layer(o.s, o.parent), n = o.n || 32, cw = w / n, ch = h / n, r = rnd(o.seed || 11);
+    const upto = o.fill === undefined ? 1 : o.fill;
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      const street = i % 6 === 0 || j % 6 === 0 || Math.abs(i - j - 4) < 1;
+      const v = r();
+      if (j / n > upto) continue;
+      const f = street ? "#e6e6e6" : v > 0.84 ? C.accent : v > 0.5 ? "#7a7a7a" : v > 0.22 ? "#a8a8a8" : "#cfcfcf";
+      el("rect", { x: x + i * cw, y: y + j * ch, width: cw - (n > 40 ? 0.6 : 1), height: ch - (n > 40 ? 0.6 : 1), fill: f }, g);
+    }
+    if (o.frame !== false) el("rect", { x, y, width: w, height: h, fill: "none", stroke: C.line }, g);
+    return g;
+  },
+  bars(x, y, w, h, vals, o = {}) {
+    const g = layer(o.s, o.parent), bw = w / vals.length, max = Math.max(...vals);
+    vals.forEach((v, i) => el("rect", { x: x + i * bw + bw * 0.15, y: y + h - h * v / max, width: bw * 0.7,
+      height: h * v / max, fill: i === (o.hi === undefined ? -1 : o.hi) ? C.accent : "#949494" }, g));
+    el("line", { x1: x, y1: y + h, x2: x + w, y2: y + h, stroke: C.line }, g);
+    return g;
+  },
+  line(x, y, w, h, o = {}) {
+    const g = layer(o.s, o.parent), r = rnd(o.seed || 3);
+    for (let k = 0; k < (o.series || 3); k++) {
+      let p = "", v = 0.5;
+      for (let i = 0; i <= 20; i++) { v = Math.min(0.95, Math.max(0.05, v + (r() - 0.5) * 0.25)); p += (i ? "L" : "M") + (x + w * i / 20) + "," + (y + h * (1 - v)); }
+      el("path", { d: p, fill: "none", stroke: k === 0 ? C.accent : "#a8a8a8", "stroke-width": k === 0 ? 2.2 : 1.4 }, g);
+    }
+    el("line", { x1: x, y1: y + h, x2: x + w, y2: y + h, stroke: C.line }, g);
+    return g;
+  },
+  arc(cx, cy, R, vals, o = {}) {
+    const g = layer(o.s, o.parent), tot = vals.reduce((a, b) => a + b, 0), ri = R * (o.inner || 0.55);
+    let a0 = -Math.PI / 2;
+    vals.forEach((v, i) => {
+      const a1 = a0 + 2 * Math.PI * v / tot, big = a1 - a0 > Math.PI ? 1 : 0;
+      const P = (r, a) => `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+      el("path", { d: `M${P(R, a0)} A${R},${R} 0 ${big} 1 ${P(R, a1)} L${P(ri, a1)} A${ri},${ri} 0 ${big} 0 ${P(ri, a0)} Z`,
+        fill: i === (o.hi || 0) ? C.accent : ["#595959", "#949494", "#b8b8b8", "#d6d6d6"][i % 4], stroke: "#fff", "stroke-width": 1.5 }, g);
+      a0 = a1;
+    });
+    return g;
+  },
+  // Bars leaning back, the tilt into 3D.
+  tilt(x, y, w, h, vals, o = {}) {
+    const g = layer(o.s, o.parent), bw = w / vals.length, max = Math.max(...vals), dx = bw * 0.35, dy = -bw * 0.25;
+    vals.forEach((v, i) => {
+      const bx = x + i * bw * 0.8 + i * dx * 0.2, by = y + h - i * dy * -0.6, bh = (h * 0.8) * v / max;
+      const f = i === (o.hi || 0) ? C.accent : "#949494";
+      el("path", { d: `M${bx},${by} l0,${-bh} l${dx},${dy} l0,${bh} z`, fill: "#595959" }, g);
+      el("path", { d: `M${bx - bw * 0.45},${by - dy * 0} l${bw * 0.45},0 l0,${-bh} l${-bw * 0.45},0 z`, fill: f }, g);
+      el("path", { d: `M${bx - bw * 0.45},${by - bh} l${bw * 0.45},0 l${dx},${dy} l${-bw * 0.45},0 z`, fill: "#cfcfcf" }, g);
+    });
+    return g;
+  },
+  // Lines of pipeline or chart text on the dark overlay, one typeface.
+  code(x, y, w, lines, o = {}) {
+    const g = layer(o.s, o.parent);
+    el("rect", { x, y, width: w, height: 22 + lines.length * 22, fill: C.dark }, g);
+    lines.forEach((l, i) => text(x + 14, y + 26 + i * 22, l, "mono", { parent: g, fill: i === (o.hi === undefined ? -1 : o.hi) ? "#fff" : C.darkAccent }));
+    return g;
+  },
+};
+
+function defs() {
+  const d = el("defs", {});
+  for (const [id, col] of [["arr", "#949494"], ["arrA", C.accent], ["arrW", C.accent]]) {
+    const m = el("marker", { id, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7,
+                             orient: "auto-start-reverse" }, d);
+    el("path", { d: "M0,0 L10,5 L0,10 z", fill: col }, m);
+  }
+}
+
+// Hover a node: everything not connected to it fades.
+function wireHover(hoverText) {
+  svg.querySelectorAll(".hot").forEach(n => {
+    const id = n.getAttribute("data-id");
+    n.addEventListener("mouseenter", () => {
+      svg.classList.add("focus");
+      n.classList.add("hl");
+      EDGES.forEach(e => {
+        if (e.a === id || e.b === id) {
+          e.g.classList.add("hl");
+          const other = e.a === id ? e.b : e.a;
+          if (NODES[other]) NODES[other].g.classList.add("hl");
+        }
+      });
+      if (hoverText && hoverText[id]) document.getElementById("hover").textContent = hoverText[id];
+    });
+    n.addEventListener("mouseleave", () => {
+      svg.classList.remove("focus");
+      svg.querySelectorAll(".hl").forEach(x => x.classList.remove("hl"));
+      document.getElementById("hover").textContent = "";
+    });
+  });
+}
+
+// ---------------------------------------------------------------- slides
+
+const T = "data/LHD_FXX_0657_6868_PTS_O_LAMB93_IGN69.copc.laz";
+
+const SLIDES = [
+  // 1 ----------------------------------------------------------------
+  {
+    title: "Tile to pixel",
+    big: "17.3M", bigsub: "points · 1 km² · Lambert-93",
+    rows: [["experiments", "9"], ["crates", "4"], ["findings", "24"], ["tiles", "1"], ["Avenger", "f4890be"]],
+    steps: 1,
+    nerds: `<b>the tile</b>  <em>IGN LiDAR HD, north-east of Paris, ~105 MB</em>
+<code>./scripts/download_tile.sh</code>
+
+<b>top views and the cross-section</b>  <em>experiment 1</em>
+<code>cargo run --release -p lidar-charts --bin topviews -- ${T} out</code>
+<code>cargo run --release -p lidar-charts --bin cross_section -- ${T} out/cross_section.png</code>
+
+<b>the chart that moves between marks</b>  <em>experiment 7</em>
+<code>cargo run --release -p lidar-decide --bin autopilot_live</code>
+
+<em>the pictures on these slides are drawings, not renders</em>`,
+    draw() {
+      text(70, 118, "tile.copc.laz", "kk");
+      G.tile(70, 130, 560, 560, { n: 56, seed: 5 });
+      const g = layer(0);
+      el("path", { d: "M660,410 L760,410", class: "edge acc flow", "marker-end": "url(#arrA)" }, g);
+      text(710, 395, "SQL · Arrow · Avenger", "elab", { anchor: "middle", parent: g });
+      text(790, 118, "charts", "kk");
+      const card = (x, y, w, h) => el("rect", { x, y, width: w, height: h, fill: "none", stroke: C.line });
+      card(790, 130, 160, 160); G.bars(810, 160, 120, 110, [9, 2, 2.3, 4.8, 4.7, 3], { hi: 4 });
+      card(970, 130, 160, 160); G.arc(1050, 210, 58, [9, 2, 2.3, 4.8, 4.7, 3], { hi: 4 });
+      card(790, 310, 340, 160); G.line(810, 335, 300, 115, { series: 4, seed: 9 });
+      card(790, 490, 160, 160); G.tile(805, 505, 130, 130, { n: 16, seed: 2, frame: false });
+      card(970, 490, 160, 160); G.tilt(1000, 520, 110, 100, [3, 5, 2, 8, 4], { hi: 3 });
+    },
+  },
+
+  // 2 ----------------------------------------------------------------
+  {
+    title: "Context",
+    big: "2", bigsub: "outputs: charts · FINDINGS.md",
+    rows: [["Avenger", "f4890be · #130", 2], ["DataFusion", "54.1", 1], ["Arrow", "58.3", 1],
+           ["Jev", "1.13", 3], ["Claude Haiku", "4.5", 3], ["Altair", "6.3", 3]],
+    steps: 5,
+    hover: {
+      repo: "avenger-sedona-pointcloud", an: "HKV / SVASEK engineer", ag: "an LLM that writes pipelines",
+      jon: "Jon Mease, Avenger's author", av: "an open PR stack, repinned each round",
+      refs: "syntax and lessons, not linked",
+    },
+    nerds: `<b>the cycle</b>  <em>CLAUDE.md</em>
+<code>git -C ../avenger fetch --all --prune</code>
+<code>sed -i '' "s/&lt;old-rev&gt;/$NEW/g" Cargo.toml</code>
+<code>cargo build --release --workspace</code>
+<em>rerun everything, compare with FINDINGS.md, write it down</em>`,
+    draw() {
+      box("repo", 430, 395, 320, 110, { kind: "acc", label: "avenger-sedona-pointcloud", sub: "9 experiments · 4 crates · FINDINGS.md", bold: true, s: 0 });
+      person("an", 120, 280, "Analyst", { s: 0 });
+      person("ag", 120, 610, "Agent", { s: 0 });
+      edge("an", "repo", { label: "questions", s: 0 });
+      edge("ag", "repo", { label: "pipelines", s: 0 });
+
+      box("ign", 150, 70, 190, 64, { kind: "ext", label: "IGN LiDAR HD", sub: "COPC/LAZ tile", s: 1 });
+      box("sed", 440, 70, 190, 64, { kind: "ext", label: "SedonaDB", sub: "sedona-pointcloud", s: 1 });
+      box("df", 730, 70, 190, 64, { kind: "ext", label: "DataFusion", sub: "Arrow", s: 1 });
+      edge("ign", "sed", { s: 1 });
+      edge("sed", "df", { s: 1 });
+      edge("repo", "sed", { label: "reads", s: 1 });
+
+      box("av", 900, 250, 200, 64, { kind: "ext", label: "Avenger", sub: "jonmmease/avenger", s: 2 });
+      person("jon", 1000, 560, "Jon Mease", { s: 2 });
+      edge("repo", "av", { label: "draws", s: 2 });
+      edge("repo", "jon", { label: "FINDINGS", kind: "acc flow", s: 2, bend: -30 });
+      edge("jon", "av", { label: "commits", kind: "acc", s: 2 });
+      edge("av", "df", { s: 2 });
+
+      box("or", 330, 770, 210, 64, { kind: "ext", label: "OpenRouter", sub: "Jev · Claude Haiku", s: 3 });
+      box("alt", 640, 770, 210, 64, { kind: "ext", label: "Altair", sub: "Vega-Lite", s: 3 });
+      edge("repo", "or", { label: "decides", s: 3 });
+      edge("alt", "repo", { label: "charts", s: 3 });
+
+      box("refs", 920, 770, 210, 64, { kind: "ghost", label: "GDAL · PDAL", sub: "VegaFusion · Vega", s: 4 });
+      edge("repo", "refs", { kind: "dash", label: "lessons", s: 4 });
+    },
+  },
+
+  // 3 ----------------------------------------------------------------
+  {
+    title: "The spine",
+    big: "387 ms", bigsub: "geometry index · 300k marks",
+    rows: [["full scan", "1.1 s", 1], ["chunk statistics", "69 ms", 1], ["MemTable", "4 ms", 1],
+           ["render, 300k marks", "21.3 ms", 2], ["geometry index", "387 ms", 2]],
+    steps: 3,
+    nerds: `<b>fetching a window</b>  <em>experiment 1</em>
+<code>cargo run --release -p lidar-charts --bin bench_window -- ${T}</code>
+
+<b>set_scene · render · geometry index, apart</b>  <em>FINDINGS 1–3</em>
+<code>cargo run --release -p lidar-probes --bin probe_render</code>`,
+    draw() {
+      const st = [["tile", "COPC/LAZ"], ["sedona-pointcloud", "file format"], ["DataFusion", "lazy plan"],
+                  ["Arrow", "arrays"], ["scales · guides", "Avenger"], ["scenegraph", "Avenger"],
+                  ["wgpu", "GPU"], ["pixels", "window · PNG"]];
+      const y = 200, w = 122, gap = 17.5;
+      st.forEach((s, i) => box("s" + i, 40 + i * (w + gap), y, w, 70,
+        { label: s[0], sub: s[1], s: 0, kind: i === 3 ? "acc" : "", size: s[0].length > 12 ? 13 : 15 }));
+      for (let i = 0; i < st.length - 1; i++) edge("s" + i, "s" + (i + 1), { s: 0 });
+      // points moving through the spine
+      const g = layer(0);
+      el("line", { x1: 40, y1: y + 92, x2: 40 + 8 * (w + gap) - gap, y2: y + 92, stroke: C.grid }, g);
+      const p = el("path", { d: `M40,${y + 92} L${40 + 8 * (w + gap) - gap},${y + 92}`, fill: "none", stroke: "none", id: "spinePath" }, g);
+      for (let k = 0; k < 10; k++) {
+        const c = el("circle", { r: 3.2, fill: k % 3 ? "#949494" : C.accent }, g);
+        const a = el("animateMotion", { dur: "6s", repeatCount: "indefinite", begin: `${-k * 0.6}s` }, c);
+        el("mpath", { href: "#spinePath" }, a);
+      }
+      text(40, 160, "tile → pixel", "kk");
+
+      bars(60, 440, [["full scan", 1100, "1.1 s", C.barSoft], ["copc-rs", 270, "270 ms", C.barSoft],
+                     ["chunk statistics", 69, "69 ms"], ["MemTable", 4, "4 ms", C.accent, null, true]],
+           { log: true, min: 1, max: 1500, head: "window fetch · log", s: 1, trackW: 200, labelW: 140 });
+
+      box("gi", 40 + 5 * (w + gap), 330, w, 60, { kind: "warn", label: "geometry index", sub: "hit testing", s: 2, size: 13 });
+      edge("s5", "gi", { kind: "warn", s: 2 });
+      bars(640, 470, [["set_scene", 6.7, "6.7 ms", C.barSoft], ["render", 21.3, "21.3 ms"],
+                      ["geometry index", 387.2, "387 ms", C.warn, null, true]],
+           { max: 400, head: "300k marks", s: 2, trackW: 250, labelW: 130 });
+      bars(640, 640, [["10k", 8.7, "8.7 ms", C.warn], ["50k", 56.3, "56 ms", C.warn],
+                      ["150k", 181.3, "181 ms", C.warn], ["300k", 387.2, "387 ms", C.warn]],
+           { max: 400, head: "geometry index · marks", s: 2, trackW: 250, labelW: 130, rowH: 26 });
+    },
+  },
+
+  // 4 ----------------------------------------------------------------
+  {
+    title: "Nine front doors",
+    big: "1", bigsub: "spine",
+    rows: [["01", "SQL", 1], ["02", "chart language", 2], ["03", "Arrow Flight", 3], ["04", "proposal", 4],
+           ["05", "coordinate systems", 5], ["06", "pipeline", 6], ["07", "text", 7], ["08", "validator", 8],
+           ["09", "Altair", 9]],
+    steps: 10,
+    hover: {
+      d1: "static charts, explorer, window bench", d2: "the .avenger chart", d3: "live feed, aggregate states",
+      d4: "pixel binning, mark budget, Flight table", d5: "cartesian · polar · 3D · spatial · fisheye",
+      d6: "read ! filter ! sql ! chart", d7: "Jev chooses, Haiku writes", d8: "five layers, 39/39",
+      d9: "Avenger validates and draws Altair",
+    },
+    nerds: `<b>one crate per experiment</b>
+<code>cargo run --release -p lidar-charts   --bin explorer -- ${T}</code>
+<code>cargo run --release -p lidar-stream   --bin stream_live -- --speed 8 --window 12</code>
+<code>cargo run --release -p lidar-coords   --bin coords_live -- ${T}</code>
+<code>cargo run --release -p lidar-pipeline --bin pipeline -- "read … ! chart bar …"</code>
+<code>cargo run --release -p lidar-decide   --bin autopilot_live</code>
+<code>cd crates/avenger-validate &amp;&amp; maturin develop --release</code>
+<code>cd crates/avenger-altair   &amp;&amp; maturin develop --release</code>`,
+    draw() {
+      const sy = 790;
+      const sp = [["tile", 60], ["plan", 250], ["Arrow", 440], ["Avenger", 640], ["wgpu", 840], ["pixels", 1020]];
+      sp.forEach((s, i) => box("p" + i, s[1], sy, 110, 46, { label: s[0], s: 0, kind: i === 1 || i === 3 ? "acc" : "" }));
+      for (let i = 0; i < sp.length - 1; i++) edge("p" + i, "p" + (i + 1), { s: 0, kind: "acc" });
+
+      const cards = [
+        ["d1", "01", "SQL", null, 40, 40, "p1"],
+        ["d2", "02", "chart language", null, 265, 40, "p3"],
+        ["d3", "03", "live feed", null, 490, 40, "p2"],
+        ["d4", "04", "coupling", null, 715, 40, "p1"],
+        ["d5", "05", "coordinates", null, 940, 40, "p3"],
+        ["d6", "06", "pipeline", null, 150, 360, "p1"],
+        ["d7", "07", "decisions", null, 375, 360, "d6"],
+        ["d8", "08", "validation", null, 600, 360, "d6"],
+        ["d9", "09", "Altair", null, 825, 360, "p3"],
+      ];
+      cards.forEach((c, i) => {
+        const [id, n, lab, img, x, y, to] = c;
+        const s = i + 1, w = 200, h = 200;
+        box(id, x, y, w, h, { s, kind: id === "d4" ? "ghost" : "" });
+        const g = layer(s);
+        text(x + 12, y + 24, n, "kk", { parent: g });
+        text(x + 38, y + 24, lab, "lab", { parent: g, size: 16, bold: true });
+        const X = x + 12, Y = y + 44, IW = w - 24, IH = h - 56;
+        if (id === "d1") G.tile(X + 22, Y, IH, IH, { n: 18, seed: 4, parent: g });
+        else if (id === "d2") G.code(X, Y + 8, IW, ["mark rect as cells {", "  x: cx;  y: cy;", "  fill: h;", "}"], { parent: g });
+        else if (id === "d3") {
+          G.tile(X + 22, Y, IH, IH * 0.62, { n: 18, seed: 6, parent: g, fill: 1 });
+          G.bars(X, Y + IH * 0.7, IW, IH * 0.3, [3, 4, 6, 5, 7, 8, 6, 9, 7, 8, 6, 5], { parent: g, hi: 11 });
+        }
+        else if (id === "d4") {
+          text(x + w / 2, y + 115, "px", "bignum", { anchor: "middle", parent: g, fill: C.kicker });
+          text(x + w / 2, y + 150, "bins = plot.width", "mono", { anchor: "middle", parent: g, fill: C.muted });
+        }
+        else if (id === "d5") {
+          G.bars(X, Y + 10, IW * 0.42, IH - 20, [5, 3, 4], { parent: g, hi: 0 });
+          G.arc(X + IW * 0.76, Y + IH / 2, IH * 0.36, [5, 3, 4], { parent: g });
+        }
+        else if (id === "d6") G.code(X, Y + 8, IW, ["read tile", "! sql \"…\"", "! chart bar", "! set y.scale log"], { parent: g, hi: 2 });
+        else if (id === "d7") {
+          el("rect", { x: X, y: Y + 4, width: IW, height: 32, fill: "#fff", stroke: C.line }, g);
+          text(X + 10, Y + 25, "show it as a pie", "lab", { parent: g, size: 14 });
+          bars(X, Y + 56, [["mark", 0.98, "0.98", C.accent, null, true], ["zoom", 0.01, "0.00"], ["color", 0.01, "0.00"]],
+               { parent: g, max: 1, labelW: 50, trackW: 90, rowH: 24 });
+        }
+        else if (id === "d8") {
+          text(x + w / 2, y + 118, "39/39", "bignum", { anchor: "middle", parent: g, fill: C.accent });
+          [0, 1, 2, 3, 4].forEach(k => el("rect", { x: x + 30 + k * 30, y: y + 140, width: 24, height: 10, fill: C.accent, opacity: 0.3 + k * 0.15 }, g));
+          text(x + w / 2, y + 172, "0 · 1 · 2 · 3 · 4", "sub", { anchor: "middle", parent: g });
+        }
+        else if (id === "d9") {
+          G.code(X, Y, IW, ["alt.Chart(df)"], { parent: g, hi: 0 });
+          G.tilt(X + 30, Y + 54, IW - 60, IH - 60, [3, 5, 2, 7, 4], { parent: g, hi: 3 });
+        }
+        if (to.startsWith("p")) edge(id, to, { s, to: "t", from: "b", curve: "v", kind: id === "d4" ? "dash" : "" });
+        else edge(id, to, { s, from: "l", to: "r", kind: id === "d8" ? "acc" : "", label: id === "d8" ? "checks" : "writes" });
+      });
+    },
+  },
+
+  // 5 ----------------------------------------------------------------
+  {
+    title: "Decisions",
+    big: "290 ms", bigsub: "Jev · p50",
+    rows: [["rules", "13/19", 0], ["Jev", "19/19 · 290 ms", 0], ["Claude Haiku", "19/19 · 1,114 ms", 1],
+           ["Jev steers, Haiku writes", "25/25 · 1,790 ms", 2], ["everything, built and measured", "$0.91", 3]],
+    steps: 4,
+    hover: { txt: "what someone types", jev: "chooses from options we supply", hk: "writes the pipeline itself",
+             val: "refuses what the chart cannot draw", fold: "the chart is the fold of its command log" },
+    nerds: `<b>Jev, rules and Haiku on the same cases</b>
+<code>cargo run --release -p lidar-decide --bin decide_eval</code>
+<code>cargo run --release -p lidar-decide --bin writer_eval</code>
+<em>needs OPENROUTER_API_KEY; every response is cached by hash</em>`,
+    draw() {
+      // the typing box, as in the autopilot window
+      const g0 = layer(0);
+      el("rect", { x: 60, y: 70, width: 420, height: 50, fill: "#fff", stroke: "#cfd3d8", rx: 3 }, g0);
+      text(78, 101, "zoom to the south-east", "lab", { parent: g0 });
+      box("txt", 60, 70, 420, 50, { s: 0, kind: "ghost" });
+
+      box("jev", 60, 200, 420, 190, { s: 0 });
+      const gj = layer(0);
+      text(80, 232, "Jev", "lab", { parent: gj, bold: true });
+      text(460, 232, "290 ms", "sub", { parent: gj, anchor: "end" });
+      bars(80, 256, [["zoom", 1.0, "1.00", C.accent, null, true], ["color", 0.004, "0.00"], ["highlight", 0.004, "0.00"],
+                     ["mark", 0.004, "0.00"], ["no change", 0.004, "0.00"]],
+           { max: 1, parent: gj, labelW: 100, trackW: 220, rowH: 25 });
+      edge("txt", "jev", { s: 0 });
+
+      box("hk", 700, 200, 300, 110, { s: 1, label: "Claude Haiku", sub: "writes the pipeline · 1.1 s", bold: true });
+      edge("jev", "hk", { s: 1, from: "r", to: "l", label: "not covered", kind: "" });
+
+      box("lines", 60, 470, 420, 70, { s: 0, kind: "dark" });
+      const gl = layer(0);
+      text(78, 498, "! zoom 657500..658000", "mono", { parent: gl, fill: C.darkAccent });
+      text(78, 520, "        6867000..6867500", "mono", { parent: gl, fill: C.darkAccent });
+      edge("jev", "lines", { s: 0, label: "covered" });
+      edge("hk", "lines", { s: 1, curve: "v", from: "b", to: "r" });
+
+      box("val", 600, 470, 220, 70, { s: 0, kind: "acc", label: "validate", sub: "0 · 1 · 2 · 3 · 4", bold: true });
+      edge("lines", "val", { s: 0, kind: "acc" });
+      edge("val", "hk", { s: 2, kind: "warn dash flow", label: "refused + reason", bend: 60, dx1: 0 });
+
+      const chain = [["fold", "command log → state"], ["resolve", "keyed items"], ["transition", "a → b"], ["draw", "coordinate system"]];
+      chain.forEach((c, i) => box(["fold", "res", "tr", "dr"][i], 60 + i * 150, 640, 130, 64, { s: 0, label: c[0], sub: c[1], size: 16 }));
+      edge("val", "fold", { s: 0, curve: "v", from: "b", to: "t" });
+      edge("fold", "res", { s: 0 }); edge("res", "tr", { s: 0 }); edge("tr", "dr", { s: 0 });
+      const gv = layer(0);
+      el("rect", { x: 660, y: 600, width: 470, height: 180, fill: "none", stroke: C.line }, gv);
+      text(680, 628, "Points per class", "lab", { parent: gv, fill: C.accent, bold: true, size: 15 });
+      G.bars(680, 650, 160, 110, [9, 2, 2.3, 4.8, 4.7, 3], { parent: gv, hi: 4 });
+      el("path", { d: "M860,705 L930,705", class: "edge acc flow", "marker-end": "url(#arrA)" }, gv);
+      text(895, 690, "keyed", "elab", { anchor: "middle", parent: gv });
+      G.arc(1030, 705, 62, [9, 2, 2.3, 4.8, 4.7, 3], { parent: gv, hi: 4 });
+      edge("dr", "dr", { s: 0, noarrow: true });
+      const ga = layer(0);
+      el("path", { d: "M580,672 L650,672", class: "edge", "marker-end": "url(#arr)" }, ga);
+
+      const g3 = layer(3);
+      text(1000, 395, "$0.91", "bignum", { parent: g3, anchor: "middle" });
+      text(1000, 420, "all of experiment 7", "sub", { parent: g3, anchor: "middle" });
+    },
+  },
+
+  // 6 ----------------------------------------------------------------
+  {
+    title: "Vocabulary as data",
+    big: "39/39", bigsub: "refusals caught · 0 false",
+    rows: [["Rust, warm", "10 µs", 1], ["Python · pyo3", "13.8 µs", 1], ["wasm", "8.5 µs", 1],
+           ["CEL · cel-js", "3.6 µs", 1], ["portable vs Rust", "99 % of 3,330", 2], ["avenger-vegalite-py", "1 MB", 2]],
+    steps: 4,
+    hover: { spec: "spec/steps.json", l2: "a CEL rule per step", l4: "DataFusion plans on empty tables",
+             vls: "Jon's typed Vega-Lite, with a schema export" },
+    nerds: `<b>the validator</b>  <em>crates/avenger-validate</em>
+<code>cd crates/avenger-validate &amp;&amp; maturin develop --release</code>
+<code>python -c "import avenger_validate as av; print(av.Validator().check(text))"</code>
+
+<b>Vega-Lite types as JSON Schema + CEL</b>
+<code>cargo run -p avenger-vegalite-spec --features schema --example json_schema</code>
+<code>python crates/avenger-altair/bench/schema_parity.py &lt;avenger checkout&gt;</code>`,
+    draw() {
+      box("spec", 50, 70, 360, 250, { s: 0, kind: "dark" });
+      const g = layer(0);
+      text(70, 100, "spec/steps.json", "kk", { parent: g, fill: "#b8b8b8" });
+      ['"highlight": {', '  "positional": [["where", "vega"]],', '  "requires":', "    \"state.phase == 'chart'", "     && state.mark in", "        ['bar','arc','point']\"", "}"]
+        .forEach((l, i) => text(70, 134 + i * 24, l, "mono", { parent: g, fill: i === 0 || i === 6 ? "#fff" : C.darkAccent }));
+
+      const L = [["l0", "0", "syntax"], ["l1", "1", "arguments"], ["l2", "2", "order · state · CEL"], ["l3", "3", "Vega expressions"], ["l4", "4", "data · SQL"]];
+      L.forEach((l, i) => box(l[0], 480, 70 + i * 52, 250, 42, { s: 0, label: l[1] + "  " + l[2], align: "left", size: 15, kind: "acc" }));
+      for (let i = 0; i < 4; i++) edge("l" + i, "l" + (i + 1), { s: 0, kind: "acc" });
+      edge("spec", "l0", { s: 0, from: "r", to: "l" });
+
+      bars(800, 100, [["Rust", 10, "10 µs", C.accent, null, true], ["Python", 13.8, "13.8 µs"],
+                      ["wasm", 8.5, "8.5 µs"], ["CEL · JS", 3.6, "3.6 µs"]],
+           { max: 25, head: "per pipeline", s: 1, labelW: 80, trackW: 190, rowH: 34 });
+      const gl = layer(1);
+      el("path", { d: "M730,185 C765,185 765,150 795,150", class: "edge acc", "marker-end": "url(#arrA)" }, gl);
+
+      // the second vocabulary
+      const y2 = 470;
+      box("vls", 50, y2, 300, 90, { s: 2, kind: "dark", label: "avenger-vegalite-spec", sub: "Rust types", bold: true });
+      box("js", 450, y2, 240, 90, { s: 2, label: "JSON Schema", sub: "+ x-avenger-rules (CEL)" });
+      box("port", 790, y2, 320, 90, { s: 2, label: "jsonschema + cel-python", sub: "ajv + cel-js" });
+      edge("vls", "js", { s: 2 }); edge("js", "port", { s: 2 });
+      box("vlp", 450, 640, 240, 90, { s: 2, kind: "acc", label: "avenger-vegalite-py", sub: "1 MB · import 3.1 ms", bold: true });
+      edge("vls", "vlp", { s: 2, curve: "v", from: "b", to: "l" });
+      bars(790, 650, [["1 MB", 1, "3.1 ms", C.accent, null, true], ["89 MB", 89, "268 ms", C.barSoft]],
+           { max: 89, head: "module · import", s: 2, labelW: 80, trackW: 190, rowH: 34 });
+
+      const g3 = layer(3);
+      el("rect", { x: 830, y: 280, width: 250, height: 110, fill: "none", stroke: C.accent, "stroke-width": 2 }, g3);
+      text(955, 345, "39/39", "bignum", { parent: g3, anchor: "middle", fill: C.accent });
+      text(955, 372, "0 of 230 wrongly", "sub", { parent: g3, anchor: "middle" });
+    },
+  },
+
+  // 7 ----------------------------------------------------------------
+  {
+    title: "Arrow and native",
+    big: "108×", bigsub: "Vega-Lite validation",
+    rows: [["validation", "6.5 µs · 705 µs", 0], ["pipelines", "470 µs · 1,667 µs", 1],
+           ["1M rows", "48 ms · 2.2 s", 2], ["window", "4 ms · 1.1 s", 3]],
+    steps: 4,
+    nerds: `<b>Altair's validation vs Avenger's types</b>  <em>crates/avenger-altair</em>
+<code>cargo run --release -p avenger-altair -- render spec.json out.png 10</code>
+<b>pipelines, Rust vs pure Python</b>  <em>experiment 8, Linux</em>
+<code>cd experiments/08-pipeline-validation/bench &amp;&amp; cargo run --release -- 50</code>
+<code>python experiments/08-pipeline-validation/python/validate.py 5</code>
+<b>1M-row histogram</b>
+<code>LARGE_ALL=1 python crates/avenger-altair/bench/large.py 1000000</code>
+<b>window fetch</b>
+<code>cargo run --release -p lidar-charts --bin bench_window -- ${T}</code>`,
+    draw() {
+      const o = { log: true, labelW: 150, trackW: 240, rowH: 34 };
+      bars(60, 110, [["Avenger types", 6.5, "6.5 µs", C.accent, null, true], ["JSON Schema", 705, "705 µs", C.barSoft]],
+           { ...o, min: 1, max: 1000, head: "Vega-Lite validation", s: 0 });
+      bars(640, 110, [["Rust", 470, "470 µs", C.accent, null, true], ["Rust · pyo3", 523, "523 µs", C.bar],
+                      ["pure Python", 1667, "1,667 µs", C.barSoft]],
+           { ...o, min: 10, max: 3000, head: "pipeline validation", s: 1 });
+      bars(60, 480, [["Arrow", 48, "48 ms", C.accent, null, true], ["VegaFusion", 500, "0.5 s", C.bar],
+                     ["JSON rows", 2200, "2.2 s", C.barSoft]],
+           { ...o, min: 1, max: 3000, head: "1M-row histogram", s: 2 });
+      bars(640, 480, [["MemTable", 4, "4 ms", C.accent, null, true], ["chunk statistics", 69, "69 ms", C.bar],
+                      ["copc-rs", 270, "270 ms", C.barSoft], ["full scan", 1100, "1.1 s", C.barSoft]],
+           { ...o, min: 1, max: 2000, head: "window fetch", s: 3 });
+      text(60, 820, "log scales", "kk");
+      const g = layer(0);
+      el("line", { x1: 590, y1: 70, x2: 590, y2: 800, class: "axis" }, g);
+      el("line", { x1: 40, y1: 410, x2: 1140, y2: 410, class: "axis" }, g);
+    },
+  },
+
+  // 8 ----------------------------------------------------------------
+  {
+    title: "The frame budget",
+    big: "1.2 µs", bigsub: "per mark, to index",
+    rows: [["render, 300k", "21.3 ms", 0], ["set_scene, 300k", "6.7 ms", 0], ["geometry index, 300k", "387 ms", 1],
+           ["live, ~156k cells", "4.3 fps", 2], ["live, ~40k cells", "10.8 fps", 2]],
+    steps: 3,
+    nerds: `<b>the probe</b>  <em>FINDINGS 1–3</em>
+<code>cargo run --release -p lidar-probes --bin probe_render</code>
+<b>the live viewer</b>  <em>experiment 3</em>
+<code>cargo run --release -p lidar-stream --bin stream_server -- ${T}</code>
+<code>cargo run --release -p lidar-stream --bin stream_live -- --speed 8 --window 12</code>`,
+    draw() {
+      const X0 = 100, X1 = 760, Y0 = 740, Y1 = 90;
+      const sx = v => X0 + (X1 - X0) * v / 300000, sy = v => Y0 - (Y0 - Y1) * v / 400;
+      const g = layer(0);
+      [0, 100, 200, 300, 400].forEach(v => {
+        el("line", { x1: X0, y1: sy(v), x2: X1, y2: sy(v), class: "axis" }, g);
+        text(X0 - 12, sy(v) + 4, v + " ms", "num", { anchor: "end", parent: g });
+      });
+      [0, 100000, 200000, 300000].forEach(v => text(sx(v), Y0 + 26, (v / 1000) + "k", "num", { anchor: "middle", parent: g }));
+      text((X0 + X1) / 2, Y0 + 56, "marks", "kk", { anchor: "middle", parent: g });
+      const xs = [10000, 50000, 150000, 300000];
+      const line = (vals, col, s, lab, w) => {
+        const gg = layer(s);
+        el("path", { d: vals.map((v, i) => (i ? "L" : "M") + sx(xs[i]) + "," + sy(v)).join(" "), fill: "none", stroke: col, "stroke-width": w || 2.4 }, gg);
+        vals.forEach((v, i) => el("circle", { cx: sx(xs[i]), cy: sy(v), r: 4, fill: "#fff", stroke: col, "stroke-width": 2 }, gg));
+        text(sx(300000) + 14, sy(vals[3]) + 5, lab, "lab", { parent: gg, fill: col, bold: true });
+      };
+      line([0.8, 1.5, 3.6, 6.7], C.line, 0, "set_scene");
+      line([4.7, 7.9, 13.9, 21.3], C.bar, 0, "render");
+      line([8.7, 56.3, 181.3, 387.2], C.warn, 1, "geometry index", 3);
+
+      const g2 = layer(2);
+      text(870, 150, "live feed", "kk", { parent: g2 });
+      [["~156k", 4.3], ["~40k", 10.8]].forEach((r, i) => {
+        const y = 200 + i * 170;
+        text(870, y + 44, r[1], "bignum", { parent: g2 });
+        text(990, y + 44, "fps", "lab", { parent: g2, fill: C.muted });
+        text(870, y + 72, r[0] + " cells", "sub", { parent: g2 });
+        for (let k = 0; k < 12; k++) el("rect", { x: 870 + k * 20, y: y + 90, width: 14, height: 14,
+          fill: k < Math.round(r[1]) ? C.bar : C.track }, g2);
+      });
+      G.tile(870, 560, 190, 190, { n: 24, seed: 8, s: 2, fill: 0.55 });
+    },
+  },
+
+  // 9 ----------------------------------------------------------------
+  {
+    title: "Altair on Avenger",
+    big: "19 ms", bigsub: "chart to PNG",
+    rows: [["validate", "6.5 µs", 0], ["JSON Schema", "705 µs", 1], ["gallery compiles", "0 / 117", 2],
+           ["notebook frame", "22 ms", 0], ["SVG export", "341 ms", 2]],
+    steps: 3,
+    hover: { val: "Avenger's own Vega-Lite types", comp: "avenger-vegalite-compiler", data: "Arrow via the PyCapsule interface",
+             js: "Altair's usual path" },
+    nerds: `<b>enable it</b>  <em>crates/avenger-altair</em>
+<code>cd crates/avenger-altair &amp;&amp; maturin develop --release</code>
+<code>import avenger_altair; avenger_altair.enable()</code>
+<b>what the gallery needs</b>  <em>FINDINGS 21</em>
+<code>python crates/avenger-altair/bench/coverage.py ~/vega/altair/tests/examples_methods_syntax</code>`,
+    draw() {
+      box("chart", 40, 150, 180, 64, { s: 0, kind: "dark" });
+      text(56, 188, "alt.Chart(df)", "mono", { fill: C.darkAccent });
+      box("dict", 260, 150, 130, 64, { s: 0, label: "to_dict", sub: "Vega-Lite" });
+      box("val", 430, 150, 150, 64, { s: 0, kind: "acc", label: "validate", sub: "6.5 µs", bold: true });
+      box("comp", 620, 150, 150, 64, { s: 0, label: "compiler", sub: "ChartDefinition" });
+      box("data", 620, 270, 150, 64, { s: 0, label: "Arrow", sub: "no JSON rows", kind: "acc" });
+      box("ac", 810, 150, 150, 64, { s: 0, label: "avenger-chart", sub: "wgpu", size: 16 });
+      edge("chart", "dict", { s: 0 }); edge("dict", "val", { s: 0 }); edge("val", "comp", { s: 0, kind: "acc" });
+      edge("comp", "ac", { s: 0 }); edge("data", "ac", { s: 0, curve: "h", from: "r", to: "b" });
+      edge("chart", "data", { s: 0, curve: "v", from: "b", to: "l", label: "df" });
+      const gc = layer(0);
+      el("rect", { x: 990, y: 120, width: 160, height: 190, fill: "none", stroke: C.line }, gc);
+      G.tilt(1010, 150, 120, 130, [3, 5, 2, 7, 4], { parent: gc, hi: 3 });
+      const ga = layer(0);
+      el("path", { d: "M960,182 L985,182", class: "edge", "marker-end": "url(#arr)" }, ga);
+
+      box("js", 430, 400, 150, 64, { s: 1, label: "JSON Schema", sub: "705 µs", kind: "ext" });
+      box("vega", 620, 400, 150, 64, { s: 1, label: "Vega · JS", sub: "browser", kind: "ext" });
+      edge("val", "js", { s: 1, kind: "dash", label: "not yet drawn" });
+      edge("js", "vega", { s: 1, kind: "dash" });
+
+      const g2 = layer(2);
+      text(40, 580, "0 / 117", "bignum", { parent: g2 });
+      text(40, 606, "Altair gallery", "sub", { parent: g2 });
+      bars(300, 560, [["layer", 41, "41", C.warn], ["marks", 41, "41", C.warn], ["composition", 19, "19", C.warn], ["colour", 8, "8", C.warn]],
+           { max: 45, head: "needed first", parent: g2, labelW: 120, trackW: 300, rowH: 34 });
+    },
+  },
+
+  // 10 ---------------------------------------------------------------
+  {
+    title: "What evolves where",
+    big: "genesis", bigsub: "built here",
+    rows: [["genesis", "pipeline · validator · decider", 0], ["custom → product", "Avenger", 1],
+           ["commodity", "Arrow · DataFusion · wgpu", 0], ["friction", "FINDINGS", 2]],
+    steps: 3,
+    hover: {},
+    nerds: `<b>the same map as text</b>  <em>ARCHITECTURE.md, section 5</em>
+<em>paste it into onlinewardleymaps.com</em>
+
+<em>positions are judgements, not measurements</em>`,
+    draw() {
+      const X0 = 70, X1 = 1140, Y0 = 800, Y1 = 50;
+      const px = e => X0 + (X1 - X0) * e, py = v => Y0 - (Y0 - Y1) * v;
+      const g = layer(0);
+      el("line", { x1: X0, y1: Y0, x2: X1, y2: Y0, stroke: C.ink, "stroke-width": 1.2, "marker-end": "url(#arr)" }, g);
+      el("line", { x1: X0, y1: Y0, x2: X0, y2: Y1, stroke: C.ink, "stroke-width": 1.2, "marker-end": "url(#arr)" }, g);
+      [0.17, 0.4, 0.7].forEach(e => el("line", { x1: px(e), y1: Y0, x2: px(e), y2: Y1, stroke: C.grid, "stroke-dasharray": "4 4" }, g));
+      [["genesis", 0.085], ["custom", 0.285], ["product", 0.55], ["commodity", 0.85]].forEach(t => text(px(t[1]), Y0 + 26, t[0], "kk", { anchor: "middle", parent: g }));
+      text(X0 - 14, Y1 + 10, "visible", "kk", { anchor: "end", parent: g });
+      text(X0 - 14, Y0, "hidden", "kk", { anchor: "end", parent: g });
+      const band = layer(1);
+      el("rect", { x: px(0), y: Y1, width: px(0.17) - px(0), height: Y0 - Y1, fill: C.accent, opacity: 0.06 }, band);
+
+      const W = [
+        ["a", "Analyst", 0.98, 0.45, "anchor"], ["ag", "Agent", 0.98, 0.20, "anchor"],
+        ["q", "answer to a question", 0.90, 0.35], ["alt", "Altair API", 0.80, 0.78], ["dec", "decider", 0.78, 0.22],
+        ["pl", "pipeline language", 0.71, 0.14], ["val", "validator", 0.645, 0.09], ["voc", "vocabulary as data", 0.58, 0.04],
+        ["lay", "chart layer", 0.52, 0.12], ["crd", "coordinate systems", 0.455, 0.07], ["vlc", "Vega-Lite compiler", 0.56, 0.30],
+        ["sg", "Avenger scenegraph", 0.47, 0.40], ["gi", "geometry index", 0.36, 0.33], ["agg", "aggregate states", 0.40, 0.20],
+        ["llm", "LLM API", 0.62, 0.55], ["cel", "CEL", 0.46, 0.58], ["jss", "JSON Schema", 0.46, 0.85],
+        ["sp", "sedona-pointcloud", 0.30, 0.30], ["df", "DataFusion", 0.30, 0.68], ["fl", "Arrow Flight", 0.24, 0.66],
+        ["ar", "Arrow", 0.20, 0.86], ["wg", "wgpu", 0.14, 0.72], ["tile", "COPC/LAZ tile", 0.10, 0.80], ["gpu", "GPU", 0.04, 0.95],
+      ];
+      W.forEach(c => {
+        const [id, lab, v, e, kind] = c;
+        const cx = px(e), cy = py(v);
+        const gg = layer(0);
+        const inner = el("g", { class: "dim hot", "data-id": id }, gg);
+        el("circle", { cx, cy, r: kind ? 7 : 6, fill: kind ? C.ink : "#fff", stroke: C.ink, "stroke-width": 1.5 }, inner);
+        text(cx + 11, cy + 5, lab, "lab", { parent: inner, size: 15, bold: !!kind });
+        NODES[id] = { x: cx - 7, y: cy - 7, w: 14, h: 14, cx, cy, g: inner };
+      });
+      const links = [["a", "q"], ["ag", "q"], ["a", "alt"], ["q", "dec"], ["q", "pl"], ["dec", "llm"], ["dec", "voc"], ["pl", "val"],
+        ["val", "voc"], ["val", "cel"], ["alt", "vlc"], ["alt", "jss"], ["pl", "lay"], ["lay", "crd"], ["lay", "sg"], ["vlc", "sg"],
+        ["sg", "gi"], ["sg", "wg"], ["pl", "df"], ["agg", "df"], ["agg", "fl"], ["df", "sp"], ["sp", "tile"], ["df", "ar"], ["wg", "gpu"]];
+      const lg = layer(0);
+      svg.insertBefore(lg, svg.children[1]);
+      links.forEach(([a, b]) => {
+        const A = NODES[a], B = NODES[b];
+        const inner = el("g", { class: "dim" }, lg);
+        el("line", { x1: A.cx, y1: A.cy, x2: B.cx, y2: B.cy, stroke: "#c4c4c4", "stroke-width": 1.1 }, inner);
+        EDGES.push({ a, b, g: inner });
+      });
+      [["val", 0.45], ["vlc", 0.55], ["sg", 0.60], ["sp", 0.55]].forEach(([id, to]) => {
+        const n = NODES[id], gg = layer(1);
+        el("path", { d: `M${n.cx},${n.cy + 16} L${px(to)},${n.cy + 16}`, class: "edge acc dash", "marker-end": "url(#arrA)" }, gg);
+      });
+      [["gi", "1–3"], ["vlc", "21"], ["sg", "4–7"]].forEach(([id, f]) => {
+        const n = NODES[id], gg = layer(2);
+        el("circle", { cx: n.cx, cy: n.cy, r: 15, fill: "none", stroke: C.warn, "stroke-width": 2 }, gg);
+        text(n.cx - 20, n.cy + 5, f, "val", { anchor: "end", parent: gg, fill: C.warn });
+      });
+    },
+  },
+
+  // 11 ---------------------------------------------------------------
+  {
+    title: "Nine questions",
+    big: "?", bigsub: "where the vocabulary lives",
+    rows: [["can it draw", "1 · 2 · 3", 0], ["how to describe", "4 · 5 · 6", 1], ["who drives", "7", 2],
+           ["how to check", "8 · 9", 3], ["next", "?", 4]],
+    steps: 5,
+    hover: { q1: "17.3M points from SQL", q2: "the experimental chart language", q3: "a live sensor feed",
+             q4: "patterns from coupled workflows", q5: "cartesian, polar, 3D and maps as one trait",
+             q6: "Vega expressions compiled to DataFusion", q7: "Jev and Claude Haiku",
+             q8: "one spec, five layers, every language", q9: "Avenger as Altair's engine", nx: "this repo · Avenger · its own crate" },
+    nerds: `<b>each experiment's README</b>
+<code>experiments/01-charts/README.md</code>
+<code>…</code>
+<code>experiments/09-altair-on-avenger/README.md</code>`,
+    draw() {
+      const colX = [40, 280, 520, 740, 960], w = 200, h = 108;
+      ["draw", "describe", "drive", "check", "next"].forEach((t, i) => text(colX[i], 120, t, "kk", { s: i }));
+      const Q = [
+        ["q1", 0, 150, "1", "draw from SQL", "69 ms window"], ["q2", 0, 360, "2", "chart language", "74 lines"],
+        ["q3", 0, 570, "3", "live feed", "11 fps"],
+        ["q5", 1, 150, "5", "coordinate systems", "0.27 px"], ["q6", 1, 360, "6", "Vega + SQL", "67 % compiles"],
+        ["q4", 1, 570, "4", "coupling patterns", "proposal"],
+        ["q7", 2, 255, "7", "decisions", "19/19 · 290 ms"],
+        ["q8", 3, 255, "8", "validation", "39/39 · 10 µs"], ["q9", 3, 465, "9", "Altair", "6.5 vs 705 µs"],
+      ];
+      const st = { 0: 0, 1: 1, 2: 2, 3: 3 };
+      Q.forEach(q => {
+        const [id, c, y, n, lab, num] = q;
+        box(id, colX[c], y, w, h, { s: st[c] });
+        const g = layer(st[c]);
+        text(colX[c] + 14, y + 28, n, "kk", { parent: g });
+        text(colX[c] + 14, y + 56, lab, "lab", { parent: g, bold: true });
+        text(colX[c] + 14, y + 84, num, "lab", { parent: g, fill: C.accent });
+      });
+      box("nx", colX[4], 360, 180, 108, { s: 4, kind: "acc ext" });
+      const gn = layer(4);
+      text(colX[4] + 90, 430, "?", "bignum", { anchor: "middle", parent: gn, fill: C.accent });
+      ["this repo", "Avenger", "own crate"].forEach((t, i) => {
+        el("rect", { x: colX[4], y: 500 + i * 50, width: 180, height: 36, fill: "none", stroke: C.line }, gn);
+        text(colX[4] + 90, 523 + i * 50, t, "lab", { anchor: "middle", parent: gn, size: 15 });
+      });
+      edge("q1", "q2", { s: 0 }); edge("q2", "q3", { s: 0 });
+      edge("q3", "q4", { s: 1 }); edge("q1", "q5", { s: 1 }); edge("q1", "q6", { s: 1 });
+      edge("q5", "q7", { s: 2 }); edge("q6", "q7", { s: 2 });
+      edge("q7", "q8", { s: 3 }); edge("q6", "q8", { s: 3, bend: 60 }); edge("q8", "q9", { s: 3 });
+      edge("q9", "nx", { s: 4, kind: "acc" }); edge("q8", "nx", { s: 4, kind: "acc" });
+    },
+  },
+
+  // 12 ---------------------------------------------------------------
+  {
+    title: "The ledger",
+    big: "24", bigsub: "findings for Avenger",
+    rows: [["open", "12", 0], ["suggestion", "4", 0], ["worked around here", "3", 0], ["API change, adapted", "4", 0], ["fixed", "1", 0]],
+    steps: 1,
+    nerds: `<b>re-measure</b>  <em>FINDINGS.md</em>
+<code>cargo run --release -p lidar-probes --bin probe_guides</code>
+<code>cargo run --release -p lidar-probes --bin probe_render</code>
+<em>every entry carries the command that measures it</em>`,
+    draw() {
+      const F = {
+        1: ["geometry index dominates frames", "open"], 2: ["interactive: false doesn't avoid it", "open"],
+        3: ["invalidation always rebuilds geometry", "open"], 4: ["gradient fills flat or missing", "open"],
+        5: ["colorbar ignores its origin", "open"], 6: ["legend title inside the plot", "open"],
+        7: ["linear domains: two stops only", "open"], 8: ["axis always set band", "fixed"],
+        9: ["NumberFormatContext removed", "adapted"], 10: ["one constant fill per mark", "suggestion"],
+        11: ["no per-item key", "suggestion"], 12: ["vocabulary not available as data", "suggestion"],
+        13: ["unsupported properties need a path", "suggestion"], 14: ["number formatting fails at run time", "adapted"],
+        15: ["the format crates split", "adapted"], 16: ["geo 0.29 blocks sedona-geo", "open"],
+        17: ["number formatting moved again", "adapted"], 18: ["axis labels fail with defaults", "open"],
+        19: ["spec types refuse Altair's config", "local"], 20: ["SVG export: 340 ms on the font", "open"],
+        21: ["0 of 117 gallery charts compile", "open"], 22: ["materialisation charged per batch", "local"],
+        23: ["array accepted where an object belongs", "open"], 24: ["schema + CEL export", "local"],
+      };
+      const rows = [["frame", [1, 2, 3]], ["drawing", [4, 5, 6, 7, 8]], ["API", [9, 14, 15, 17]],
+        ["vocabulary", [10, 11, 12, 13]], ["Vega-Lite", [18, 19, 21, 23, 24]], ["performance", [20, 22]], ["dependencies", [16]]];
+      const style = s => s === "open" ? { fill: "#fff", stroke: C.warn, sw: 2.2, dash: null, tc: C.warn }
+        : s === "suggestion" ? { fill: "#fff", stroke: C.accent, sw: 1.6, dash: "4 3", tc: C.accent }
+        : s === "local" ? { fill: "#e5f5fa", stroke: C.accent, sw: 1.6, dash: null, tc: C.accent }
+        : s === "adapted" ? { fill: C.track, stroke: C.line, sw: 1, dash: null, tc: C.muted }
+        : { fill: C.accent, stroke: C.accent, sw: 1, dash: null, tc: "#fff" };
+      const hover = document.getElementById("hover");
+      rows.forEach((r, i) => {
+        const y = 70 + i * 105;
+        text(60, y + 44, r[0], "lab", { fill: C.muted, s: 0 });
+        r[1].forEach((n, k) => {
+          const x = 250 + k * 100, st = style(F[n][1]);
+          const g = layer(0);
+          const inner = el("g", { class: "dim hot" }, g);
+          el("rect", { x, y, width: 76, height: 76, fill: st.fill, stroke: st.stroke, "stroke-width": st.sw, "stroke-dasharray": st.dash }, inner);
+          text(x + 38, y + 47, n, "lab", { anchor: "middle", parent: inner, bold: true, fill: st.tc, size: 22 });
+          el("title", { text: `${n} · ${F[n][0]}` }, inner);
+          inner.addEventListener("mouseenter", () => { hover.textContent = `${n} · ${F[n][0]}`; });
+          inner.addEventListener("mouseleave", () => { hover.textContent = ""; });
+        });
+      });
+      const lg = layer(0);
+      [["open", "open"], ["suggestion", "suggestion"], ["local", "worked around here"], ["adapted", "adapted"], ["fixed", "fixed"]].forEach((s, i) => {
+        const st = style(s[0]), x = 780, y = 90 + i * 44;
+        el("rect", { x, y, width: 22, height: 22, fill: st.fill, stroke: st.stroke, "stroke-width": st.sw, "stroke-dasharray": st.dash }, lg);
+        text(x + 34, y + 17, s[1], "lab", { parent: lg, size: 15, fill: C.muted });
+      });
+    },
+  },
+];
+
+// ---------------------------------------------------------------- engine
+
+let cur = 0, step = 0;
+const nerds = document.getElementById("nerds");
+
+function render() {
+  const S = SLIDES[cur];
+  svg.innerHTML = ""; NODES = {}; EDGES = [];
+  svg.classList.remove("focus");
+  defs();
+  EDGE_LAYER = el("g", {});
+  S.draw();
+  wireHover(S.hover);
+  document.getElementById("kicker").textContent = String(cur + 1).padStart(2, "0") + " / " + SLIDES.length;
+  document.getElementById("title").textContent = S.title;
+  document.getElementById("big").textContent = S.big || "";
+  document.getElementById("bigsub").textContent = S.bigsub || "";
+  const rows = document.getElementById("rows");
+  rows.innerHTML = "";
+  (S.rows || []).forEach(r => {
+    const d = document.createElement("div");
+    d.className = "row"; d.dataset.s = r[2] || 0;
+    d.innerHTML = `<span></span><span></span>`;
+    d.children[0].textContent = r[0]; d.children[1].textContent = r[1];
+    rows.appendChild(d);
+  });
+  nerds.innerHTML = S.nerds || "";
+  const dots = document.getElementById("dots");
+  dots.innerHTML = "";
+  SLIDES.forEach((_, i) => {
+    const d = document.createElement("i");
+    if (i === cur) d.className = "on";
+    d.onclick = () => go(i, 0);
+    dots.appendChild(d);
+  });
+  show();
+}
+
+function show() {
+  document.querySelectorAll("[data-s]").forEach(e => {
+    e.classList.toggle("on", Number(e.dataset.s) <= step);
+  });
+  document.querySelectorAll("svg [data-s]").forEach(e => {
+    e.classList.toggle("on", Number(e.getAttribute("data-s")) <= step);
+  });
+  history.replaceState(null, "", "#" + (cur + 1) + (step ? "." + step : ""));
+}
+
+function go(i, s) {
+  cur = Math.max(0, Math.min(SLIDES.length - 1, i));
+  step = s === "end" ? SLIDES[cur].steps - 1 : s;
+  render();
+}
+
+function next() {
+  if (step < SLIDES[cur].steps - 1) { step++; show(); }
+  else if (cur < SLIDES.length - 1) go(cur + 1, 0);
+}
+function prev() {
+  if (step > 0) { step--; show(); }
+  else if (cur > 0) go(cur - 1, "end");
+}
+
+document.addEventListener("keydown", e => {
+  if (["ArrowRight", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); next(); }
+  else if (["ArrowLeft", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); prev(); }
+  else if (e.key === "Home") go(0, 0);
+  else if (e.key === "End") go(SLIDES.length - 1, "end");
+  else if (e.key === "Tab") { e.preventDefault(); nerds.classList.toggle("on"); }
+  else if (e.key === "Escape") nerds.classList.remove("on");
+  else if (e.key === "f") document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+});
+document.getElementById("next").onclick = next;
+document.getElementById("prev").onclick = prev;
+document.getElementById("nerdbtn").onclick = () => nerds.classList.toggle("on");
+
+function fit() {
+  const st = document.getElementById("stage");
+  const k = Math.min(window.innerWidth / 1600, window.innerHeight / 900);
+  st.style.transform = `scale(${k}) translate(-50%, -50%)`;
+}
+window.addEventListener("resize", fit);
+fit();
+
+// #3 opens slide 3, #3.2 its third step; ?all shows every step (for stills).
+(function start() {
+  const m = location.hash.match(/^#(\d+)(?:\.(\d+))?/);
+  const all = /[?&]all\b/.test(location.search);
+  const i = m ? Number(m[1]) - 1 : 0;
+  go(i, all ? "end" : (m && m[2] ? Number(m[2]) : 0));
+})();
+</script>
+</body>
+</html>

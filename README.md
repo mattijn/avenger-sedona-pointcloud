@@ -35,6 +35,8 @@ without conversion is that both sides agree on Arrow 58.3 and DataFusion 54.
 [ARCHITECTURE.md](ARCHITECTURE.md) draws all of it as one system: C4 context,
 containers and components, the main paths as sequence diagrams, a Wardley map
 of what evolves where, and the questions the experiments asked.
+The same picture as slides, for the browser: [docs/index.html](docs/index.html)
+(arrow keys step through, Tab shows the commands behind the numbers).
 
 ## Reviewing Avenger
 
