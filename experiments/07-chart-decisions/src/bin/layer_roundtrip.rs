@@ -6,7 +6,7 @@
 //!     cargo run --release -p lidar-decide --bin layer_roundtrip
 
 use lidar_decide::layer::model::{Dataset, Mark, Quarter, State};
-use lidar_decide::layer::{data, editor, package, pilot};
+use lidar_decide::layer::{data, editor, package, pilot, selection_log};
 use lidar_decide::layer_pipeline;
 
 type Error = Box<dyn std::error::Error>;
@@ -119,7 +119,7 @@ async fn main() -> Result<(), Error> {
     let bars = all.iter().find(|s| s.mark == Mark::Bars && !s.highlight && s.color.is_none()).unwrap();
     let line = all.iter().find(|s| s.mark == Mark::Line && s.zoom.is_none()).unwrap();
     let (bars, line) = (package::full(bars, &d).join("\n! "), package::full(line, &d).join("\n! "));
-    for (what, text) in [
+    let examples = [
         ("axis titles and a log scale", format!("{bars}\n! set x.axis.title \"LiDAR class\"\n! set y.axis.title \"points\"\n! set y.scale.type log")),
         ("the short form of experiment 6", format!("{bars}\n! set x.title \"LiDAR class\"")),
         ("one axis zoomed", format!("{line}\n! set x.scale.domain 0,5")),
@@ -156,7 +156,8 @@ async fn main() -> Result<(), Error> {
         ("CloudLasso in 3D", format!("{base}\n! zoom 657500..658000 6867250..6867750\n! view tilt --yaw 30 --elevation 35\n! select lasso --poly \"0.42,0.52;0.75,0.55;0.78,0.32;0.45,0.28\" --yaw 30 --elevation 35 --structure 0.3")),
         ("a lasso of two points", format!("{base}\n! select lasso --poly \"0.1,0.1;0.2,0.2\"")),
         ("a lasso on bars", format!("{bars}\n! select lasso --poly \"0.1,0.1;0.9,0.1;0.5,0.9\"")),
-    ] {
+    ];
+    for (what, text) in examples.clone() {
         match editor::apply(&text, &d).await {
             Ok(a) => println!(
                 "{what}: {:?} · x title {:?} · y title {:?} · log {} · zoom {:?} · colour {} · selection {:?} {:?} soft {:?} · lens {:?} · {} items, {:?} selected, found {:?}",
@@ -170,6 +171,42 @@ async fn main() -> Result<(), Error> {
             Err(e) => println!("{what}: refused: {e}"),
         }
     }
+    // The selections through avenger-selection's log: every `select` line
+    // replaced by `selection "<json>"` (and the layer's own flags for what the
+    // log does not carry) must give the same state and the same `select` line.
+    let (mut n_sel, mut select_bytes, mut log_bytes) = (0, 0, 0);
+    let t = std::time::Instant::now();
+    for (what, text) in &examples {
+        let Ok(a) = editor::apply(text, &d).await else { continue };
+        let Some(sl) = package::select_line(&a.state) else { continue };
+        let lines = selection_log::log_lines(&a.state);
+        let kept: Vec<&str> = text.split("\n! ").filter(|l| !l.starts_with("select ") && *l != "select").collect();
+        let replayed = format!("{}\n! {}", kept.join("\n! "), lines.join("\n! "));
+        let b = editor::apply(&replayed, &d).await.map_err(|e| format!("{what}, through the log: {e}"))?;
+        // Keys are a set in the log, in the crate's order; the layer draws
+        // them as a set too, so they are compared as sets.
+        let set = |mut n: lidar_decide::layer::model::State| {
+            if let lidar_decide::layer::model::Selection::Keys(k) = &mut n.selection {
+                k.sort();
+            }
+            n
+        };
+        let (sa, sb) = (set(a.state.clone()), set(b.state.clone()));
+        if sb.selection != sa.selection || sb.soft != sa.soft || sb.effect != sa.effect || package::select_line(&sb) != package::select_line(&sa) {
+            return Err(format!("{what}: through the log {:?}, not {sl}", package::select_line(&b.state)).into());
+        }
+        n_sel += 1;
+        select_bytes += sl.len();
+        log_bytes += lines.iter().map(|l| l.len()).sum::<usize>();
+        if what.starts_with("CloudLasso") {
+            println!("{what}, as the log has it:\n  {}", lines.join("\n  "));
+        }
+    }
+    println!(
+        "{n_sel} selections through avenger-selection's log: each gives the same state and the same select line \
+         ({select_bytes} bytes of select lines, {log_bytes} of log lines; {:.1?})",
+        t.elapsed()
+    );
     // Examples, for the README.
     let a = &all[0];
     for n in [&all[3], &all[all.len() - 1]] {

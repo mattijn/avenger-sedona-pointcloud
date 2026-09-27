@@ -4552,6 +4552,7 @@ dependencies = [
  "avenger-eventstream",
  "avenger-geometry",
  "avenger-scenegraph",
+ "avenger-selection",
  "avenger-text",
  "avenger-wgpu",
  "avenger-winit-wgpu",

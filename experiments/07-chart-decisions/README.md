@@ -363,6 +363,29 @@ per 5 m, so densities are of roofs, not of points. Measured by
 `layer_roundtrip` (the "lasso" cases) and `--snapshot` with a `!lasso x,y x,y
 …` step, which gives the same 667 cells as the pipeline line.
 
+## Selections in avenger-selection's log
+
+Every selection above is drawn by this layer's own code. The repo also
+carries `avenger-selection` with additions that express them all as
+DataFusion predicates over the source rows (FINDINGS.md 25–31), and a log
+that records what was drawn. The pipeline takes a line of that log as a
+command, beside `select`:
+
+```
+selection "{\"op\":\"set\",\"producer\":\"drawn\",\"selection\":\"chart\",\"value\":{\"drawn\":{\"kind\":\"lasso\",\"on\":[],\"params\":{\"elevation\":35.0,\"structure\":0.3,\"yaw\":30.0},\"points\":[[0.42,0.52],[0.75,0.55],[0.78,0.32],[0.45,0.28]]}},\"view\":\"chart\"}"
+```
+
+is the same CloudLasso as `select lasso --poly "0.42,0.52;0.75,0.55;0.78,0.32;0.45,0.28" --yaw 30 --elevation 35 --structure 0.3`.
+A brush, a line brush, a timebox and a lasso go in as their gestures, with
+`soft` as a parameter; keys go in as a set of values. The effect
+(`--effect filter`), and softness on keys, stay `select` flags, since the
+log's gestures do not carry them ([selection_log.rs](src/layer/selection_log.rs)).
+`layer_roundtrip` replaces the `select` lines of every editor example that
+selects something with log lines, and requires the same state and the same
+`select` line back: 10 selections, all equal, keys compared as sets (the log
+keeps a set in its own order). The log lines are 2,411 bytes against 638 for
+the `select` lines.
+
 ## Results
 
 The cases were written before any decider ran on them, with the expected

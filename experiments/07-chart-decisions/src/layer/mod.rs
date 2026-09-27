@@ -10,6 +10,7 @@ pub mod draw;
 pub mod editor;
 pub mod model;
 pub mod package;
+pub mod selection_log;
 pub mod pilot;
 pub mod theme;
 pub mod writer;

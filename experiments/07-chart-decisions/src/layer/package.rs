@@ -397,6 +397,26 @@ impl Step for SelectStep {
     }
 }
 
+/// `selection "<json>"`: one line of avenger-selection's log, applied as
+/// `select` would apply the same selection (layer/selection_log.rs).
+struct SelectionStep;
+
+#[async_trait]
+impl Step for SelectionStep {
+    fn kind(&self) -> Kind {
+        Kind::Command
+    }
+    fn help(&self) -> &'static str {
+        "selection \"<json>\": a line of avenger-selection's log (what was drawn)"
+    }
+    async fn run(&self, p: &mut Pipeline, c: &Call) -> Result<Option<String>> {
+        let text = c.args.first().ok_or_else(|| err("selection needs a log entry in JSON"))?;
+        let entry: Value = serde_json::from_str(text).map_err(|e| err(format!("selection: {e}")))?;
+        super::selection_log::apply(&entry, &mut p.chart).map_err(|e| err(format!("selection: {e}")))?;
+        Ok(None)
+    }
+}
+
 struct ClearHighlight;
 
 #[async_trait]
@@ -421,6 +441,7 @@ pub fn package() -> Package {
     steps.push(("chart", Arc::new(ChartStep)));
     steps.push(("view", Arc::new(ViewStep)));
     steps.push(("select", Arc::new(SelectStep)));
+    steps.push(("selection", Arc::new(SelectionStep)));
     steps.push(("lens", Arc::new(LensStep)));
     steps.push(("clear-highlight", Arc::new(ClearHighlight)));
     Package { name: "layer", functions: vec![], steps }

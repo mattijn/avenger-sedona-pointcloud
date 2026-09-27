@@ -13,6 +13,7 @@ arrow.workspace = true
 async-trait.workspace = true
 datafusion.workspace = true
 serde_json.workspace = true
+avenger-selection.workspace = true
 tokio.workspace = true
 image.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

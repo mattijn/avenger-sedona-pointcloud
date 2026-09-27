@@ -688,8 +688,22 @@ equal to within 4 × 10⁻¹⁴ relative. **Not checked:** the planner's
 dataflow adapter, and a focus whose definition changes between warm-up and
 redraw.
 
-Still to come: wiring the log into the pipeline text of experiments 6 and 7,
-whose `select` lines use their own syntax.
+### 32. The log in experiment 7's pipeline text
+
+Experiment 7's pipeline now takes a line of the log as a command,
+`selection "<json>"`, beside its own `select` (`src/layer/selection_log.rs`).
+A brush, a line brush, a timebox and a lasso go in as gestures, with `soft`
+as a parameter, and the layer draws them again; keys go in as a set. What a
+gesture does not carry stays in the layer's own syntax: `--effect filter`,
+which is how a selection is shown, and softness on keys. `layer_roundtrip`
+replaces the `select` lines of every editor example that selects something
+(keys, brushes, soft brushes, line brush, timebox, lassos, CloudLasso) with
+log lines: all 10 give the same state and the same `select` line, keys
+compared as sets, since the crate keeps a set in its own order. The log lines
+are 2,411 bytes against 638 for the `select` lines, most of it JSON quoting.
+Experiment 6's generic pipeline has no selection of its own, so nothing was
+wired there. **Measure:** `cargo run --release -p lidar-decide --bin layer_roundtrip`.
+
 
 ## What worked well
 
