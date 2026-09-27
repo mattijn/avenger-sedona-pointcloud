@@ -18,3 +18,6 @@ avenger-guides.workspace = true
 avenger-scales.workspace = true
 avenger-scenegraph.workspace = true
 avenger-wgpu.workspace = true
+datafusion.workspace = true
+avenger-selection.workspace = true
+avenger-scales-datafusion.workspace = true
