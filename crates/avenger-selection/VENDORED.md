@@ -34,6 +34,11 @@ The additions so far:
   width in logical pixels, measured from the row's cell on gridded
   projections (FINDINGS.md 26).
 
+- **`SeriesTest`** (`src/series.rs`, `tests/series.rs`): a line brush
+  (`Crosses`) and a timebox (`Within`) over a whole series, run as one query
+  that returns the passing keys; `SeriesTest::value` makes them a `one_of`
+  on the key projection (FINDINGS.md 27).
+
 Measured by `cargo run --release -p lidar-probes --bin probe_selection -- <tile>`.
 
 Regenerate the diff against a checkout of upstream at the pin:

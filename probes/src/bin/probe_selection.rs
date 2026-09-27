@@ -289,6 +289,106 @@ async fn soft(view: &View, points: &[RecordBatch]) -> DFResult<()> {
     Ok(())
 }
 
+/// Series selections on experiment 7's flight lines (layer/data.rs): points
+/// per half second of each flight line. A line brush and a timebox with the
+/// values of bin/layer_roundtrip.rs find their lines in one query each; the
+/// keys then select those lines' raw points. On a growing tile, as a stream
+/// delivers it, the chart rebuilds the lines and the keys.
+async fn series(ctx: &SessionContext, tile: &str) -> DFResult<()> {
+    use avenger_selection::SeriesTest;
+    println!("\n## series: experiment 7's flight lines");
+    let raw = ctx.sql(&format!("SELECT point_source_id, gps_time FROM '{tile}' ORDER BY gps_time")).await?.collect().await?;
+    let mem = SessionContext::new();
+    mem.register_table("input", Arc::new(MemTable::try_new(raw[0].schema(), vec![raw.clone()])?))?;
+    let flight_sql = |upto: Option<f64>| {
+        let w = upto.map_or(String::new(), |t| format!(" WHERE gps_time <= {t}"));
+        format!("WITH i AS (SELECT * FROM input{w}) \
+                 SELECT point_source_id AS line, floor((gps_time - t0) * 2) / 2 AS t, CAST(count(*) AS DOUBLE) AS n \
+                 FROM i JOIN (SELECT point_source_id AS l, min(gps_time) AS t0 FROM i GROUP BY point_source_id) m \
+                 ON i.point_source_id = m.l GROUP BY point_source_id, floor((gps_time - t0) * 2) / 2")
+    };
+    let tests = [
+        ("line brush 18.9,185000 → 21.6,145000", SeriesTest::Crosses { from: [18.9, 185000.0], to: [21.6, 145000.0] }),
+        ("timebox t 14..18, n 120000..200000", SeriesTest::Within { x: (14.0, 18.0), y: (120000.0, 200000.0) }),
+        // Experiment 7's timebox takes no line of this tile; this one takes two of four.
+        ("timebox t 14..18, n 80000..130000", SeriesTest::Within { x: (14.0, 18.0), y: (80000.0, 130000.0) }),
+    ];
+    let t0 = Instant::now();
+    let flight = mem.sql(&flight_sql(None)).await?.collect().await?;
+    let t_build = ms(t0);
+    let n_rows: usize = flight.iter().map(|b| b.num_rows()).sum();
+    // Experiment 7's own loop, on the same rows.
+    let mut lines: std::collections::BTreeMap<i64, Vec<[f64; 2]>> = Default::default();
+    for b in &flight {
+        let l = arrow::compute::cast(b.column_by_name("line").unwrap(), &DataType::Int64)?;
+        let l = l.as_any().downcast_ref::<arrow::array::Int64Array>().unwrap();
+        let (t, n) = (column(b, "t"), column(b, "n"));
+        for i in 0..b.num_rows() {
+            lines.entry(l.value(i)).or_default().push([t.value(i), n.value(i)]);
+        }
+    }
+    for pts in lines.values_mut() {
+        pts.sort_by(|a, b| a[0].total_cmp(&b[0]));
+    }
+    println!("{} flight lines, {n_rows} rows, built from {} points in {t_build:.0} ms", lines.len(), raw.iter().map(|b| b.num_rows()).sum::<usize>());
+    for (l, pts) in &lines {
+        let w: Vec<f64> = pts.iter().filter(|p| p[0] >= 14.0 && p[0] <= 18.0).map(|p| p[1]).collect();
+        println!("  line {l}: t 0..{:.1}, n over t 14..18: {:.0}..{:.0}", pts.last().unwrap()[0],
+                 w.iter().cloned().fold(f64::MAX, f64::min), w.iter().cloned().fold(f64::MIN, f64::max));
+    }
+    let fm = SessionContext::new();
+    fm.register_table("flight", Arc::new(MemTable::try_new(flight[0].schema(), vec![flight.clone()])?))?;
+    let o = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    for (label, test) in &tests {
+        let want: Vec<i64> = lines.iter().filter(|(_, pts)| match test {
+            SeriesTest::Crosses { from, to } => pts.windows(2).any(|w| o(*from, *to, w[0]) * o(*from, *to, w[1]) <= 0.0 && o(w[0], w[1], *from) * o(w[0], w[1], *to) <= 0.0),
+            SeriesTest::Within { x, y } => {
+                let within: Vec<&[f64; 2]> = pts.iter().filter(|p| p[0] >= x.0 && p[0] <= x.1).collect();
+                !within.is_empty() && within.iter().all(|p| p[1] >= y.0 && p[1] <= y.1)
+            }
+        }).map(|(l, _)| *l).collect();
+        let mut keys = Vec::new();
+        let mut t_keys = f64::MAX;
+        for _ in 0..3 {
+            let t0 = Instant::now();
+            keys = test.keys(fm.table("flight").await?, col("line"), col("t"), col("n")).await.unwrap();
+            t_keys = t_keys.min(ms(t0));
+        }
+        let got: Vec<i64> = keys.iter().map(|k| match k.cast_to(&DataType::Int64).unwrap() { datafusion::common::ScalarValue::Int64(Some(v)) => v, _ => -1 }).collect();
+        // The keys select the raw points of those lines.
+        let key = ProjectionId::new("line").unwrap();
+        let sel = SelectionId::new("series").unwrap();
+        let producer = ProducerDefinition::new(sel.clone(), ProducerId::new("brush").unwrap(), ViewId::new("lines").unwrap(),
+            [Projection::new(key.clone(), col("point_source_id")).unwrap()]).unwrap();
+        let state = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap().set(&producer, SeriesTest::value(&key, keys.clone())).unwrap();
+        let pred = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::cross_filter([&sel])).predicate(&state).unwrap();
+        let (t_pts, n_pts) = best(3, || async { count(mem.table("input").await?.filter(pred.clone())?).await }).await?;
+        println!("{label}: lines {got:?} in {t_keys:.1} ms; experiment 7's loop agrees: {}; their raw points: {n_pts} in {t_pts:.0} ms",
+                 if got == want { "yes".to_string() } else { format!("NO, it has {want:?}") });
+    }
+    // As a stream would deliver the tile, in gps_time order: rebuild the
+    // lines and the keys after each quarter of the points. (Quarters of the
+    // flight time would not do: the lines are minutes apart.)
+    let times: Vec<f64> = raw.iter().flat_map(|b| { let c = column(b, "gps_time"); (0..b.num_rows()).map(move |i| c.value(i)).collect::<Vec<_>>() }).collect();
+    for q in [0.25, 0.5, 0.75, 1.0] {
+        let upto = times[((q * times.len() as f64) as usize).min(times.len() - 1)];
+        let t0 = Instant::now();
+        let fl = mem.sql(&flight_sql(Some(upto))).await?.collect().await?;
+        let t_b = ms(t0);
+        let n_lines = { let mut ls: Vec<String> = Vec::new(); for b in &fl { let c = b.column_by_name("line").unwrap(); for i in 0..b.num_rows() { ls.push(arrow::util::display::array_value_to_string(c, i)?); } } ls.sort(); ls.dedup(); ls.len() };
+        let n_fl: usize = fl.iter().map(|b| b.num_rows()).sum();
+        let f2 = SessionContext::new();
+        f2.register_table("flight", Arc::new(MemTable::try_new(fl[0].schema(), vec![fl])?))?;
+        let t0 = Instant::now();
+        let mut k = Vec::new();
+        for (_, test) in &tests {
+            k.push(test.keys(f2.table("flight").await?, col("line"), col("t"), col("n")).await.unwrap().len());
+        }
+        println!("first {:>3.0} % of the points: {n_lines} lines in {n_fl} rows, rebuilt in {t_b:>5.0} ms; the three key sets in {:>5.1} ms ({:?} lines)", q * 100.0, ms(t0), k);
+    }
+    Ok(())
+}
+
 async fn measure(ctx: &SessionContext, view: &View, points: &[RecordBatch]) -> DFResult<()> {
     let ring = view.ring();
     let n_points: usize = points.iter().map(|b| b.num_rows()).sum();
@@ -398,6 +498,8 @@ async fn main() -> DFResult<()> {
     let tilt = tilted(win, hlo, hhi, 30.0, 35.0);
     measure(&ctx, &tilt, &part).await?;
     drop(part);
+
+    series(&ctx, &tile).await?;
 
     // 3: from the file, flat lasso at 1 px. A bounding box in data units,
     // one cell wider than the lasso, derived from the ring through the view.

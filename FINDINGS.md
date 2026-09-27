@@ -536,8 +536,42 @@ runs; a bounding-box test that settles rows beyond the width brought it to
 319 ms. **Not checked:** the degree through the preaggregation split, which
 has no notion of it. **Measure:** as for 25.
 
-Still to come, each needing an addition rather than a helper: tests over a
-series (line brush, timebox), which are not row-local; CloudLasso, which the
+### 27. Tests over a whole series become keys
+
+A line brush takes the series whose polyline crosses a segment; a timebox
+takes the series that stay inside a box over its x-range. Both judge a
+series as a whole, which no row-local predicate can, and a DataFusion filter
+cannot hold the window or aggregate they need. `SeriesTest` (added here,
+`src/series.rs`) runs them as one query over the chart's series — a `lag`
+window and a crossing test for the line brush, a grouped count for the
+timebox — and returns the passing keys, which become an ordinary `one_of` on
+the key projection. Everything downstream is unchanged, and the keys select
+rows in any relation that shares them.
+
+On experiment 7's flight lines (points per half second of each flight line,
+207 rows over 4 lines, built from the tile's 17.3M points):
+
+| Test | Lines | Keys | Experiment 7's loop | Raw points of those lines |
+|---|---|---|---|---|
+| line brush 18.9,185000 → 21.6,145000 | 31 | 2.6 ms | agrees | 7,415,262 in 9 ms |
+| timebox t 14..18, n 120000..200000 (experiment 7's) | none | 3.0 ms | agrees | 0 |
+| timebox t 14..18, n 80000..130000 | 30, 32 | 2.4 ms | agrees | 8,918,037 in 14 ms |
+
+Delivered in `gps_time` order, a quarter of the points at a time, the lines
+grow from two to four and the key sets change with them (line brush 0, 0, 1,
+1 lines; the second timebox 1, 1, 1, 2). All three key sets take 8–10 ms
+per step, against 200–380 ms to rebuild the lines from scratch; a stream
+chart that folds its lines incrementally (experiment 3) would pay less for
+the lines, not for the keys. **Not checked:** soft series selections (a
+degree per series), which would need degrees attached to keys.
+
+A side finding, in DataFusion rather than Avenger: `lag(expr, None, None)`
+is documented to default its offset to 1, but builds a NULL literal that
+`get_signed_integer` turns into 0, so each row lags itself
+(`datafusion-functions-window` 54.1, `lead_lag.rs` and `utils.rs`). The
+line brush passes `Some(1)`.
+
+Still to come, each needing an addition rather than a helper: CloudLasso, which the
 chart must resolve and hand over as keys; the gesture kept with a
 contribution for drawing its outline; and serialisation, so a selection can
 be written in a pipeline log.
