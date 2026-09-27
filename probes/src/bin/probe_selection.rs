@@ -86,13 +86,12 @@ impl ScalarUDFImpl for InPolygon {
 // ---------------------------------------------------------------------------
 // A view: screen pixels as linear expressions of x, y and z.
 
+#[derive(Clone)]
 struct View {
     name: &'static str,
     /// px = a[0] + a[1] x + a[2] y + a[3] z, and py likewise.
     a: [f64; 4],
     b: [f64; 4],
-    /// The window the chart queries, in metres.
-    window: Option<[f64; 4]>,
     /// The lasso in experiment 7's unit square, y up.
     unit_ring: Vec<[f64; 2]>,
 }
@@ -122,7 +121,6 @@ fn flat(ext: [f64; 4]) -> View {
         name: "flat map, whole tile",
         a: [-x0 / (x1 - x0) * P, P / (x1 - x0), 0.0, 0.0],
         b: [P + y0 / (y1 - y0) * P, 0.0, -P / (y1 - y0), 0.0],
-        window: None,
         unit_ring: unit_ring("0.6,0.35;0.8,0.35;0.8,0.55;0.6,0.55"),
     }
 }
@@ -149,7 +147,6 @@ fn tilted(win: [f64; 4], hlo: f64, hhi: f64, yaw: f64, elevation: f64) -> View {
         name: "tilted view, 500 m window (yaw 30, elevation 35)",
         a,
         b,
-        window: Some(win),
         unit_ring: unit_ring("0.42,0.52;0.75,0.55;0.78,0.32;0.45,0.28"),
     }
 }
@@ -161,6 +158,9 @@ fn ms(t: Instant) -> f64 {
 }
 async fn count(df: DataFrame) -> DFResult<usize> {
     df.count().await
+}
+async fn in_mem(mem: SessionContext, f: Expr) -> DFResult<usize> {
+    count(mem.table("pts").await?.filter(f)?).await
 }
 /// The best of `n` runs, and the value the last one returned.
 async fn best<F, Fut>(n: usize, mut f: F) -> DFResult<(f64, usize)>
@@ -185,6 +185,9 @@ fn grid(size: f64) -> PixelGrid {
 /// The lasso as avenger-selection sees it: two projections (screen pixels),
 /// each on a pixel grid, and the polygon as tuples of cells.
 fn selection(view: &View, size: f64) -> (Expr, usize) {
+    selection_on(view, size, view.px(&view.a), view.px(&view.b))
+}
+fn selection_on(view: &View, size: f64, pu: Expr, pv: Expr) -> (Expr, usize) {
     let (u, v) = (ProjectionId::new("u").unwrap(), ProjectionId::new("v").unwrap());
     let (gu, gv) = (grid(size), grid(size));
     let sel = SelectionId::new("lasso").unwrap();
@@ -192,7 +195,7 @@ fn selection(view: &View, size: f64) -> (Expr, usize) {
         sel.clone(),
         ProducerId::new("lasso").unwrap(),
         ViewId::new("map").unwrap(),
-        [Projection::new(u.clone(), view.px(&view.a)).unwrap(), Projection::new(v.clone(), view.px(&view.b)).unwrap()],
+        [Projection::new(u.clone(), pu).unwrap(), Projection::new(v.clone(), pv).unwrap()],
     )
     .unwrap()
     .with_pixel_grids([(u.clone(), gu.clone()), (v.clone(), gv.clone())])
@@ -202,6 +205,19 @@ fn selection(view: &View, size: f64) -> (Expr, usize) {
     let state = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap().set(&producer, value).unwrap();
     let filter = ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::membership(&sel, EmptySelection::MatchNone));
     (filter.predicate(&state).unwrap(), tuples)
+}
+
+/// A plain two-dimensional brush on u and v, in pixels, at 1 px cells.
+fn one_box(u0: f64, u1: f64, v0: f64, v1: f64) -> Expr {
+    use avenger_selection::ValueTest;
+    let (u, v) = (ProjectionId::new("u").unwrap(), ProjectionId::new("v").unwrap());
+    let sel = SelectionId::new("lasso").unwrap();
+    let producer = ProducerDefinition::new(sel.clone(), ProducerId::new("box").unwrap(), ViewId::new("map").unwrap(),
+        [Projection::new(u.clone(), col("u")).unwrap(), Projection::new(v.clone(), col("v")).unwrap()]).unwrap()
+        .with_pixel_grids([(u.clone(), grid(1.0)), (v.clone(), grid(1.0))]).unwrap();
+    let value = SelectionValue::tuple([(u, ValueTest::range(u0..=u1)), (v, ValueTest::range(v0..=v1))]);
+    let state = SelectionSet::new([(sel.clone(), Resolution::Intersect)]).unwrap().set(&producer, value).unwrap();
+    ConsumerFilter::new(ViewId::new("points").unwrap(), SelectionFilter::membership(&sel, EmptySelection::MatchNone)).predicate(&state).unwrap()
 }
 
 fn column(b: &RecordBatch, name: &str) -> Float64Array {
@@ -238,7 +254,7 @@ async fn measure(ctx: &SessionContext, view: &View, points: &[RecordBatch]) -> D
         }
     }
     let rust_ms = ms(t0);
-    let (exact_ms, exact_n) = best(3, || count(mem.table("pts").await.unwrap().filter(exact.clone()).unwrap())).await?;
+    let (exact_ms, exact_n) = best(3, || in_mem(mem.clone(), exact.clone())).await?;
     println!("exact point in polygon   Rust loop {rust_ms:>8.1} ms   {rust_n} points");
     println!("                         DataFusion {exact_ms:>7.1} ms   {exact_n} points");
 
@@ -246,7 +262,7 @@ async fn measure(ctx: &SessionContext, view: &View, points: &[RecordBatch]) -> D
         let t0 = Instant::now();
         let (pred, tuples) = selection(view, size);
         let build_ms = ms(t0);
-        let (sel_ms, sel_n) = best(3, || count(mem.table("pts").await.unwrap().filter(pred.clone()).unwrap())).await?;
+        let (sel_ms, sel_n) = best(3, || in_mem(mem.clone(), pred.clone())).await?;
         // Where the crate and the exact test disagree, and how far from the outline.
         let differ = mem.table("pts").await?
             .select(vec![view.px(&view.a).alias("u"), view.px(&view.b).alias("v"), pred.clone().alias("sel"), exact.clone().alias("exact")])?
@@ -269,6 +285,25 @@ async fn measure(ctx: &SessionContext, view: &View, points: &[RecordBatch]) -> D
             size * std::f64::consts::SQRT_2
         );
     }
+    // The same, with the screen coordinates computed once as columns: does
+    // the time go into repeating the projection in every tuple?
+    let with_uv = mem.table("pts").await?.select(vec![view.px(&view.a).alias("u"), view.px(&view.b).alias("v")])?.collect().await?;
+    let uvm = SessionContext::new();
+    uvm.register_table("pts", Arc::new(MemTable::try_new(with_uv[0].schema(), vec![with_uv])?))?;
+    let (pred, tuples) = selection_on(view, 1.0, col("u"), col("v"));
+    let (t, n) = best(3, || in_mem(uvm.clone(), pred.clone())).await?;
+    let (t0, _) = best(3, || in_mem(uvm.clone(), in_polygon(&ring, col("u"), col("v")))).await?;
+    println!("u, v as columns, 1 px   {tuples:>4} tuples   DataFusion {t:>7.1} ms   {n} points   (exact on the same columns {t0:.1} ms)");
+    // The cost of one tuple: the ring's bounding box as one two-range tuple.
+    let (bu, bv) = (ring.iter().map(|p| p[0]), ring.iter().map(|p| p[1]));
+    let (u0, u1) = (bu.clone().fold(f64::MAX, f64::min), bu.fold(f64::MIN, f64::max));
+    let (v0, v1) = (bv.clone().fold(f64::MAX, f64::min), bv.fold(f64::MIN, f64::max));
+    let pred = one_box(u0, u1, v0, v1);
+    let (t, n) = best(3, || in_mem(uvm.clone(), pred.clone())).await?;
+    println!("one tuple (the ring's bounding box)       DataFusion {t:>7.1} ms   {n} points");
+    let text = format!("{}", selection_on(view, 1.0, col("u"), col("v")).0);
+    println!("in the 1 px predicate: {} calls of the pixel-cell function, {} of the finite check",
+             text.matches("avenger_selection_pixel").count(), text.matches("avenger_selection_finite").count());
     let _ = ctx;
     Ok(())
 }
@@ -315,21 +350,34 @@ async fn main() -> DFResult<()> {
     let inv = |c: &[f64; 4], i: usize, p: f64| (p - c[0]) / c[i];
     let (xs, ys): (Vec<f64>, Vec<f64>) = ring.iter().map(|p| (inv(&view.a, 1, p[0]), inv(&view.b, 2, p[1]))).unzip();
     let pad = 1.0 / view.a[1];
-    let bbox = col("x").between(lit(xs.iter().cloned().fold(f64::MAX, f64::min) - pad), lit(xs.iter().cloned().fold(f64::MIN, f64::max) + pad))
-        .and(col("y").between(lit(ys.iter().cloned().fold(f64::MAX, f64::min) - pad), lit(ys.iter().cloned().fold(f64::MIN, f64::max) + pad)));
+    // Plain comparisons, as bench_window writes them, for the chunk pruning.
+    let bbox = col("x").gt_eq(lit(xs.iter().cloned().fold(f64::MAX, f64::min) - pad))
+        .and(col("x").lt_eq(lit(xs.iter().cloned().fold(f64::MIN, f64::max) + pad)))
+        .and(col("y").gt_eq(lit(ys.iter().cloned().fold(f64::MAX, f64::min) - pad)))
+        .and(col("y").lt_eq(lit(ys.iter().cloned().fold(f64::MIN, f64::max) + pad)));
     println!("\n## from the file, flat lasso at 1 px");
     let file = |ctx: SessionContext, f: Expr| {
         let q = pts("");
         async move { count(ctx.sql(&q).await?.filter(f)?).await }
     };
+    let (t, n) = best(2, || file(ctx.clone(), col("z").gt(lit(-1e9)))).await?;
+    println!("no filter, full scan                      {t:>7.0} ms   {n} points");
     let (t, n) = best(2, || file(ctx.clone(), pred.clone())).await?;
     println!("predicate alone, full scan              {t:>7.0} ms   {n} points");
-    for stmt in ["SET las.collect_statistics = 'true'", "SET las.parallel_statistics_extraction = 'true'"] {
+    // Statistics persist in a sidecar (<tile>.stats, git-ignored); without it
+    // every query by path builds them again.
+    // A new session: one that has read the tile without statistics keeps
+    // using what it listed then.
+    let _ = std::fs::remove_file(format!("{tile}.stats"));
+    let ctx = las_context();
+    for stmt in ["SET las.geometry_encoding = 'plain'", "SET las.collect_statistics = 'true'", "SET las.parallel_statistics_extraction = 'true'", "SET las.persist_statistics = 'true'"] {
         ctx.sql(stmt).await?.collect().await?;
     }
     let t0 = Instant::now();
     let n = file(ctx.clone(), bbox.clone()).await?;
     println!("first query with chunk statistics         {:>7.0} ms   {n} points (builds the statistics)", ms(t0));
+    let (t, n) = best(3, || file(ctx.clone(), bbox.clone())).await?;
+    println!("bounding box alone, chunk statistics      {t:>7.0} ms   {n} points");
     let (t, n) = best(3, || file(ctx.clone(), pred.clone())).await?;
     println!("predicate alone, chunk statistics         {t:>7.0} ms   {n} points");
     let (t, n) = best(3, || file(ctx.clone(), bbox.clone().and(pred.clone()))).await?;

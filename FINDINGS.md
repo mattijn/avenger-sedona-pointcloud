@@ -9,7 +9,7 @@ how it was measured, so a recheck is a command rather than an opinion.
 - **Machine:** Apple Silicon, macOS, wgpu/Metal, Rust 1.89
 - **Recheck:** `cargo run --release -p lidar-probes --bin probe_guides` and
   `cargo run --release -p lidar-probes --bin probe_render` print everything
-  below except the frame-rate numbers, which come from the streaming viewer
+  below (`probe_selection` covers [Selections](#selections-in-avenger-selection)) except the frame-rate numbers, which come from the streaming viewer
   (`cargo run --release -p lidar-stream --bin stream_live`; see
   [Live charts](#live-charts)).
 
@@ -433,7 +433,10 @@ cannot join the workspace: it needs `geo` 0.33 → `i_overlay` 4.5 →
 `i_float ~1.6`. Two `geo` versions could coexist, but not two 1.x versions
 of `i_float`, so resolution fails. Moving Avenger to `geo` 0.33 would let a
 host put SedonaDB's spatial SQL next to it; the lasso now tests the polygon in
-Rust on the drawn cells instead. **Measure:** add
+Rust on the drawn cells instead. A lasso does not need it: through
+`avenger-selection` it is a query over the raw points (finding 25). What stays
+blocked is spatial SQL against other geometry, such as points in building
+outlines. **Measure:** add
 `sedona-geo = { git = "https://github.com/apache/sedona-db", rev = "2f3e378…" }`
 to `experiments/06-pipelines/Cargo.toml` and run `cargo metadata --format-version 1 >/dev/null`
 (it fails on `i_float`); `cargo tree -i geo@0.29.3 --depth 1` lists the
@@ -444,6 +447,71 @@ Also from experiment 7, as things that worked well: `RequestWakeup` with
 `CursorMoved` for text fields (and for a lens that follows the cursor),
 `Clip::Path` for a round magnifier, and headless `PngCanvas` rendering of the same
 `SceneGraph`, which made a video that rebuilds frame for frame from a cache.
+
+## Selections in `avenger-selection`
+
+Experiment 7's interaction tour draws every selection with its own code, on
+the drawn marks: keys, interval brushes, soft selection, a line brush, a
+timebox, a lasso and CloudLasso (`experiments/07-chart-decisions/src/layer/model.rs`).
+The stack has a crate for selections that this route did not use:
+`avenger-selection` turns named selections into DataFusion predicates over
+the source rows, with cross-filtering and a split for preaggregation. It
+speaks equality, sets and ranges, optionally on a pixel grid, so keys and
+interval brushes fit it as it is; the other five do not. This repo carries a
+copy (`crates/avenger-selection`, [VENDORED.md](crates/avenger-selection/VENDORED.md))
+to extend it towards them, one kind at a time, starting with the lasso.
+Measured in this cloud container (4 cores, Linux), which decodes LAZ about
+five times slower than the Mac above (`bench_window`: full scan 5.4 s against
+1.1 s), so compare the rows with each other rather than with other tables.
+
+### 25. A lasso fits the crate as tuples, but its predicate repeated the cell expression
+
+`SelectionValue::polygon` (added here) turns a lasso drawn in pixels into one
+tuple per run of pixel cells: the row on `v`, a range on `u`. No new kind of
+test was needed, and cross-filtering, toggles and the split keep working. A
+row is selected when its cell's centre lies inside the lasso. Against an
+exact point-in-polygon test on the tile's raw points, every difference lies
+within 0.55 px of the outline at 1 px cells (0.9 % of the 1.1M points in the
+tilted lasso; none in the flat one, whose edges fall on cell boundaries).
+
+The cost was the finding. The crate compiles each term of each tuple with
+its own copy of the projection's cell expression, three per term, and
+DataFusion does not share them across the branches of an OR: the 80-tuple
+flat lasso evaluated the pixel-cell function **480 times per row**, 5.3 s over
+the tile's 17.3M points, against 101 ms for one exact test in DataFusion.
+Time grew with the tuple count (2.7 s at 40 tuples, 1.3 s at 20). Computing
+the screen coordinates as columns first changed little (4.1 s), so it was
+the cell function, not the projection arithmetic.
+
+A change here compiles eight tuples or more of Int64 cell ranges into one
+function that evaluates each projection once and looks the row up in the
+boxes (`src/cell_boxes.rs`); fewer tuples keep the upstream expression, and
+all upstream tests pass. Two cell-function calls per row remain:
+
+| On 17.3M points in memory, flat lasso | before | after |
+|---|---|---|
+| avenger-selection, 1 px (80 tuples) | 5,296 ms | 269 ms |
+| avenger-selection, 4 px (20 tuples) | 1,375 ms | 227 ms |
+| one plain two-range tuple (a brush), for scale | — | 131 ms |
+| exact point in polygon, DataFusion function | 101 ms | 101 ms |
+
+Reading from the file, the predicate alone does not let chunk statistics skip
+anything (3.6 s, a full scan being 3.3 s). With a bounding box beside it, in
+plain comparisons on `x` and `y`, the same lasso takes 684 ms. The crate
+knows that box, since the projections are gridded ranges, but does not emit
+it; a chart has to. **Suggestion:** for a contribution on plain columns, add
+the bounding range of all its tuples, so a file scan can prune by it.
+**Not checked:** the preaggregation split with a polygon contribution, and a
+concave lasso on the tile (the tests cover a concave ring). **Measure:**
+`cargo run --release -p lidar-probes --bin probe_selection -- $T` and
+`cargo test --release -p avenger-selection`.
+
+Still to come, each needing an addition rather than a helper: a degree in
+[0, 1] for soft selection beside the yes-or-no predicate; tests over a
+series (line brush, timebox), which are not row-local; CloudLasso, which the
+chart must resolve and hand over as keys; the gesture kept with a
+contribution for drawing its outline; and serialisation, so a selection can
+be written in a pipeline log.
 
 ## What worked well
 

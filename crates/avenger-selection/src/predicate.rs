@@ -46,6 +46,12 @@ pub(crate) fn contribution(c: &ResolvedContribution) -> Expr {
 // Both native row predicates and predicates over retained interaction keys use
 // these comparisons. This keeps tuple correlation and pixel bounds identical.
 pub(crate) fn tuples_predicate(tuples: &[crate::values::Tuple], projections: &[Expr]) -> Expr {
+    // Not upstream (VENDORED.md): many cell-range tuples, one lookup.
+    if tuples.len() >= crate::cell_boxes::MIN_TUPLES {
+        if let Some(boxes) = crate::cell_boxes::boxes(tuples) {
+            return crate::cell_boxes::predicate(boxes, projections);
+        }
+    }
     combine(
         tuples.iter().map(|tuple| {
             combine(

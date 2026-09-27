@@ -1,0 +1,404 @@
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/Cargo.toml avenger-selection/Cargo.toml
+--- avenger-selection/Cargo.toml	2026-09-27 20:28:43.478499040 +0000
++++ avenger-selection/Cargo.toml	2026-09-27 19:16:18.693859527 +0000
+@@ -4,16 +4,20 @@
+ edition = "2021"
+ rust-version = "1.88"
+ description = "Typed selections and consumer-specific DataFusion predicates"
++license = "BSD-3-Clause"
++publish = false
+ 
++# Carried from jonmmease/avenger at f4890be (VENDORED.md). Only the path
++# dependencies changed: they point at the workspace's git pin.
+ [dependencies]
+-avenger-scales-datafusion = { path = "../avenger-scales-datafusion" }
++avenger-scales-datafusion.workspace = true
+ datafusion = { version = "=54.1.0", default-features = false }
+-thiserror = { workspace = true }
++thiserror = "2.0.12"
+ half = "2"
+ 
+ [dev-dependencies]
+ datafusion = { version = "=54.1.0", default-features = false, features = ["sql"] }
+-avenger-datafusion-preaggregate = { path = "../avenger-datafusion-preaggregate", features = ["dataflow"] }
+-async-trait = { workspace = true }
+-avenger-datafusion-dataflow = { path = "../avenger-datafusion-dataflow", features = ["sql"] }
++avenger-datafusion-preaggregate = { workspace = true, features = ["dataflow"] }
++async-trait.workspace = true
++avenger-datafusion-dataflow = { workspace = true, features = ["sql"] }
+ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/cell_boxes.rs avenger-selection/src/cell_boxes.rs
+--- avenger-selection/src/cell_boxes.rs	1970-01-01 00:00:00.000000000 +0000
++++ avenger-selection/src/cell_boxes.rs	2026-09-27 20:20:26.062073746 +0000
+@@ -0,0 +1,110 @@
++//! Many tuples of cell ranges, tested with one function call per row.
++//!
++//! Not upstream: added in this repo (VENDORED.md). A contribution of many
++//! tuples, each a range of Int64 cells on every projection — what a lasso
++//! becomes through `SelectionValue::polygon` — compiles by default to an OR
++//! of ANDs in which every term repeats its projection's cell expression.
++//! DataFusion does not share those across the branches of an OR, so a
++//! lasso of 80 rows of cells evaluated 480 pixel-cell calls per row.
++//! Here each projection is evaluated once, and the row is looked up in the
++//! boxes. Membership is the same: a null cell matches no box.
++
++use std::{collections::HashMap, ops::Bound, sync::Arc};
++
++use datafusion::{
++    arrow::{
++        array::{Array, BooleanArray, Int64Array},
++        compute::cast,
++        datatypes::DataType,
++    },
++    common::{Result as DFResult, ScalarValue},
++    logical_expr::{ColumnarValue, Expr, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature, Volatility},
++};
++
++use crate::{values::Tuple, ValueTest};
++
++/// Below this many tuples the ordinary expression stays, readable and cheap.
++pub(crate) const MIN_TUPLES: usize = 8;
++
++/// Inclusive cell bounds per projection, or None if a term is not an Int64
++/// range (exact values, sets, other types): those keep the ordinary form.
++pub(crate) fn boxes(tuples: &[Tuple]) -> Option<Vec<Vec<(i64, i64)>>> {
++    let bound = |b: &Bound<ScalarValue>, lower: bool| -> Option<i64> {
++        match b {
++            Bound::Unbounded => Some(if lower { i64::MIN } else { i64::MAX }),
++            Bound::Included(ScalarValue::Int64(Some(v))) => Some(*v),
++            Bound::Excluded(ScalarValue::Int64(Some(v))) => if lower { v.checked_add(1) } else { v.checked_sub(1) },
++            _ => None,
++        }
++    };
++    tuples
++        .iter()
++        .map(|t| {
++            t.iter()
++                .map(|(_, test)| match test {
++                    ValueTest::Range { lower, upper } => Some((bound(lower, true)?, bound(upper, false)?)),
++                    _ => None,
++                })
++                .collect()
++        })
++        .collect()
++}
++
++pub(crate) fn predicate(boxes: Vec<Vec<(i64, i64)>>, projections: &[Expr]) -> Expr {
++    let n = projections.len();
++    // Index on a dimension where every box is one cell wide, if there is one.
++    let key = (0..n).find(|&d| boxes.iter().all(|b| b[d].0 == b[d].1));
++    ScalarUDF::from(CellBoxes {
++        boxes,
++        key,
++        signature: Signature::uniform(n, vec![DataType::Int64], Volatility::Immutable),
++    })
++    .call(projections.to_vec())
++}
++
++#[derive(Debug, PartialEq, Eq, Hash)]
++struct CellBoxes {
++    boxes: Vec<Vec<(i64, i64)>>,
++    key: Option<usize>,
++    signature: Signature,
++}
++impl ScalarUDFImpl for CellBoxes {
++    fn name(&self) -> &str {
++        "avenger_selection_cell_boxes"
++    }
++    fn signature(&self) -> &Signature {
++        &self.signature
++    }
++    fn return_type(&self, _: &[DataType]) -> DFResult<DataType> {
++        Ok(DataType::Boolean)
++    }
++    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
++        let rows = args.number_rows;
++        let cols = args
++            .args
++            .iter()
++            .map(|a| Ok(cast(&a.clone().into_array(rows)?, &DataType::Int64)?))
++            .collect::<DFResult<Vec<_>>>()?;
++        let cols: Vec<&Int64Array> = cols.iter().map(|c| c.as_any().downcast_ref::<Int64Array>().unwrap()).collect();
++        let inside = |b: &Vec<(i64, i64)>, i: usize| b.iter().zip(&cols).all(|((lo, hi), c)| (*lo..=*hi).contains(&c.value(i)));
++        let index: Option<HashMap<i64, Vec<usize>>> = self.key.map(|d| {
++            let mut m: HashMap<i64, Vec<usize>> = HashMap::new();
++            for (k, b) in self.boxes.iter().enumerate() {
++                m.entry(b[d].0).or_default().push(k);
++            }
++            m
++        });
++        let out: BooleanArray = (0..rows)
++            .map(|i| {
++                if cols.iter().any(|c| c.is_null(i)) {
++                    return Some(false);
++                }
++                Some(match (&index, self.key) {
++                    (Some(m), Some(d)) => m.get(&cols[d].value(i)).is_some_and(|ks| ks.iter().any(|k| inside(&self.boxes[*k], i))),
++                    _ => self.boxes.iter().any(|b| inside(b, i)),
++                })
++            })
++            .collect();
++        Ok(ColumnarValue::Array(Arc::new(out)))
++    }
++}
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/lib.rs avenger-selection/src/lib.rs
+--- avenger-selection/src/lib.rs	2026-09-27 19:07:15.626710854 +0000
++++ avenger-selection/src/lib.rs	2026-09-27 20:20:36.577319781 +0000
+@@ -4,6 +4,8 @@
+ mod error;
+ mod identity;
+ mod pixels;
++mod polygon;
++mod cell_boxes;
+ mod predicate;
+ mod resolve;
+ mod split;
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/polygon.rs avenger-selection/src/polygon.rs
+--- avenger-selection/src/polygon.rs	1970-01-01 00:00:00.000000000 +0000
++++ avenger-selection/src/polygon.rs	2026-09-27 19:34:47.510809047 +0000
+@@ -0,0 +1,127 @@
++//! A polygon drawn on the screen, such as a lasso, as ordinary tuples.
++//!
++//! Not upstream: added in this repo (VENDORED.md). The polygon becomes one
++//! tuple per run of pixel cells: the cell row on `v` and a range of cells on
++//! `u`. Everything downstream — resolution, cross-filtering, toggles and the
++//! preaggregation split — sees ranges on two gridded projections, as for a
++//! two-dimensional brush.
++
++use datafusion::{arrow::datatypes::DataType, common::ScalarValue};
++
++use crate::{Error, PixelGrid, ProjectionId, Result, SelectionValue, ValueTest};
++
++impl SelectionValue {
++    /// Select the rows whose pixel cell has its centre inside `ring`.
++    ///
++    /// `ring` is in chart-local logical pixels, the space the pointer draws
++    /// in, and is closed implicitly. Insideness uses the even-odd rule. Both
++    /// grids must be linear with a Float32 or Float64 domain and no options
++    /// beyond `clamp` and `round: false`, and the producer must declare the
++    /// two projections with these grids.
++    ///
++    /// One tuple per run of cells, so the size of the predicate grows with
++    /// the polygon's height in cells and with its concavity.
++    pub fn polygon(
++        u: (&ProjectionId, &PixelGrid),
++        v: (&ProjectionId, &PixelGrid),
++        ring: &[[f64; 2]],
++    ) -> Result<Self> {
++        if ring.len() < 3 || ring.iter().flatten().any(|c| !c.is_finite()) {
++            return Err(Error::InvalidValue(
++                "a polygon needs three or more finite points".into(),
++            ));
++        }
++        let (gu, gv) = (Inverse::new(u.1)?, Inverse::new(v.1)?);
++        let lo = ring.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
++        let hi = ring.iter().map(|p| p[1]).fold(f64::NEG_INFINITY, f64::max);
++        let mut tuples = Vec::new();
++        for row in gv.first_centre(lo)..=gv.last_centre(hi) {
++            let y = gv.centre(row);
++            let mut xs: Vec<f64> = Vec::new();
++            for i in 0..ring.len() {
++                let (a, b) = (ring[i], ring[(i + ring.len() - 1) % ring.len()]);
++                if (a[1] > y) != (b[1] > y) {
++                    xs.push((b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]);
++                }
++            }
++            xs.sort_by(f64::total_cmp);
++            for pair in xs.chunks_exact(2) {
++                let (c0, c1) = (gu.first_centre(pair[0]), gu.last_centre(pair[1]));
++                if c0 > c1 {
++                    continue;
++                }
++                let (a, b) = (gu.value(c0, u.1)?, gu.value(c1, u.1)?);
++                let r = gv.value(row, v.1)?;
++                tuples.push([
++                    (u.0.clone(), ValueTest::Range { lower: incl(&a, &b, true), upper: incl(&a, &b, false) }),
++                    (v.0.clone(), ValueTest::Range { lower: std::ops::Bound::Included(r.clone()), upper: std::ops::Bound::Included(r) }),
++                ]);
++            }
++        }
++        Ok(SelectionValue::tuples(tuples))
++    }
++}
++
++// Decreasing scales map the first cell to the larger value.
++fn incl(a: &ScalarValue, b: &ScalarValue, lower: bool) -> std::ops::Bound<ScalarValue> {
++    let a_first = a.partial_cmp(b).is_some_and(|o| o.is_le());
++    std::ops::Bound::Included(if a_first == lower { a.clone() } else { b.clone() })
++}
++
++/// A linear grid, run backwards: from a cell to a data value that the
++/// grid's own kernel maps into that cell.
++struct Inverse {
++    d: (f64, f64),
++    r: (f64, f64),
++    origin: f64,
++    size: f64,
++    data_type: DataType,
++}
++impl Inverse {
++    fn new(grid: &PixelGrid) -> Result<Self> {
++        let invalid = |m: &str| Error::InvalidValue(format!("polygon grids {m}"));
++        if grid.builtin() != avenger_scales_datafusion::BuiltinScale::Linear {
++            return Err(invalid("must be linear"));
++        }
++        if grid.options().keys().any(|k| k != "clamp" && k != "round") {
++            return Err(invalid("take only clamp and round: false"));
++        }
++        let data_type = grid.domain().data_type().clone();
++        if !matches!(data_type, DataType::Float32 | DataType::Float64) {
++            return Err(invalid("need a Float32 or Float64 domain"));
++        }
++        let pair = |a: &datafusion::arrow::array::ArrayRef| -> Result<(f64, f64)> {
++            let f = |i| -> Result<f64> {
++                match ScalarValue::try_from_array(a, i)?.cast_to(&DataType::Float64)? {
++                    ScalarValue::Float64(Some(x)) => Ok(x),
++                    _ => Err(invalid("need non-null numeric endpoints")),
++                }
++            };
++            Ok((f(0)?, f(1)?))
++        };
++        Ok(Self { d: pair(grid.domain())?, r: pair(grid.range())?, origin: grid.origin(), size: grid.size(), data_type })
++    }
++    fn centre(&self, cell: i64) -> f64 {
++        self.origin + (cell as f64 + 0.5) * self.size
++    }
++    /// The first cell whose centre lies beyond a pixel coordinate.
++    fn first_centre(&self, p: f64) -> i64 {
++        ((p - self.origin) / self.size - 0.5).floor() as i64 + 1
++    }
++    /// The last cell whose centre lies before it.
++    fn last_centre(&self, p: f64) -> i64 {
++        ((p - self.origin) / self.size - 0.5).ceil() as i64 - 1
++    }
++    /// A value at the cell's centre, checked against the grid's kernel.
++    fn value(&self, cell: i64, grid: &PixelGrid) -> Result<ScalarValue> {
++        let p = self.centre(cell);
++        let x = self.d.0 + (p - self.r.0) / (self.r.1 - self.r.0) * (self.d.1 - self.d.0);
++        let value = ScalarValue::Float64(Some(x)).cast_to(&self.data_type)?;
++        match grid.cell(&value)? {
++            Some(c) if c == cell => Ok(value),
++            other => Err(Error::InvalidValue(format!(
++                "cell {cell} did not survive the grid's kernel (got {other:?})"
++            ))),
++        }
++    }
++}
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/predicate.rs avenger-selection/src/predicate.rs
+--- avenger-selection/src/predicate.rs	2026-09-27 19:07:16.498710906 +0000
++++ avenger-selection/src/predicate.rs	2026-09-27 20:20:28.444686350 +0000
+@@ -46,6 +46,12 @@
+ // Both native row predicates and predicates over retained interaction keys use
+ // these comparisons. This keeps tuple correlation and pixel bounds identical.
+ pub(crate) fn tuples_predicate(tuples: &[crate::values::Tuple], projections: &[Expr]) -> Expr {
++    // Not upstream (VENDORED.md): many cell-range tuples, one lookup.
++    if tuples.len() >= crate::cell_boxes::MIN_TUPLES {
++        if let Some(boxes) = crate::cell_boxes::boxes(tuples) {
++            return crate::cell_boxes::predicate(boxes, projections);
++        }
++    }
+     combine(
+         tuples.iter().map(|tuple| {
+             combine(
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/tests/polygon.rs avenger-selection/tests/polygon.rs
+--- avenger-selection/tests/polygon.rs	1970-01-01 00:00:00.000000000 +0000
++++ avenger-selection/tests/polygon.rs	2026-09-27 19:35:17.430810826 +0000
+@@ -0,0 +1,98 @@
++// Not upstream: tests for `SelectionValue::polygon` (VENDORED.md).
++mod common;
++
++use avenger_scales_datafusion::BuiltinScale;
++use avenger_selection::*;
++use common::*;
++use datafusion::{
++    arrow::array::{ArrayRef, Float64Array, Int64Array, TimestampMillisecondArray},
++    common::ScalarValue,
++};
++use std::{collections::HashMap, sync::Arc};
++
++fn numbers(values: &[f64]) -> ArrayRef {
++    Arc::new(Float64Array::from(values.to_vec()))
++}
++fn linear(domain: [f64; 2], range: [f64; 2], size: f64) -> PixelGrid {
++    PixelGrid::new(BuiltinScale::Linear, numbers(&domain), numbers(&range), HashMap::new(), 0.0, size).unwrap()
++}
++fn in_ring(p: [f64; 2], ring: &[[f64; 2]]) -> bool {
++    let mut inside = false;
++    for i in 0..ring.len() {
++        let (a, b) = (ring[i], ring[(i + ring.len() - 1) % ring.len()]);
++        if (a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0] {
++            inside = !inside;
++        }
++    }
++    inside
++}
++// A lasso that doubles back on itself: concave, with a notch from the top.
++const RING: [[f64; 2]; 7] = [[20.0, 15.0], [180.0, 22.0], [170.0, 180.0], [110.0, 175.0], [100.0, 60.0], [85.0, 170.0], [30.0, 150.0]];
++
++/// Scattered points in data units, a map in metres whose screen y runs down.
++fn scatter() -> (Vec<f64>, Vec<f64>) {
++    let mut s = 12345_u64;
++    let mut next = || {
++        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
++        (s >> 11) as f64 / (1u64 << 53) as f64
++    };
++    (0..4000).map(|_| (1000.0 + 500.0 * next(), 2000.0 + 400.0 * next())).unzip()
++}
++
++#[tokio::test]
++async fn selects_exactly_the_cells_whose_centre_lies_inside() {
++    for size in [1.0, 2.5] {
++        let (gx, gy) = (linear([1000.0, 1500.0], [0.0, 200.0], size), linear([2000.0, 2400.0], [200.0, 0.0], size));
++        let (u, v) = (ProjectionId::new("x").unwrap(), ProjectionId::new("y").unwrap());
++        let lasso = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), gx.clone()), (v.clone(), gy.clone())]).unwrap();
++        let value = SelectionValue::polygon((&u, &gx), (&v, &gy), &RING).unwrap();
++        let n_tuples = value.as_tuples().len();
++        let s = state(Resolution::Intersect).set(&lasso, value).unwrap();
++        let (xs, ys) = scatter();
++        let rows = batch(vec![
++            ("id", Arc::new(Int64Array::from_iter_values(0..xs.len() as i64))),
++            ("x", numbers(&xs)),
++            ("y", numbers(&ys)),
++        ]);
++        let got = selected(rows, membership().predicate(&s).unwrap()).await;
++        // The reference: each point's cell, through the grid's own kernel,
++        // then that cell's centre tested against the ring.
++        let centre = |g: &PixelGrid, x: f64| (g.cell(&ScalarValue::Float64(Some(x))).unwrap().unwrap() as f64 + 0.5) * size;
++        let want: Vec<i64> = (0..xs.len())
++            .filter(|&i| in_ring([centre(&gx, xs[i]), centre(&gy, ys[i])], &RING))
++            .map(|i| i as i64)
++            .collect();
++        assert!(want.len() > 500, "the ring should take a good share: {}", want.len());
++        assert_eq!(got, want, "cell size {size}, {n_tuples} tuples");
++    }
++}
++
++#[tokio::test]
++async fn a_ring_off_the_grid_selects_nothing_and_stays_active() {
++    let g = linear([0.0, 100.0], [0.0, 100.0], 1.0);
++    let (u, v) = (ProjectionId::new("x").unwrap(), ProjectionId::new("y").unwrap());
++    // Thinner than a cell: no centre falls inside.
++    let value = SelectionValue::polygon((&u, &g), (&v, &g), &[[10.2, 10.2], [10.4, 10.2], [10.3, 10.4]]).unwrap();
++    assert!(value.as_tuples().is_empty());
++    let lasso = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u, g.clone()), (v, g)]).unwrap();
++    let s = state(Resolution::Intersect).set(&lasso, value).unwrap();
++    let rows = batch(vec![("id", Arc::new(Int64Array::from(vec![0_i64]))), ("x", numbers(&[10.3])), ("y", numbers(&[10.3]))]);
++    assert!(selected(rows, membership().predicate(&s).unwrap()).await.is_empty());
++}
++
++#[test]
++fn rejects_what_it_cannot_invert() {
++    let g = linear([0.0, 100.0], [0.0, 100.0], 1.0);
++    let (u, v) = (ProjectionId::new("x").unwrap(), ProjectionId::new("y").unwrap());
++    assert!(SelectionValue::polygon((&u, &g), (&v, &g), &[[0.0, 0.0], [1.0, 1.0]]).is_err());
++    let t = PixelGrid::new(
++        BuiltinScale::Time,
++        Arc::new(TimestampMillisecondArray::from(vec![0_i64, 1000])),
++        numbers(&[0.0, 100.0]),
++        HashMap::new(),
++        0.0,
++        1.0,
++    )
++    .unwrap();
++    assert!(SelectionValue::polygon((&u, &t), (&v, &g), &RING).is_err());
++}

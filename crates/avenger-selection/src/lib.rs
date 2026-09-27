@@ -5,6 +5,7 @@ mod error;
 mod identity;
 mod pixels;
 mod polygon;
+mod cell_boxes;
 mod predicate;
 mod resolve;
 mod split;
