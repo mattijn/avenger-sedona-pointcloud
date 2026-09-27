@@ -6,10 +6,10 @@
 <title>One route to Altair</title>
 <meta name="description" content="Avenger's crates, the compositions on them, and one explored route towards an Altair generated from Avenger's schema.">
 <style>
-  /* Experiment 7's Theme::calm() (src/layer/theme.rs): white, black text,
-     greys, one accent colour, one typeface throughout (pipeline text
-     included), square corners, lines rather than filled areas, status in
-     grey italic, and a translucent dark overlay for stats for nerds. */
+  /* The colours of the Vega-Altair logo: light blue bars (#03A9F4,
+     #4FC3F7, #B3E5FC) and an amber triangle (#FBC02D). Blue carries the
+     route, amber marks what stands out. Black outlines are what already
+     stands in the crates; one typeface, square corners. */
   :root {
     --bg: #ffffff;
     --panel: #ffffff;
@@ -18,12 +18,14 @@
     --kicker: #949494;
     --line: #b8b8b8;
     --grid: rgba(184, 184, 184, 0.45);
-    --accent: #0099cc;
-    --track: #eeeeee;
-    --dark: rgba(0, 37, 50, 0.94);
+    --accent: #03a9f4;
+    --accent-text: #0277bd;
+    --amber: #fbc02d;
+    --track: #e1f5fe;
+    --dark: rgba(1, 87, 155, 0.96);
     --dark-text: #ffffff;
     --dark-muted: #b8b8b8;
-    --dark-accent: #33b5e0;
+    --dark-accent: #b3e5fc;
     --letterbox: #ececec;
   }
   * { box-sizing: border-box; }
@@ -59,14 +61,15 @@
   #dots i.on { background: var(--ink); border-color: var(--ink); }
   #nav button { font: inherit; font-size: 13px; background: none; border: 1px solid var(--line);
                 color: var(--muted); padding: 3px 10px; cursor: pointer; }
-  #nav button:hover { border-color: var(--accent); color: var(--accent); }
+  #nav button:hover { border-color: var(--accent); color: var(--accent-text); }
+  #logo { display: block; margin-bottom: 14px; }
   #nerds {
     position: absolute; inset: 16px; background: var(--dark); color: var(--dark-text);
     font-size: 15px; line-height: 1.75;
     padding: 22px 26px; white-space: pre-wrap; display: none; overflow: auto;
   }
   #nerds.on { display: block; }
-  #nerds b { color: var(--dark-accent); font-weight: 400; }
+  #nerds b { color: var(--amber); font-weight: 400; }
   #nerds em { color: var(--dark-muted); font-style: normal; }
   #nerds code { color: var(--dark-text); font-family: inherit; }
 
@@ -86,7 +89,7 @@
   .box.warn { stroke: var(--accent); stroke-width: 2.4; }
   .box.ext { stroke-dasharray: 5 4; }
   .box.ghost { stroke-dasharray: 3 4; fill: none; }
-  .box.dark { fill: #002532; stroke: none; }
+  .box.dark { fill: #01579b; stroke: none; }
   #nav button.on { border-color: var(--accent); color: var(--accent); }
   .edge { fill: none; stroke: #949494; stroke-width: 1.3; }
   .edge.acc { stroke: var(--accent); stroke-width: 2; }
@@ -113,12 +116,12 @@
   }
   #tprev, #tnext { top: 0; bottom: 0; width: max(64px, calc((100vw - 100vh * 16 / 9) / 2)); font-size: 44px; }
   #tprev { left: 0; } #tnext { right: 0; }
-  #tprev:active, #tnext:active { background: rgba(0, 153, 204, 0.08); color: #0099cc; }
+  #tprev:active, #tnext:active { background: rgba(3, 169, 244, 0.1); color: #0277bd; }
   #tnerd {
     top: 10px; right: 10px; width: 56px; height: 56px; font-size: 22px;
     border: 1px solid #b8b8b8 !important; background: rgba(255, 255, 255, 0.9) !important;
   }
-  #tnerd.on { color: #0099cc; border-color: #0099cc !important; }
+  #tnerd.on { color: #0277bd; border-color: #03a9f4 !important; }
   #tcount { position: fixed; z-index: 10; bottom: 10px; right: 14px; font-size: 16px; color: #949494; }
   @media (orientation: portrait) {
     body.touch #rotate { display: flex; position: fixed; inset: 0; z-index: 20; background: #fff;
@@ -133,6 +136,10 @@
     <div id="nerds"></div>
   </div>
   <aside id="panel">
+    <svg id="logo" width="34" height="34" viewBox="0 0 200 200" aria-label="Vega-Altair">
+      <polygon points="13,175 71,25 71,175" fill="#fbc02d"/><rect x="71" y="25" width="45" height="150" fill="#03a9f4"/>
+      <rect x="106" y="75" width="45" height="100" fill="#4fc3f7"/><rect x="141" y="125" width="45" height="50" fill="#b3e5fc"/>
+    </svg>
     <div class="kick" id="kicker"></div>
     <div id="title"></div>
     <div id="big"></div>
@@ -155,9 +162,9 @@
 <div id="rotate" aria-label="turn the phone sideways">
   <svg width="160" height="160" viewBox="0 0 160 160">
     <rect x="58" y="30" width="44" height="80" fill="none" stroke="#b8b8b8" stroke-width="3"/>
-    <rect x="40" y="88" width="80" height="44" fill="none" stroke="#0099cc" stroke-width="3"/>
-    <path d="M118,52 a34,34 0 0 1 12,30" fill="none" stroke="#0099cc" stroke-width="3"/>
-    <path d="M124,80 l6,8 l6,-9" fill="none" stroke="#0099cc" stroke-width="3"/>
+    <rect x="40" y="88" width="80" height="44" fill="none" stroke="#03a9f4" stroke-width="3"/>
+    <path d="M118,52 a34,34 0 0 1 12,30" fill="none" stroke="#03a9f4" stroke-width="3"/>
+    <path d="M124,80 l6,8 l6,-9" fill="none" stroke="#03a9f4" stroke-width="3"/>
   </svg>
 </div>
 
@@ -165,12 +172,23 @@
 "use strict";
 const NS = "http://www.w3.org/2000/svg";
 const svg = document.getElementById("svg");
-// Theme::calm(): blue and grey only.
+// The Vega-Altair logo's colours: light blues and one amber.
 const C = {
-  ink: "#000", muted: "#595959", kicker: "#949494", line: "#b8b8b8", accent: "#0099cc",
-  bar: "#595959", barSoft: "#b8b8b8", track: "#eeeeee", warn: "#0099cc", grid: "rgba(184,184,184,0.45)",
-  dark: "#002532", darkText: "#ffffff", darkMuted: "#b8b8b8", darkAccent: "#33b5e0", tint: "#e5f5fa",
+  ink: "#000", muted: "#595959", kicker: "#949494", line: "#b8b8b8", accent: "#03a9f4", accentText: "#0277bd",
+  blue: "#03a9f4", blue3: "#4fc3f7", blue1: "#b3e5fc", blue0: "#e1f5fe", blue7: "#0288d1", amber: "#fbc02d",
+  bar: "#0288d1", barSoft: "#b3e5fc", track: "#e1f5fe", warn: "#03a9f4", grid: "rgba(184,184,184,0.45)",
+  dark: "#01579b", darkText: "#ffffff", darkMuted: "#b3e5fc", darkAccent: "#b3e5fc", tint: "#e1f5fe",
 };
+
+// The logo itself: an amber triangle and three blue bars.
+function logo(x, y, size, parent) {
+  const g = el("g", { transform: `translate(${x},${y}) scale(${size / 200})` }, parent);
+  el("polygon", { points: "13,175 71,25 71,175", fill: C.amber }, g);
+  el("rect", { x: 71, y: 25, width: 45, height: 150, fill: C.blue }, g);
+  el("rect", { x: 106, y: 75, width: 45, height: 100, fill: C.blue3 }, g);
+  el("rect", { x: 141, y: 125, width: 45, height: 50, fill: C.blue1 }, g);
+  return g;
+}
 
 // ---------------------------------------------------------------- drawing
 
@@ -193,8 +211,9 @@ function layer(s, parent) {
 }
 
 function text(x, y, t, cls, o = {}) {
+  const fill = o.fill === C.accent ? C.accentText : o.fill;
   const e = el("text", { x, y, class: cls || "lab", "text-anchor": o.anchor || "start",
-                         style: (o.fill ? "fill:" + o.fill + ";" : "") + (o.size ? "font-size:" + o.size + "px;" : "")
+                         style: (fill ? "fill:" + fill + ";" : "") + (o.size ? "font-size:" + o.size + "px;" : "")
                                 + (o.bold ? "font-weight:700;" : "") || null,
                          "font-style": o.italic ? "italic" : null }, o.parent);
   const lines = String(t).split("\n");
@@ -328,7 +347,7 @@ const G = {
       const street = i % 6 === 0 || j % 6 === 0 || Math.abs(i - j - 4) < 1;
       const v = r();
       if (j / n > upto) continue;
-      const f = street ? "#e6e6e6" : v > 0.84 ? C.accent : v > 0.5 ? "#7a7a7a" : v > 0.22 ? "#a8a8a8" : "#cfcfcf";
+      const f = street ? C.blue0 : v > 0.93 ? C.amber : v > 0.6 ? C.blue : v > 0.3 ? C.blue3 : C.blue1;
       el("rect", { x: x + i * cw, y: y + j * ch, width: cw - (n > 40 ? 0.6 : 1), height: ch - (n > 40 ? 0.6 : 1), fill: f }, g);
     }
     if (o.frame !== false) el("rect", { x, y, width: w, height: h, fill: "none", stroke: C.line }, g);
@@ -337,7 +356,7 @@ const G = {
   bars(x, y, w, h, vals, o = {}) {
     const g = layer(o.s, o.parent), bw = w / vals.length, max = Math.max(...vals);
     vals.forEach((v, i) => el("rect", { x: x + i * bw + bw * 0.15, y: y + h - h * v / max, width: bw * 0.7,
-      height: h * v / max, fill: i === (o.hi === undefined ? -1 : o.hi) ? C.accent : "#949494" }, g));
+      height: h * v / max, fill: i === (o.hi === undefined ? -1 : o.hi) ? C.amber : [C.blue, C.blue3, C.blue1][i % 3] }, g));
     el("line", { x1: x, y1: y + h, x2: x + w, y2: y + h, stroke: C.line }, g);
     return g;
   },
@@ -346,7 +365,7 @@ const G = {
     for (let k = 0; k < (o.series || 3); k++) {
       let p = "", v = 0.5;
       for (let i = 0; i <= 20; i++) { v = Math.min(0.95, Math.max(0.05, v + (r() - 0.5) * 0.25)); p += (i ? "L" : "M") + (x + w * i / 20) + "," + (y + h * (1 - v)); }
-      el("path", { d: p, fill: "none", stroke: k === 0 ? C.accent : "#a8a8a8", "stroke-width": k === 0 ? 2.2 : 1.4 }, g);
+      el("path", { d: p, fill: "none", stroke: k === 0 ? C.blue : C.blue1, "stroke-width": k === 0 ? 2.2 : 1.6 }, g);
     }
     el("line", { x1: x, y1: y + h, x2: x + w, y2: y + h, stroke: C.line }, g);
     return g;
@@ -358,7 +377,7 @@ const G = {
       const a1 = a0 + 2 * Math.PI * v / tot, big = a1 - a0 > Math.PI ? 1 : 0;
       const P = (r, a) => `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
       el("path", { d: `M${P(R, a0)} A${R},${R} 0 ${big} 1 ${P(R, a1)} L${P(ri, a1)} A${ri},${ri} 0 ${big} 0 ${P(ri, a0)} Z`,
-        fill: i === (o.hi || 0) ? C.accent : ["#595959", "#949494", "#b8b8b8", "#d6d6d6"][i % 4], stroke: "#fff", "stroke-width": 1.5 }, g);
+        fill: i === (o.hi || 0) ? C.amber : [C.blue, C.blue3, C.blue1, C.blue7][i % 4], stroke: "#fff", "stroke-width": 1.5 }, g);
       a0 = a1;
     });
     return g;
@@ -368,10 +387,10 @@ const G = {
     const g = layer(o.s, o.parent), bw = w / vals.length, max = Math.max(...vals), dx = bw * 0.35, dy = -bw * 0.25;
     vals.forEach((v, i) => {
       const bx = x + i * bw * 0.8 + i * dx * 0.2, by = y + h - i * dy * -0.6, bh = (h * 0.8) * v / max;
-      const f = i === (o.hi || 0) ? C.accent : "#949494";
-      el("path", { d: `M${bx},${by} l0,${-bh} l${dx},${dy} l0,${bh} z`, fill: "#595959" }, g);
+      const f = i === (o.hi || 0) ? C.amber : C.blue3;
+      el("path", { d: `M${bx},${by} l0,${-bh} l${dx},${dy} l0,${bh} z`, fill: i === (o.hi || 0) ? "#f9a825" : C.blue7 }, g);
       el("path", { d: `M${bx - bw * 0.45},${by - dy * 0} l${bw * 0.45},0 l0,${-bh} l${-bw * 0.45},0 z`, fill: f }, g);
-      el("path", { d: `M${bx - bw * 0.45},${by - bh} l${bw * 0.45},0 l${dx},${dy} l${-bw * 0.45},0 z`, fill: "#cfcfcf" }, g);
+      el("path", { d: `M${bx - bw * 0.45},${by - bh} l${bw * 0.45},0 l${dx},${dy} l${-bw * 0.45},0 z`, fill: C.blue1 }, g);
     });
     return g;
   },
@@ -498,8 +517,9 @@ const SLIDES = [
 <code>https://github.com/mattijn/avenger-sedona-pointcloud</code>
 <em>← → or a tap to step through · Tab for these notes</em>`,
     draw() {
-      text(60, 190, "Towards the next Altair", "lab", { size: 58, bold: true });
-      text(62, 240, "one route across Avenger's crates", "lab", { size: 24, fill: C.muted });
+      logo(52, 110, 120);
+      text(190, 190, "Towards the next Altair", "lab", { size: 58, bold: true });
+      text(192, 240, "one route across Avenger's crates", "lab", { size: 24, fill: C.muted });
       const gy = ground(800, { x: 60, w: 1060, s: 0 });
       const g = layer(0);
       const route = el("path", { d: `M300,${gy("data")} C300,640 520,640 600,560 S820,470 880,400`, fill: "none", stroke: C.accent, "stroke-width": 3 }, g);
@@ -681,7 +701,7 @@ const SLIDES = [
 
       // interaction: magnifier over points, brush, pipeline
       const g1 = layer(1), r = rnd(5);
-      for (let k = 0; k < 90; k++) el("circle", { cx: 470 + r() * 260, cy: 160 + r() * 170, r: 2.4, fill: "#a8a8a8" }, g1);
+      for (let k = 0; k < 90; k++) el("circle", { cx: 470 + r() * 260, cy: 160 + r() * 170, r: 2.4, fill: C.blue1 }, g1);
       el("circle", { cx: 640, cy: 240, r: 44, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g1);
       for (let k = 0; k < 9; k++) el("circle", { cx: 615 + (k % 3) * 25, cy: 215 + Math.floor(k / 3) * 25, r: 5, fill: C.accent }, g1);
       el("rect", { x: 480, y: 360, width: 110, height: 70, fill: C.accent, opacity: 0.12, stroke: C.accent }, g1);
@@ -781,7 +801,7 @@ const SLIDES = [
       ["eventstream", "widgets", "app", "scenegraph", "geometry", "datafusion-aggregate-state"].forEach((c, k) => { x += chip("k" + k, x, 100, c, { s: 0 }) + 14; });
       const g = layer(1), r = rnd(9);
       el("rect", { x: 60, y: 280, width: 330, height: 240, fill: "none", stroke: C.accent, "stroke-dasharray": "5 4" }, g);
-      for (let k = 0; k < 120; k++) el("circle", { cx: 80 + r() * 290, cy: 300 + r() * 200, r: 2.4, fill: "#a8a8a8" }, g);
+      for (let k = 0; k < 120; k++) el("circle", { cx: 80 + r() * 290, cy: 300 + r() * 200, r: 2.4, fill: C.blue1 }, g);
       el("circle", { cx: 250, cy: 400, r: 55, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g);
       for (let k = 0; k < 16; k++) el("circle", { cx: 214 + (k % 4) * 24, cy: 364 + Math.floor(k / 4) * 24, r: 5, fill: C.accent }, g);
       text(225, 510, "magnifier · lens", "sub", { anchor: "middle", parent: g });
@@ -892,8 +912,8 @@ const SLIDES = [
         text(x + 14, y + 54, name, "lab", { parent: gg, bold: true, size: 16 });
         text(x + 14, y + 78, detail, "sub", { parent: gg });
         if (asks) {
-          el("rect", { x: x + 138, y: y + 10, width: 52, height: 22, fill: C.ink }, gg);
-          text(x + 164, y + 26, "Altair", "sub", { anchor: "middle", parent: gg, fill: "#fff" });
+          el("rect", { x: x + 138, y: y + 10, width: 52, height: 22, fill: C.amber }, gg);
+          text(x + 164, y + 26, "Altair", "sub", { anchor: "middle", parent: gg, fill: C.ink });
           el("line", { x1: x + 14, y1: y + 96, x2: x + 186, y2: y + 96, stroke: C.grid }, gg);
           text(x + 14, y + 122, asks, "lab", { parent: gg, size: 14, size: asks.length > 24 ? 13 : 14 });
         }
@@ -931,7 +951,7 @@ const SLIDES = [
       text(395, 386, "Arrow", "lab", { anchor: "middle", parent: g, bold: true });
       el("path", { d: "M470,380 L540,380", class: "edge acc flow", "marker-end": "url(#arrA)" }, g);
       G.bars(560, 300, 240, 160, [2, 3, 5, 4, 6, 7, 5, 8, 6, 7], { parent: g, hi: 9 });
-      bars(840, 320, [["Arrow", 48, "48 ms", C.accent, null, true], ["VegaFusion", 500, "0.5 s", C.muted], ["JSON rows", 2200, "2.2 s", C.line]],
+      bars(840, 320, [["Arrow", 48, "48 ms", C.accent, null, true], ["VegaFusion", 500, "0.5 s", C.blue3], ["JSON rows", 2200, "2.2 s", C.blue1]],
            { parent: g, log: true, min: 10, max: 3000, labelW: 100, trackW: 110, rowH: 34 });
       marker(60, 590, "16", "geo versions keep a crate out", 2); marker(430, 590, "20", "SVG: 340 ms on the font", 2);
       marker(790, 590, "22", "shared buffers charged per batch", 2);
