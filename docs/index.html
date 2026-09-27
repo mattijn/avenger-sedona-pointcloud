@@ -486,6 +486,32 @@ function fork(x, y, taken, alts, s) {
 // ---------------------------------------------------------------- slides
 
 const SLIDES = [
+  // 0 ---------------------------------------------------------------- title
+  {
+    title: "In three parts",
+    big: "", bigsub: "",
+    rows: [["part 1", "the overall picture", 0], ["part 2", "the route, stop by stop", 0], ["part 3", "walking it", 0],
+           ["", "", 0], ["a spike", "one route of many", 0], ["September", "2026", 0]],
+    steps: 1,
+    nerds: `<b>the repo</b>
+<code>https://github.com/mattijn/avenger-sedona-pointcloud</code>
+<em>← → or a tap to step through · Tab for these notes</em>`,
+    draw() {
+      text(60, 190, "Towards the next Altair", "lab", { size: 58, bold: true });
+      text(62, 240, "one route across Avenger's crates", "lab", { size: 24, fill: C.muted });
+      const gy = ground(800, { x: 60, w: 1060, s: 0 });
+      const g = layer(0);
+      const route = el("path", { d: `M300,${gy("data")} C300,640 520,640 600,560 S820,470 880,400`, fill: "none", stroke: C.accent, "stroke-width": 3 }, g);
+      const L = route.getTotalLength();
+      [0, 0.3, 0.55, 0.8].forEach(f => { const p = route.getPointAtLength(L * f);
+        el("circle", { cx: p.x, cy: p.y, r: 6, fill: "#fff", stroke: C.accent, "stroke-width": 2.4 }, g); });
+      el("rect", { x: 850, y: 330, width: 230, height: 70, fill: "#fff", stroke: C.accent, "stroke-width": 2.2 }, g);
+      text(965, 372, "the next Altair", "lab", { anchor: "middle", parent: g, bold: true, size: 18, fill: C.accent });
+      [`M140,${gy("scene")} C160,520 400,470 840,380`, `M1020,${gy("draw")} C1030,560 1000,470 1000,405`].forEach(d =>
+        el("path", { d, fill: "none", stroke: C.line, "stroke-width": 2, "stroke-dasharray": "3 6" }, g));
+    },
+  },
+
   // 1 ---------------------------------------------------------------- modules
   {
     title: "The crates",
