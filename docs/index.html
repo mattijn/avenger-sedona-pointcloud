@@ -936,7 +936,7 @@ const SLIDES = [
       el("rect", { x: 430, y: 290, width: 250, height: 110, fill: "#fff", stroke: C.accent, "stroke-width": 2 }, g);
       text(555, 330, "JSON Schema", "lab", { anchor: "middle", parent: g, bold: true });
       text(555, 360, "+ rules as CEL", "lab", { anchor: "middle", parent: g, fill: C.accent });
-      [["Python · jsonschema + cel-python", 300], ["JavaScript · ajv + cel-js", 360], ["Altair's generator", 420], ["a check of the Rust types", 480]].forEach(([t, y]) => {
+      [["Python · jsonschema + cel-python", 300], ["Altair's generator", 375], ["a check of the Rust types", 450]].forEach(([t, y]) => {
         el("path", { d: `M680,345 C720,345 720,${y} 760,${y}`, fill: "none", stroke: C.accent, "stroke-width": 1.6, "marker-end": "url(#arrA)" }, g);
         el("rect", { x: 770, y: y - 20, width: 330, height: 40, fill: "#fff", stroke: C.line }, g);
         text(785, y + 6, t, "lab", { parent: g, size: 15 });
