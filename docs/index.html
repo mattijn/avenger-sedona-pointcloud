@@ -755,7 +755,10 @@ const SLIDES = [
       });
       const g = layer(0);
       el("rect", { x: 150, y: 790, width: 780, height: 28, fill: C.ink }, g);
-      text(540, 809, "common", "lab", { anchor: "middle", parent: g, fill: "#fff", size: 14 });
+      // avenger-common: the shared types most crates use (its own README);
+      // it depends on color, image and text itself, so it is shared, not lowest.
+      text(540, 809, "common · shared types: values, strokes, canvas, paths", "lab", { anchor: "middle", parent: g, fill: "#fff", size: 14 });
+      el("title", { text: "avenger-common: ScalarOrArray values, stroke and fill types, canvas size, cursor, path helpers, a cross-platform time type" }, g);
       const lg = layer(0);
       el("rect", { x: 960, y: 772, width: 26, height: 18, fill: "#fff", stroke: C.ink, "stroke-width": 1.6 }, lg);
       text(996, 786, "on this route", "sub", { parent: lg });
