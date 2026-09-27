@@ -106,6 +106,7 @@
   html { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   #touch, #rotate { display: none; }
   body.touch #touch { display: block; }
+  body.touch #nav { display: none; }   /* the big controls replace them */
   #touch button {
     position: fixed; z-index: 10; border: none; background: transparent; color: #949494;
     font: inherit; padding: 0; cursor: pointer;
@@ -516,9 +517,9 @@ const SLIDES = [
   {
     title: "The crates",
     big: "24", bigsub: "crates this route stands on",
-    rows: [["families", "6", 0], ["repin #120 → #124", "no code changes", 6], ["repin #124 → #130", "one line", 6],
-           ["crates carried across", "20", 6]],
-    steps: 7,
+    rows: [["families", "6", 0], ["repin #120 → #124", "no code changes", 5], ["repin #124 → #130", "one line", 5],
+           ["crates carried across", "20", 5]],
+    steps: 6,
     hover: {},
     nerds: `<b>the pin</b>  <em>root Cargo.toml, [workspace.dependencies]</em>
 <code>avenger-* = { git = "https://github.com/jonmmease/avenger", rev = "f4890be…" }</code>
@@ -527,12 +528,12 @@ const SLIDES = [
 <em>a repin across a rewritten stack of 180 commits needed one line</em>`,
     draw() {
       CRATES.forEach(([fam, list], r) => {
-        const y = 80 + r * 118, s = CRATES.length - r;
+        const y = 80 + r * 118, s = CRATES.length - r - 1;
         text(60, y + 23, fam, "kk", { s });
         let x = 180;
         list.forEach((c, k) => { x += chip("c" + r + k, x, y, c, { s }) + 12; });
       });
-      const g = layer(6);
+      const g = layer(0);
       el("rect", { x: 180, y: 790, width: 900, height: 30, fill: C.ink }, g);
       text(630, 810, "common", "lab", { anchor: "middle", parent: g, fill: "#fff", size: 15 });
     },
