@@ -130,7 +130,11 @@ impl NamedSelection {
                                     address,
                                     Arc::new(Contribution::from_canonical(
                                         old.producer.clone(),
-                                        SelectionValue { tuples: retained, gesture: None, partial: None },
+                                        SelectionValue {
+                                            tuples: retained,
+                                            gesture: None,
+                                            partial: None,
+                                        },
                                     )?),
                                 );
                             }
@@ -147,7 +151,11 @@ impl NamedSelection {
                             producer.address().clone(),
                             Arc::new(Contribution::from_canonical(
                                 producer.clone(),
-                                SelectionValue { tuples: selected, gesture: None, partial: None },
+                                SelectionValue {
+                                    tuples: selected,
+                                    gesture: None,
+                                    partial: None,
+                                },
                             )?),
                         );
                     }

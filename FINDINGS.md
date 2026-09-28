@@ -459,36 +459,37 @@ the source rows, with cross-filtering and a split for preaggregation. It
 speaks equality, sets and ranges, optionally on a pixel grid, so keys and
 interval brushes fit it as it is; the other five do not. This repo carries a
 copy (`crates/avenger-selection`, [VENDORED.md](crates/avenger-selection/VENDORED.md))
-extended until it expresses all of them (findings 25–33).
+extended until it expresses all of them (findings 25–35).
 Measured in this cloud container (4 cores, Linux), which decodes LAZ about
 five times slower than the Mac above (`bench_window`: full scan 5.4 s against
 1.1 s), so compare the rows with each other rather than with other tables.
 
 Where it stands, from the table `probe_selection` ends with: experiment 7's
 algorithm as plain Rust over the same rows, against the crate through
-DataFusion. Single runs; they move by 10–30 % between runs.
+DataFusion. Single runs; they move by 10–30 % between runs. The Rust column
+is one thread, DataFusion uses the container's four cores; see finding 34 for
+the comparison on equal cores.
 
-| Selection | Data | Rust | avenger-selection | Agree |
+| Selection | Data | Rust, 1 thread | avenger-selection, 4 cores | Agree |
 |---|---|---|---|---|
-| lasso | 17.3M points, flat map | 196 ms | 208 ms | yes, ±1 cell at the edge |
-| brush | 17.3M points | 130 ms | 194 ms | yes, 670,619 points each |
-| soft brush | 17.3M points | 170 ms | 177 ms | yes, within a cell (≤ 0.070) |
-| soft lasso | 17.3M points | 917 ms | 275 ms | not compared here; tests: degree 1 = predicate |
-| lasso | 4.2M points, tilted view | 46 ms | 57 ms | yes, ±1 cell at the edge |
-| CloudLasso | 4.2M points, tilted view | 148 ms | 302 ms | 0.09 % apart (Float32 voxel edges) |
-| line brush, timebox, soft ones | 4 lines, 207 rows | 2–8 µs | 1.8–2.3 ms | yes |
-| redraw with the split: lasso | 17.3M points | — | 5.3 ms (direct 299 ms) | yes |
-| redraw with the split: fade | 17.3M points | — | 8.6 ms (direct 354 ms) | yes |
-| redraw with the split: CloudLasso | 4.2M points | — | 2.8 ms (direct 140 ms) | yes |
-| lasso from the file, with its bounding box | 105 MB tile | — | 635 ms (lasso alone 3.3 s) | yes |
+| lasso | 17.3M points, flat map | 258 ms | 219 ms | yes, ±1 cell at the edge |
+| brush | 17.3M points | 158 ms | 200 ms | yes, 670,619 points each |
+| soft brush | 17.3M points | 204 ms | 181 ms | yes, within a cell (≤ 0.070) |
+| soft lasso | 17.3M points | 914 ms | 369 ms | not compared here; tests: degree 1 = predicate |
+| lasso | 4.2M points, tilted view | 56 ms | 48 ms | yes, ±1 cell at the edge |
+| CloudLasso | 4.2M points, tilted view | 132 ms | 191 ms | 0.09 % apart (Float32 voxel edges) |
+| line brush, timebox, soft ones | 4 lines, 207 rows | 2–10 µs | 2.0–3.1 ms | yes |
+| redraw with the split: lasso | 17.3M points | — | 3.9 ms (direct 191 ms) | yes |
+| redraw with the split: fade | 17.3M points | — | 6.5 ms (direct 325 ms) | yes |
+| redraw with the split: CloudLasso | 4.2M points | — | 3.8 ms (direct 114 ms) | yes |
+| lasso from the file, with its bounding box | 105 MB tile | — | 593 ms (lasso alone 3.2 s) | yes |
 
-Read it this way. On rows already in memory, the crate costs about what a
-Rust loop costs (0.9–1.5×; faster for the soft lasso, whose Rust version
-measures the distance to the outline point by point). On the small series
-table a query's fixed cost dominates. What the crate adds that the loops do
-not have: the same selection as a predicate over any relation that shares
-the columns, cross-filtering, a log, and the split, which makes a redraw
-about 50 times cheaper than the direct query.
+Read it this way. Per core, a fused Rust loop is about three times faster
+than the crate's predicate (finding 34); four cores make up for it. On the
+small series table a query's fixed cost dominates. What the crate adds that
+the loops do not have: the same selection as a predicate over any relation
+that shares the columns, cross-filtering, a log, and the split, which makes a
+redraw about 50 times cheaper than the direct query.
 
 ### 25. A lasso fits the crate as tuples, but its predicate repeated the cell expression
 
@@ -749,6 +750,57 @@ takes any two segments on one line to meet. Both now check that a collinear
 point lies within the other segment. **Measure:**
 `cargo test --release -p avenger-selection --test adversarial`.
 
+A readability review of the additions afterwards found four more, fixed with
+the rest of its list. The pipeline's `quote` escaped quotes but not
+backslashes, so a log line holding a backslash read back wrong (experiment
+6, now tested by round trip). The lookup index of finding 34 could overflow
+when its cells spanned the whole Int64 range (now tested with cells ten
+million apart). `SeriesTest::degrees` did not check its ranges as `keys`
+did; both now share one check and one query. Partial degrees kept their keys
+unnormalised, so a NaN or −0.0 key could miss its row.
+
+### 34. Where a lasso's time goes: the pixel-cell function
+
+Why a Rust loop beats the crate's predicate: the flat lasso over 17.3M points,
+in pieces, each piece adding to the one before (`probe_selection`, "where the
+flat lasso's time goes"):
+
+| | DataFusion, 1 core | DataFusion, 4 cores |
+|---|---|---|
+| scan and one comparison | 75 ms | 21 ms |
+| + the screen coordinates u and v (four multiply-adds each) | 153 ms | 51 ms |
+| + `cell_expr` on u and on v | 441 ms | 189 ms |
+| the whole predicate (cells, then the lookup of finding 25) | 419 ms | 207 ms |
+| **Rust loop**: coordinates and point-in-polygon, fused | **201 ms** (1 thread) | **58 ms** (4 threads) |
+
+On equal cores the fused loop is two to three times faster, and the gap is
+not the lasso test. The arithmetic costs what materialising a column per
+operation costs (78 ms on one core). The two pixel-cell calls cost 288 ms,
+about 8 ns per row per call: each maps its column through the scale kernel
+(`avenger-scales-datafusion`, Float32 output), then casts back and floors in
+Float64 with overflow checks. That is two thirds of the predicate. The kernel
+is shared on purpose, so that cells agree with the axes' scale, and the
+Float32 step is part of the crate's documented contract; a linear-only fast
+path in Float64 would change which cell a boundary value falls in, which is
+a decision for the crate, not for this copy. **Suggestion:** a fused kernel
+for linear grids, value to cell in one pass, keeping the Float32 rounding.
+
+The lookup itself was ours to fix. It built a hash map of the boxes on every
+batch and hashed every row; it now builds its index once, a table indexed by
+the row's cell (a lasso's rows of cells are contiguous) or a sorted list for
+sparse cells, and skips the null checks when a column has no nulls. The
+whole predicate on one core went from 618 ms to 419 ms, now within noise of
+the cell functions alone.
+
+### 35. The selections on Jon's flights
+
+The lasso, the soft brush and the split, on the 10M flights of Jon's
+`winit-mosaic-flights`, drawn headlessly with his panels, domains and 1 px
+grids (experiment 10, with figures). They work on his data as on the tile.
+A lasso over departure time and arrival delay is 190 runs of cells; a
+histogram filtered by it takes 135–155 ms directly, and 3.1–3.5 ms per redraw
+through the split after a 246 ms warm-up, every rollup equal to the direct
+histogram. **Measure:** `cargo run --release -p lidar-flights --bin flights -- data/flights-10m.parquet`.
 
 ## What worked well
 

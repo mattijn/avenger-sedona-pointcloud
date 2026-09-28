@@ -22,7 +22,12 @@ pub struct Gesture {
 
 impl Gesture {
     pub fn new(kind: impl Into<String>, points: impl IntoIterator<Item = [f64; 2]>) -> Self {
-        Self { kind: kind.into(), points: points.into_iter().collect(), params: Vec::new(), on: Vec::new() }
+        Self {
+            kind: kind.into(),
+            points: points.into_iter().collect(),
+            params: Vec::new(),
+            on: Vec::new(),
+        }
     }
     /// Name the projections the points were drawn on, in the points' order:
     /// what a replay needs to draw the gesture again.
@@ -54,11 +59,24 @@ impl Gesture {
         self.params.iter().find(|(n, _)| n == name).map(|(_, v)| *v)
     }
     #[allow(clippy::type_complexity)]
-    fn bits(&self) -> (&str, Vec<[u64; 2]>, Vec<(&str, u64)>, &[crate::ProjectionId]) {
+    fn bits(
+        &self,
+    ) -> (
+        &str,
+        Vec<[u64; 2]>,
+        Vec<(&str, u64)>,
+        &[crate::ProjectionId],
+    ) {
         (
             &self.kind,
-            self.points.iter().map(|p| [p[0].to_bits(), p[1].to_bits()]).collect(),
-            self.params.iter().map(|(n, v)| (n.as_str(), v.to_bits())).collect(),
+            self.points
+                .iter()
+                .map(|p| [p[0].to_bits(), p[1].to_bits()])
+                .collect(),
+            self.params
+                .iter()
+                .map(|(n, v)| (n.as_str(), v.to_bits()))
+                .collect(),
             &self.on,
         )
     }

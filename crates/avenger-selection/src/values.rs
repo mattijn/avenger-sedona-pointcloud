@@ -89,13 +89,22 @@ impl SelectionValue {
     /// not select, by the value of one ungridded projection, such as the
     /// series a soft line brush comes near. `predicate` ignores them;
     /// `degree` gives them. Degrees outside (0, 1) are refused when applied.
-    pub fn with_partial(mut self, projection: ProjectionId, degrees: impl IntoIterator<Item = (ScalarValue, f64)>) -> Self {
-        self.partial = Some(crate::degree::KeyDegrees { projection, degrees: degrees.into_iter().collect() });
+    pub fn with_partial(
+        mut self,
+        projection: ProjectionId,
+        degrees: impl IntoIterator<Item = (ScalarValue, f64)>,
+    ) -> Self {
+        self.partial = Some(crate::degree::KeyDegrees {
+            projection,
+            degrees: degrees.into_iter().collect(),
+        });
         self
     }
     /// The partial degrees, if any: the projection and (value, degree) pairs.
     pub fn partial(&self) -> Option<(&ProjectionId, &[(ScalarValue, f64)])> {
-        self.partial.as_ref().map(|p| (&p.projection, p.degrees.as_slice()))
+        self.partial
+            .as_ref()
+            .map(|p| (&p.projection, p.degrees.as_slice()))
     }
     /// The gesture this value came from, if the chart attached one.
     pub fn gesture(&self) -> Option<&crate::Gesture> {

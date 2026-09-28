@@ -31,8 +31,8 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
  tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/cell_boxes.rs avenger-selection/src/cell_boxes.rs
 --- avenger-selection/src/cell_boxes.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/src/cell_boxes.rs	2026-09-28 07:07:55.516603631 +0000
-@@ -0,0 +1,116 @@
++++ avenger-selection/src/cell_boxes.rs	2026-09-28 09:11:12.414302383 +0000
+@@ -0,0 +1,169 @@
 +//! Many tuples of cell ranges, tested with one function call per row.
 +//!
 +//! Not upstream: added in this repo (VENDORED.md). A contribution of many
@@ -44,19 +44,20 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +//! each projection is evaluated once, and the row is looked up in the boxes.
 +//! Membership is the same: a null cell matches no box.
 +
-+use std::{collections::HashMap, ops::Bound, sync::Arc};
++use std::{ops::Bound, sync::Arc};
 +
 +use datafusion::{
 +    arrow::{
 +        array::{Array, BooleanArray},
-+        compute::cast,
 +        datatypes::{DataType, Int64Type},
 +    },
 +    common::{Result as DFResult, ScalarValue},
-+    logical_expr::{ColumnarValue, Expr, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature, Volatility},
++    logical_expr::{
++        ColumnarValue, Expr, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature, Volatility,
++    },
 +};
 +
-+use crate::{values::Tuple, ValueTest};
++use crate::{udf::columns, values::Tuple, ValueTest};
 +
 +/// Below this many tuples the ordinary expression stays, readable and cheap.
 +pub(crate) const MIN_TUPLES: usize = 8;
@@ -68,7 +69,13 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        match b {
 +            Bound::Unbounded => Some(if lower { i64::MIN } else { i64::MAX }),
 +            Bound::Included(ScalarValue::Int64(Some(v))) => Some(*v),
-+            Bound::Excluded(ScalarValue::Int64(Some(v))) => if lower { v.checked_add(1) } else { v.checked_sub(1) },
++            Bound::Excluded(ScalarValue::Int64(Some(v))) => {
++                if lower {
++                    v.checked_add(1)
++                } else {
++                    v.checked_sub(1)
++                }
++            }
 +            _ => None,
 +        }
 +    };
@@ -77,7 +84,9 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        .map(|t| {
 +            t.iter()
 +                .map(|(_, test)| match test {
-+                    ValueTest::Range { lower, upper } => Some((bound(lower, true)?, bound(upper, false)?)),
++                    ValueTest::Range { lower, upper } => {
++                        Some((bound(lower, true)?, bound(upper, false)?))
++                    }
 +                    _ => None,
 +                })
 +                .collect()
@@ -85,33 +94,77 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        .collect()
 +}
 +
-+/// A UDF's arguments cast to one primitive type, one array per argument.
-+pub(crate) fn columns<T: datafusion::arrow::datatypes::ArrowPrimitiveType>(
-+    args: &ScalarFunctionArgs,
-+) -> datafusion::common::Result<Vec<datafusion::arrow::array::PrimitiveArray<T>>> {
-+    use datafusion::arrow::array::AsArray;
-+    args.args
-+        .iter()
-+        .map(|a| Ok(cast(&a.clone().into_array(args.number_rows)?, &T::DATA_TYPE)?.as_primitive::<T>().clone()))
-+        .collect()
-+}
-+
 +pub(crate) fn predicate(boxes: Vec<Vec<(i64, i64)>>, projections: &[Expr]) -> Expr {
-+    let n = projections.len();
-+    // Index on a dimension where every box is one cell wide, if there is one.
-+    let key = (0..n).find(|&d| boxes.iter().all(|b| b[d].0 == b[d].1));
++    // Index on a dimension where every box is one cell wide, if there is one:
++    // a lasso's rows of cells, or voxels.
++    let index = (0..projections.len())
++        .find(|&d| boxes.iter().all(|b| b[d].0 == b[d].1))
++        .map(|d| (d, Index::new(&boxes, d)));
 +    ScalarUDF::from(CellBoxes {
 +        boxes,
-+        key,
-+        signature: Signature::uniform(n, vec![DataType::Int64], Volatility::Immutable),
++        index,
++        signature: Signature::uniform(
++            projections.len(),
++            vec![DataType::Int64],
++            Volatility::Immutable,
++        ),
 +    })
 +    .call(projections.to_vec())
++}
++
++/// The boxes by their cell on the key dimension: a dense table when the
++/// cells are close together, as a lasso's rows are, else sorted for search.
++#[derive(Debug, PartialEq, Eq, Hash)]
++enum Index {
++    Dense { first: i64, boxes: Vec<Vec<u32>> },
++    Sorted(Vec<(i64, Vec<u32>)>),
++}
++impl Index {
++    fn new(boxes: &[Vec<(i64, i64)>], d: usize) -> Self {
++        let mut by_key: std::collections::BTreeMap<i64, Vec<u32>> = Default::default();
++        for (k, b) in boxes.iter().enumerate() {
++            by_key.entry(b[d].0).or_default().push(k as u32);
++        }
++        let (Some((&lo, _)), Some((&hi, _))) = (by_key.first_key_value(), by_key.last_key_value())
++        else {
++            return Index::Sorted(Vec::new());
++        };
++        let span = usize::try_from(hi.abs_diff(lo))
++            .ok()
++            .and_then(|s| s.checked_add(1))
++            .filter(|&s| s <= 4 * by_key.len() + 4096);
++        match span {
++            Some(span) => {
++                let mut dense = vec![Vec::new(); span];
++                for (k, v) in by_key {
++                    dense[k.abs_diff(lo) as usize] = v;
++                }
++                Index::Dense {
++                    first: lo,
++                    boxes: dense,
++                }
++            }
++            None => Index::Sorted(by_key.into_iter().collect()),
++        }
++    }
++    fn get(&self, key: i64) -> &[u32] {
++        match self {
++            Index::Dense { first, boxes } => (key >= *first)
++                .then(|| boxes.get(key.abs_diff(*first) as usize))
++                .flatten()
++                .map_or(&[], Vec::as_slice),
++            Index::Sorted(v) => v
++                .binary_search_by_key(&key, |e| e.0)
++                .map_or(&[], |i| v[i].1.as_slice()),
++        }
++    }
 +}
 +
 +#[derive(Debug, PartialEq, Eq, Hash)]
 +struct CellBoxes {
 +    boxes: Vec<Vec<(i64, i64)>>,
-+    key: Option<usize>,
++    /// The key dimension and its index, when there is one.
++    index: Option<(usize, Index)>,
 +    signature: Signature,
 +}
 +impl ScalarUDFImpl for CellBoxes {
@@ -125,34 +178,34 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        Ok(DataType::Boolean)
 +    }
 +    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
-+        let rows = args.number_rows;
 +        let cols = columns::<Int64Type>(&args)?;
-+        let inside = |b: &Vec<(i64, i64)>, i: usize| b.iter().zip(&cols).all(|((lo, hi), c)| (*lo..=*hi).contains(&c.value(i)));
-+        let index: Option<HashMap<i64, Vec<usize>>> = self.key.map(|d| {
-+            let mut m: HashMap<i64, Vec<usize>> = HashMap::new();
-+            for (k, b) in self.boxes.iter().enumerate() {
-+                m.entry(b[d].0).or_default().push(k);
++        let values: Vec<&[i64]> = cols.iter().map(|c| c.values().as_ref()).collect();
++        let nulls = cols.iter().any(|c| c.null_count() > 0);
++        let inside = |b: &[(i64, i64)], i: usize| {
++            b.iter()
++                .zip(&values)
++                .all(|((lo, hi), c)| (*lo..=*hi).contains(&c[i]))
++        };
++        let hit = |i: usize| -> bool {
++            if nulls && cols.iter().any(|c| c.is_null(i)) {
++                return false;
 +            }
-+            m
-+        });
-+        let out: BooleanArray = (0..rows)
-+            .map(|i| {
-+                if cols.iter().any(|c| c.is_null(i)) {
-+                    return Some(false);
-+                }
-+                Some(match (&index, self.key) {
-+                    (Some(m), Some(d)) => m.get(&cols[d].value(i)).is_some_and(|ks| ks.iter().any(|k| inside(&self.boxes[*k], i))),
-+                    _ => self.boxes.iter().any(|b| inside(b, i)),
-+                })
-+            })
-+            .collect();
++            match &self.index {
++                Some((d, index)) => index
++                    .get(values[*d][i])
++                    .iter()
++                    .any(|k| inside(&self.boxes[*k as usize], i)),
++                None => self.boxes.iter().any(|b| inside(b, i)),
++            }
++        };
++        let out: BooleanArray = (0..args.number_rows).map(|i| Some(hit(i))).collect();
 +        Ok(ColumnarValue::Array(Arc::new(out)))
 +    }
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/degree.rs avenger-selection/src/degree.rs
 --- avenger-selection/src/degree.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/src/degree.rs	2026-09-28 07:07:55.516603631 +0000
-@@ -0,0 +1,248 @@
++++ avenger-selection/src/degree.rs	2026-09-28 09:11:12.418302383 +0000
+@@ -0,0 +1,355 @@
 +//! A degree of interest in [0, 1], beside the yes-or-no predicate.
 +//!
 +//! Not upstream: added in this repo (VENDORED.md). Soft selection (Doleisch
@@ -164,7 +217,8 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +//!   pixels, per projection the gap between the row's cell and the range
 +//!   times the cell size, combined as a Euclidean length. A contribution
 +//!   takes its nearest tuple, which for a lasso is its nearest run of cells;
-+//! - a tuple of equalities and sets, which has no distance, gives 1 or 0;
++//! - a tuple of equalities and sets, which has no distance, gives 1 or 0,
++//!   or a partial degree for keys the value carries one for;
 +//! - a range on a projection without a grid is refused: its data units need
 +//!   not match another projection's, and the screen is the common measure.
 +//!
@@ -179,15 +233,19 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        array::{Array, Float64Array},
 +        datatypes::{DataType, Int64Type},
 +    },
-+    common::Result as DFResult,
++    common::{Result as DFResult, ScalarValue},
 +    logical_expr::{
-+        lit, when, ColumnarValue, Expr, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature, Volatility,
++        lit, when, ColumnarValue, Expr, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature,
++        Volatility,
 +    },
 +};
 +
 +use crate::{
 +    resolve::{ResolvedContribution, ResolvedFilter, SelectionStatus},
-+    ConsumerFilter, EmptySelection, Error, Resolution, Result, SelectionSet, ValueTest,
++    udf::columns,
++    values::{canonical_values, scalar_cmp},
++    ConsumerFilter, EmptySelection, Error, ProducerDefinition, ProjectionId, Resolution, Result,
++    SelectionSet, ValueTest,
 +};
 +
 +impl ConsumerFilter {
@@ -195,123 +253,180 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    /// linearly to 0 at `width` logical pixels from the selection. A width of
 +    /// 0 gives the predicate as 1 or 0.
 +    pub fn degree(&self, selections: &SelectionSet, width: f64) -> Result<Expr> {
-+        if !width.is_finite() || width < 0.0 {
-+            return Err(Error::InvalidValue("a soft width must be finite and not negative".into()));
-+        }
++        check_width(width)?;
 +        resolved(&self.resolve(selections)?, width)
 +    }
-+}
 +
-+impl ConsumerFilter {
 +    /// The focused producer's degree alone, over `keys`: expressions for its
 +    /// interaction dimensions (pixel cells for gridded projections), such as
 +    /// the columns of states stored for preaggregation. With the other
 +    /// producers applied as the split's fixed predicate at warm-up, a fading
 +    /// chart sums `count × degree` per group over the stored states.
-+    pub fn focus_degree(&self, selections: &SelectionSet, focus: &crate::ProducerDefinition, width: f64, keys: Vec<Expr>) -> Result<Expr> {
-+        if !width.is_finite() || width < 0.0 {
-+            return Err(Error::InvalidValue("a soft width must be finite and not negative".into()));
-+        }
-+        let named = selections.get(focus.selection())?;
-+        let Some(c) = named.contributions.get(focus.address()) else {
-+            return Err(Error::InvalidUpdate("the focus has no contribution to measure".into()));
++    pub fn focus_degree(
++        &self,
++        selections: &SelectionSet,
++        focus: &ProducerDefinition,
++        width: f64,
++        keys: Vec<Expr>,
++    ) -> Result<Expr> {
++        check_width(width)?;
++        let Some(c) = selections
++            .get(focus.selection())?
++            .contributions
++            .get(focus.address())
++        else {
++            return Err(Error::InvalidValue(
++                "focus_degree needs a contribution from the focus".into(),
++            ));
 +        };
 +        if c.producer() != focus {
-+            return Err(Error::InvalidDefinition("the focus differs from the producer that contributed".into()));
++            return Err(Error::InvalidDefinition(
++                "the focus differs from the producer that contributed".into(),
++            ));
 +        }
 +        if keys.len() != focus.projections().len() {
-+            return Err(Error::InvalidDefinition(format!("the focus has {} dimensions", focus.projections().len())));
++            return Err(Error::InvalidMapping(format!(
++                "focus_degree needs {} keys, one per projection, and was given {}",
++                focus.projections().len(),
++                keys.len()
++            )));
 +        }
-+        contribution(&ResolvedContribution { contribution: c.clone(), projections: keys }, width)
++        contribution(
++            &ResolvedContribution {
++                contribution: c.clone(),
++                projections: keys,
++            },
++            width,
++        )
++    }
++}
++
++fn check_width(width: f64) -> Result<()> {
++    if width.is_finite() && width >= 0.0 {
++        Ok(())
++    } else {
++        Err(Error::InvalidValue(format!(
++            "a soft width is finite and not negative, not {width}"
++        )))
 +    }
 +}
 +
 +fn resolved(filter: &ResolvedFilter, width: f64) -> Result<Expr> {
++    let each = |fs: &[ResolvedFilter]| {
++        fs.iter()
++            .map(|f| resolved(f, width))
++            .collect::<Result<Vec<_>>>()
++    };
 +    Ok(match filter {
-+        ResolvedFilter::All(fs) => fold(fs.iter().map(|f| resolved(f, width)).collect::<Result<_>>()?, true, 1.0),
-+        ResolvedFilter::Any(fs) => fold(fs.iter().map(|f| resolved(f, width)).collect::<Result<_>>()?, false, 0.0),
++        ResolvedFilter::All(fs) => fold(each(fs)?, true),
++        ResolvedFilter::Any(fs) => fold(each(fs)?, false),
 +        ResolvedFilter::Not(f) => lit(1.0) - resolved(f, width)?,
 +        ResolvedFilter::Selection(s) => match s.status {
-+            SelectionStatus::Inactive => lit(if s.empty == EmptySelection::MatchAll { 1.0 } else { 0.0 }),
++            SelectionStatus::Inactive => lit(if s.empty == EmptySelection::MatchAll {
++                1.0
++            } else {
++                0.0
++            }),
 +            SelectionStatus::AllExcluded => lit(1.0),
 +            SelectionStatus::Active => fold(
-+                s.contributions.iter().map(|c| contribution(c, width)).collect::<Result<_>>()?,
++                s.contributions
++                    .iter()
++                    .map(|c| contribution(c, width))
++                    .collect::<Result<_>>()?,
 +                s.resolution == Resolution::Intersect,
-+                if s.resolution == Resolution::Intersect { 1.0 } else { 0.0 },
 +            ),
 +        },
 +    })
 +}
 +
-+/// The least (fuzzy AND) or greatest (fuzzy OR) of the degrees.
-+fn fold(exprs: Vec<Expr>, least: bool, empty: f64) -> Expr {
++/// The least (fuzzy AND) or greatest (fuzzy OR) of the degrees; with none,
++/// 1 or 0, as `predicate::combine` gives true or false.
++fn fold(exprs: Vec<Expr>, least: bool) -> Expr {
 +    exprs
 +        .into_iter()
 +        .reduce(|a, b| {
-+            let pick_a = if least { a.clone().lt_eq(b.clone()) } else { a.clone().gt_eq(b.clone()) };
++            let pick_a = if least {
++                a.clone().lt_eq(b.clone())
++            } else {
++                a.clone().gt_eq(b.clone())
++            };
 +            when(pick_a, a).otherwise(b).expect("a CASE with an ELSE")
 +        })
-+        .unwrap_or_else(|| lit(empty))
++        .unwrap_or_else(|| lit(if least { 1.0 } else { 0.0 }))
 +}
 +
 +fn contribution(c: &ResolvedContribution, width: f64) -> Result<Expr> {
 +    let tuples = c.contribution.effective_value().as_tuples();
 +    let producer = c.contribution.producer();
-+    let ranges = tuples.iter().flatten().any(|(_, t)| matches!(t, ValueTest::Range { .. }));
 +    let partial = c.contribution.value().partial.as_ref();
-+    if !ranges {
-+        let p = crate::predicate::contribution(c);
-+        // Rows the tuples leave out take their key's partial degree, if any.
-+        let rest = match partial {
-+            None => lit(0.0),
-+            Some(k) => {
-+                let i = producer.projections().iter().position(|p| p.id() == &k.projection).expect("checked when applied");
-+                let key = c.projections[i].clone();
-+                let mut degrees = k.degrees.iter();
-+                match degrees.next() {
-+                    None => lit(0.0),
-+                    Some((v, d)) => {
-+                        let mut case = when(key.clone().eq(lit(v.clone())), lit(*d));
-+                        for (v, d) in degrees {
-+                            case = case.when(key.clone().eq(lit(v.clone())), lit(*d));
-+                        }
-+                        case.otherwise(lit(0.0))?
-+                    }
-+                }
-+            }
-+        };
-+        return Ok(when(p, lit(1.0)).otherwise(rest)?);
++    if !tuples
++        .iter()
++        .flatten()
++        .any(|(_, t)| matches!(t, ValueTest::Range { .. }))
++    {
++        let rest = partial.map_or(Ok(lit(0.0)), |k| key_degrees(c, k))?;
++        return Ok(when(crate::predicate::contribution(c), lit(1.0)).otherwise(rest)?);
 +    }
 +    if partial.is_some() {
-+        return Err(Error::InvalidDefinition("partial degrees go with keys, not with ranges".into()));
++        return Err(Error::InvalidValue(
++            "partial degrees go with keys, not with ranges".into(),
++        ));
 +    }
-+    let mut sizes = Vec::new();
-+    for p in producer.projections() {
-+        match producer.pixel_grid(p.id()) {
-+            Some(g) => sizes.push(g.size()),
-+            None => {
-+                return Err(Error::InvalidDefinition(format!(
-+                    "a degree needs a pixel grid on {}, since its ranges are measured in pixels",
-+                    p.id()
-+                )))
-+            }
-+        }
-+    }
++    let sizes = producer
++        .projections()
++        .iter()
++        .map(|p| {
++            producer.pixel_grid(p.id()).map(|g| g.size().to_bits()).ok_or_else(|| {
++                Error::InvalidDefinition(format!("a degree needs a pixel grid on {}, since its ranges are measured in pixels", p.id()))
++            })
++        })
++        .collect::<Result<Vec<_>>>()?;
 +    let boxes = crate::cell_boxes::boxes(tuples).ok_or_else(|| {
-+        Error::InvalidDefinition("a degree over pixel grids needs range comparisons on every projection".into())
++        Error::InvalidDefinition(
++            "a degree over pixel grids needs range comparisons on every projection".into(),
++        )
 +    })?;
++    let signature = Signature::uniform(sizes.len(), vec![DataType::Int64], Volatility::Immutable);
 +    Ok(ScalarUDF::from(CellDegree {
 +        boxes,
-+        sizes: sizes.iter().map(|s| s.to_bits()).collect(),
++        sizes,
 +        width: width.to_bits(),
-+        signature: Signature::uniform(sizes.len(), vec![DataType::Int64], Volatility::Immutable),
++        signature,
 +    })
 +    .call(c.projections.clone()))
++}
++
++/// The partial degrees of a key contribution, as `CASE key WHEN … END`.
++fn key_degrees(c: &ResolvedContribution, k: &KeyDegrees) -> Result<Expr> {
++    let i = c
++        .contribution
++        .producer()
++        .projections()
++        .iter()
++        .position(|p| p.id() == &k.projection)
++        .ok_or_else(|| {
++            Error::InvalidValue(format!(
++                "partial degrees name {}, which the producer does not project",
++                k.projection
++            ))
++        })?;
++    let key = &c.projections[i];
++    let mut arms = k
++        .degrees
++        .iter()
++        .map(|(v, d)| (key.clone().eq(lit(v.clone())), lit(*d)));
++    let Some((w, t)) = arms.next() else {
++        return Ok(lit(0.0));
++    };
++    Ok(arms
++        .fold(when(w, t), |mut case, (w, t)| case.when(w, t))
++        .otherwise(lit(0.0))?)
 +}
 +
 +#[derive(Debug, PartialEq, Eq, Hash)]
 +struct CellDegree {
 +    boxes: Vec<Vec<(i64, i64)>>,
++    /// Pixels per cell, per projection, as bits.
 +    sizes: Vec<u64>,
 +    width: u64,
 +    signature: Signature,
@@ -327,84 +442,129 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        Ok(DataType::Float64)
 +    }
 +    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
-+        let rows = args.number_rows;
-+        let cols = crate::cell_boxes::columns::<Int64Type>(&args)?;
++        let cols = columns::<Int64Type>(&args)?;
 +        let sizes: Vec<f64> = self.sizes.iter().map(|s| f64::from_bits(*s)).collect();
 +        let width = f64::from_bits(self.width);
++        // The boxes' bounding box: a row beyond the width from it is at 0.
 +        let hull: Vec<(i64, i64)> = match self.boxes.first() {
 +            None => Vec::new(),
 +            Some(first) => (0..first.len())
-+                .map(|d| self.boxes.iter().fold((i64::MAX, i64::MIN), |(lo, hi), b| (lo.min(b[d].0), hi.max(b[d].1))))
++                .map(|d| {
++                    self.boxes.iter().fold((i64::MAX, i64::MIN), |(lo, hi), b| {
++                        (lo.min(b[d].0), hi.max(b[d].1))
++                    })
++                })
 +                .collect(),
 +        };
-+        let gap = |c: i64, (lo, hi): (i64, i64)| if c < lo { (lo as f64) - c as f64 } else if c > hi { c as f64 - hi as f64 } else { 0.0 };
-+        let out: Float64Array = (0..rows)
-+            .map(|i| {
-+                if cols.iter().any(|c| c.is_null(i)) {
-+                    return Some(0.0);
++        // Squared distance in pixels from row i's cells to a box.
++        let dist2 = |b: &[(i64, i64)], i: usize| -> f64 {
++            b.iter()
++                .zip(&cols)
++                .zip(&sizes)
++                .map(|((&(lo, hi), c), s)| {
++                    let v = c.value(i);
++                    (lo.saturating_sub(v).max(v.saturating_sub(hi)).max(0) as f64 * s).powi(2)
++                })
++                .sum()
++        };
++        let degree = |i: usize| -> f64 {
++            if hull.is_empty() || cols.iter().any(|c| c.is_null(i)) {
++                return 0.0;
++            }
++            let near = dist2(&hull, i);
++            if near > 0.0 && near >= width * width {
++                return 0.0;
++            }
++            let mut d2 = f64::INFINITY;
++            for b in &self.boxes {
++                d2 = d2.min(dist2(b, i));
++                if d2 == 0.0 {
++                    break;
 +                }
-+                // Beyond the width from the boxes' bounding box: no box is nearer.
-+                let lb: f64 = hull.iter().zip(&cols).zip(&sizes).map(|((r, c), s)| (gap(c.value(i), *r) * s).powi(2)).sum();
-+                if hull.is_empty() || (width > 0.0 && lb >= width * width) || (width == 0.0 && lb > 0.0) {
-+                    return Some(0.0);
-+                }
-+                let mut d2 = f64::INFINITY;
-+                for b in &self.boxes {
-+                    let e: f64 = b.iter().zip(&cols).zip(&sizes).map(|((r, c), s)| (gap(c.value(i), *r) * s).powi(2)).sum();
-+                    d2 = d2.min(e);
-+                    if d2 == 0.0 {
-+                        break;
-+                    }
-+                }
-+                let d = d2.sqrt();
-+                Some(if d == 0.0 { 1.0 } else if width == 0.0 { 0.0 } else { (1.0 - d / width).max(0.0) })
-+            })
-+            .collect();
++            }
++            let d = d2.sqrt();
++            if d == 0.0 {
++                1.0
++            } else if width == 0.0 {
++                0.0
++            } else {
++                (1.0 - d / width).max(0.0)
++            }
++        };
++        let out: Float64Array = (0..args.number_rows).map(|i| Some(degree(i))).collect();
 +        Ok(ColumnarValue::Array(Arc::new(out)))
 +    }
 +}
 +
-+/// Degrees in (0, 1) for keys a value selects only in part (not upstream).
++/// Degrees in (0, 1) for keys a value selects only in part.
 +#[derive(Clone, Debug)]
 +pub(crate) struct KeyDegrees {
-+    pub(crate) projection: crate::ProjectionId,
-+    pub(crate) degrees: Vec<(datafusion::common::ScalarValue, f64)>,
++    pub(crate) projection: ProjectionId,
++    pub(crate) degrees: Vec<(ScalarValue, f64)>,
 +}
 +impl PartialEq for KeyDegrees {
 +    fn eq(&self, other: &Self) -> bool {
 +        self.projection == other.projection
 +            && self.degrees.len() == other.degrees.len()
-+            && self.degrees.iter().zip(&other.degrees).all(|((a, x), (b, y))| a == b && x.to_bits() == y.to_bits())
++            && self
++                .degrees
++                .iter()
++                .zip(&other.degrees)
++                .all(|((a, x), (b, y))| a == b && x.to_bits() == y.to_bits())
 +    }
 +}
 +impl Eq for KeyDegrees {}
 +impl KeyDegrees {
-+    /// Checked against the producer, sorted by key, one degree per key.
-+    pub(crate) fn canonical(self, producer: &crate::ProducerDefinition) -> Result<Self> {
-+        if !producer.projections().iter().any(|p| p.id() == &self.projection) {
-+            return Err(Error::InvalidValue(format!("partial degrees name {}, which the producer does not project", self.projection)));
++    /// Checked against the producer, keys normalised as the crate's sets
++    /// normalise them, sorted, one degree per key.
++    pub(crate) fn canonical(self, producer: &ProducerDefinition) -> Result<Self> {
++        let invalid = |m: String| Err(Error::InvalidValue(m));
++        if !producer
++            .projections()
++            .iter()
++            .any(|p| p.id() == &self.projection)
++        {
++            return invalid(format!(
++                "partial degrees name {}, which the producer does not project",
++                self.projection
++            ));
 +        }
 +        if producer.pixel_grid(&self.projection).is_some() {
-+            return Err(Error::InvalidValue(format!("partial degrees need an ungridded key, and {} has a pixel grid", self.projection)));
++            return invalid(format!(
++                "partial degrees need an ungridded key, and {} has a pixel grid",
++                self.projection
++            ));
 +        }
-+        if let Some((_, d)) = self.degrees.iter().find(|(_, d)| !(d.is_finite() && *d > 0.0 && *d < 1.0)) {
-+            return Err(Error::InvalidValue(format!("a partial degree lies in (0, 1), not {d}")));
++        let mut degrees = Vec::with_capacity(self.degrees.len());
++        for (k, d) in self.degrees {
++            if !(d.is_finite() && d > 0.0 && d < 1.0) {
++                return invalid(format!("a partial degree lies in (0, 1), not {d}"));
++            }
++            degrees.push((canonical_values(vec![k])?.remove(0), d));
 +        }
-+        let mut keys: Vec<_> = self.degrees.iter().map(|(k, _)| k.clone()).collect();
-+        let n = keys.len();
-+        keys = crate::values::canonical_values(keys)?;
-+        if keys.len() != n {
-+            return Err(Error::InvalidValue("partial degrees name a key twice".into()));
++        degrees.sort_by(|a, b| scalar_cmp(&a.0, &b.0));
++        if degrees
++            .windows(2)
++            .any(|w| w[0].0.data_type() != w[1].0.data_type())
++        {
++            return invalid("partial degrees use one key type".into());
 +        }
-+        let mut degrees = self.degrees;
-+        degrees.sort_by(|a, b| crate::values::scalar_cmp(&a.0, &b.0));
-+        Ok(Self { projection: self.projection, degrees })
++        if degrees
++            .windows(2)
++            .any(|w| scalar_cmp(&w[0].0, &w[1].0).is_eq())
++        {
++            return invalid("partial degrees name a key twice".into());
++        }
++        Ok(Self {
++            projection: self.projection,
++            degrees,
++        })
 +    }
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/gesture.rs avenger-selection/src/gesture.rs
 --- avenger-selection/src/gesture.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/src/gesture.rs	2026-09-27 21:52:41.928280873 +0000
-@@ -0,0 +1,77 @@
++++ avenger-selection/src/gesture.rs	2026-09-28 09:11:12.422302383 +0000
+@@ -0,0 +1,95 @@
 +//! The gesture a selection came from, kept beside its tuples.
 +//!
 +//! Not upstream: added in this repo (VENDORED.md). Tuples are what a
@@ -429,7 +589,12 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +
 +impl Gesture {
 +    pub fn new(kind: impl Into<String>, points: impl IntoIterator<Item = [f64; 2]>) -> Self {
-+        Self { kind: kind.into(), points: points.into_iter().collect(), params: Vec::new(), on: Vec::new() }
++        Self {
++            kind: kind.into(),
++            points: points.into_iter().collect(),
++            params: Vec::new(),
++            on: Vec::new(),
++        }
 +    }
 +    /// Name the projections the points were drawn on, in the points' order:
 +    /// what a replay needs to draw the gesture again.
@@ -461,11 +626,24 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        self.params.iter().find(|(n, _)| n == name).map(|(_, v)| *v)
 +    }
 +    #[allow(clippy::type_complexity)]
-+    fn bits(&self) -> (&str, Vec<[u64; 2]>, Vec<(&str, u64)>, &[crate::ProjectionId]) {
++    fn bits(
++        &self,
++    ) -> (
++        &str,
++        Vec<[u64; 2]>,
++        Vec<(&str, u64)>,
++        &[crate::ProjectionId],
++    ) {
 +        (
 +            &self.kind,
-+            self.points.iter().map(|p| [p[0].to_bits(), p[1].to_bits()]).collect(),
-+            self.params.iter().map(|(n, v)| (n.as_str(), v.to_bits())).collect(),
++            self.points
++                .iter()
++                .map(|p| [p[0].to_bits(), p[1].to_bits()])
++                .collect(),
++            self.params
++                .iter()
++                .map(|(n, v)| (n.as_str(), v.to_bits()))
++                .collect(),
 +            &self.on,
 +        )
 +    }
@@ -484,39 +662,42 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/lib.rs avenger-selection/src/lib.rs
 --- avenger-selection/src/lib.rs	2026-09-27 19:07:15.626710854 +0000
-+++ avenger-selection/src/lib.rs	2026-09-27 21:53:12.267624435 +0000
-@@ -2,9 +2,15 @@
++++ avenger-selection/src/lib.rs	2026-09-28 09:11:12.422302383 +0000
+@@ -1,20 +1,30 @@
+ #![doc = include_str!("../README.md")]
  
++mod cell_boxes;
  mod definitions;
++mod degree;
  mod error;
 +mod gesture;
  mod identity;
 +mod log;
  mod pixels;
 +mod polygon;
-+mod cell_boxes;
-+mod degree;
  mod predicate;
-+mod series;
  mod resolve;
++mod series;
  mod split;
  mod state;
-@@ -12,8 +18,11 @@
++mod udf;
+ mod values;
  
  pub use definitions::{ProducerDefinition, Projection, Resolution};
  pub use error::{Error, Result};
 +pub use gesture::Gesture;
-+pub use log::{Drawn, LogEntry, Producers};
  pub use identity::{ProducerId, ProjectionId, SelectionId, ViewId};
++pub use log::{Drawn, LogEntry, Producers};
  pub use pixels::PixelGrid;
-+pub use series::SeriesTest;
  pub use resolve::{ConsumerFilter, EmptySelection, SelectionFilter, SelectionMode};
++pub use series::SeriesTest;
  pub use split::{PredicateSplit, SelectionPredicates, SplitReason};
  pub use state::{Contribution, SelectionSet, SelectionUpdate};
+ pub use values::{SelectionValue, ValueTest};
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/log.rs avenger-selection/src/log.rs
 --- avenger-selection/src/log.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/src/log.rs	2026-09-28 07:07:55.516603631 +0000
-@@ -0,0 +1,283 @@
++++ avenger-selection/src/log.rs	2026-09-28 09:11:12.426302383 +0000
+@@ -0,0 +1,369 @@
 +//! Selection updates written as JSON and read back, for a pipeline log.
 +//!
 +//! Not upstream: added in this repo (VENDORED.md). A log records what the
@@ -548,10 +729,8 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +use serde_json::{json, Map, Value};
 +
 +use crate::{
-+    identity::ProducerAddress,
-+    state::Update,
-+    Error, Gesture, ProducerDefinition, ProducerId, ProjectionId, Result, SelectionId, SelectionUpdate,
-+    SelectionValue, ValueTest, ViewId,
++    identity::ProducerAddress, state::Update, Error, Gesture, ProducerDefinition, ProducerId,
++    ProjectionId, Result, SelectionId, SelectionUpdate, SelectionValue, ValueTest, ViewId,
 +};
 +
 +/// The chart's producer definitions, by address, for reading a log back.
@@ -559,12 +738,17 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +pub struct Producers(BTreeMap<ProducerAddress, ProducerDefinition>);
 +impl Producers {
 +    pub fn new(definitions: impl IntoIterator<Item = ProducerDefinition>) -> Self {
-+        Self(definitions.into_iter().map(|d| (d.address().clone(), d)).collect())
++        Self(
++            definitions
++                .into_iter()
++                .map(|d| (d.address().clone(), d))
++                .collect(),
++        )
 +    }
 +    fn get(&self, address: &ProducerAddress) -> Result<&ProducerDefinition> {
 +        self.0.get(address).ok_or_else(|| {
-+            Error::InvalidUpdate(format!(
-+                "the log names producer {} of view {} in selection {}, which the chart does not define",
++            bad(format!(
++                "it names producer {} of view {} in selection {}, which the chart does not define",
 +                address.producer, address.origin, address.selection
 +            ))
 +        })
@@ -574,23 +758,21 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +impl SelectionUpdate {
 +    /// This update as one JSON object, for one line of a log.
 +    pub fn to_json(&self) -> Result<Value> {
-+        let address = |a: &ProducerAddress| {
-+            json!({"selection": a.selection.as_str(), "producer": a.producer.as_str(), "view": a.origin.as_str()})
++        let address = |a: &ProducerAddress| json!({"selection": a.selection.as_str(), "producer": a.producer.as_str(), "view": a.origin.as_str()});
++        let (op, at, value) = match &self.0 {
++            Update::Set(p, v) => ("set", p.address(), Some(v)),
++            Update::Toggle(p, v) => ("toggle", p.address(), Some(v)),
++            Update::Clear(a) => ("clear", a, None),
++            Update::ClearAll(id) => {
++                return Ok(json!({"op": "clear_all", "selection": id.as_str()}))
++            }
 +        };
-+        Ok(match &self.0 {
-+            Update::Set(p, v) | Update::Toggle(p, v) => {
-+                let mut o = address(p.address());
-+                o["op"] = json!(if matches!(self.0, Update::Set(..)) { "set" } else { "toggle" });
-+                o["value"] = value_json(v)?;
-+                o
-+            }
-+            Update::Clear(a) => {
-+                let mut o = address(a);
-+                o["op"] = json!("clear");
-+                o
-+            }
-+            Update::ClearAll(id) => json!({"op": "clear_all", "selection": id.as_str()}),
-+        })
++        let mut o = address(at);
++        o["op"] = json!(op);
++        if let Some(v) = value {
++            o["value"] = value_json(v)?;
++        }
++        Ok(o)
 +    }
 +
 +    /// Read one logged update back against the chart's definitions, drawing
@@ -626,15 +808,22 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +impl Drawn {
 +    /// The update, from the value the chart drew; the gesture goes with it.
 +    pub fn redraw(self, value: SelectionValue) -> SelectionUpdate {
-+        let value = value.with_gesture(self.gesture);
-+        if self.toggle { SelectionUpdate::toggle(&self.producer, value) } else { SelectionUpdate::set(&self.producer, value) }
++        update(
++            self.toggle,
++            &self.producer,
++            value.with_gesture(self.gesture),
++        )
 +    }
 +}
 +
 +impl LogEntry {
 +    /// Read one line of a log against the chart's definitions.
 +    pub fn from_json(v: &Value, producers: &Producers) -> Result<Self> {
-+        let s = |k: &str| v.get(k).and_then(Value::as_str).ok_or_else(|| bad(format!("an update needs a string {k}")));
++        let s = |k: &str| {
++            v.get(k)
++                .and_then(Value::as_str)
++                .ok_or_else(|| bad(format!("an update needs a string {k}")))
++        };
 +        let address = || -> Result<ProducerAddress> {
 +            Ok(ProducerAddress {
 +                selection: SelectionId::new(s("selection")?)?,
@@ -646,23 +835,41 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +            op @ ("set" | "toggle") => {
 +                let producer = producers.get(&address()?)?;
 +                let toggle = op == "toggle";
-+                let value = v.get("value").ok_or_else(|| bad("a set or toggle needs a value"))?;
++                let value = v
++                    .get("value")
++                    .ok_or_else(|| bad("a set or toggle needs a value"))?;
 +                let value = match value.get("drawn") {
 +                    None => value_from(value)?,
 +                    Some(g) => {
 +                        let gesture = gesture_from(g)?;
 +                        match SelectionValue::from_gesture(producer, &gesture) {
 +                            Some(value) => value?,
-+                            None => return Ok(LogEntry::Drawn(Drawn { toggle, producer: producer.clone(), gesture })),
++                            None => {
++                                return Ok(LogEntry::Drawn(Drawn {
++                                    toggle,
++                                    producer: producer.clone(),
++                                    gesture,
++                                }))
++                            }
 +                        }
 +                    }
 +                };
-+                LogEntry::Update(if toggle { SelectionUpdate::toggle(producer, value) } else { SelectionUpdate::set(producer, value) })
++                LogEntry::Update(update(toggle, producer, value))
 +            }
 +            "clear" => LogEntry::Update(SelectionUpdate::clear(producers.get(&address()?)?)),
-+            "clear_all" => LogEntry::Update(SelectionUpdate::clear_all(&SelectionId::new(s("selection")?)?)),
++            "clear_all" => LogEntry::Update(SelectionUpdate::clear_all(&SelectionId::new(s(
++                "selection",
++            )?)?)),
 +            other => return Err(bad(format!("unknown operation {other}"))),
 +        })
++    }
++}
++
++fn update(toggle: bool, producer: &ProducerDefinition, value: SelectionValue) -> SelectionUpdate {
++    if toggle {
++        SelectionUpdate::toggle(producer, value)
++    } else {
++        SelectionUpdate::set(producer, value)
 +    }
 +}
 +
@@ -675,12 +882,18 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        return Ok(json!({"drawn": gesture_json(g)?}));
 +    }
 +    if v.partial().is_some() {
-+        return Err(bad("partial degrees are redrawn from their gesture, and this value has none"));
++        return Err(bad(
++            "partial degrees are redrawn from their gesture, and this value has none",
++        ));
 +    }
 +    let tuples = v
 +        .as_tuples()
 +        .iter()
-+        .map(|t| t.iter().map(|(id, test)| term_json(id, test)).collect::<Result<Vec<_>>>())
++        .map(|t| {
++            t.iter()
++                .map(|(id, test)| term_json(id, test))
++                .collect::<Result<Vec<_>>>()
++        })
 +        .collect::<Result<Vec<_>>>()?;
 +    Ok(json!({"tuples": tuples}))
 +}
@@ -690,7 +903,13 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        .and_then(Value::as_array)
 +        .ok_or_else(|| bad("a value needs tuples"))?
 +        .iter()
-+        .map(|t| t.as_array().ok_or_else(|| bad("a tuple is a list of terms"))?.iter().map(term_from).collect::<Result<Vec<_>>>())
++        .map(|t| {
++            t.as_array()
++                .ok_or_else(|| bad("a tuple is a list of terms"))?
++                .iter()
++                .map(term_from)
++                .collect::<Result<Vec<_>>>()
++        })
 +        .collect::<Result<Vec<_>>>()?;
 +    Ok(SelectionValue::tuples(tuples))
 +}
@@ -704,7 +923,9 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        })
 +    };
 +    Ok(match test {
-+        ValueTest::Equal(v) => json!({"projection": id.as_str(), "test": "equal", "value": scalar_json(v)?}),
++        ValueTest::Equal(v) => {
++            json!({"projection": id.as_str(), "test": "equal", "value": scalar_json(v)?})
++        }
 +        ValueTest::OneOf(vs) => json!({"projection": id.as_str(), "test": "one_of",
 +            "values": vs.iter().map(scalar_json).collect::<Result<Vec<_>>>()?}),
 +        ValueTest::Range { lower, upper } => json!({"projection": id.as_str(), "test": "range",
@@ -712,7 +933,11 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    })
 +}
 +fn term_from(v: &Value) -> Result<(ProjectionId, ValueTest)> {
-+    let id = ProjectionId::new(v.get("projection").and_then(Value::as_str).ok_or_else(|| bad("a term needs a projection"))?)?;
++    let id = ProjectionId::new(
++        v.get("projection")
++            .and_then(Value::as_str)
++            .ok_or_else(|| bad("a term needs a projection"))?,
++    )?;
 +    let bound = |b: Option<&Value>| -> Result<Bound<ScalarValue>> {
 +        match b {
 +            None | Some(Value::Null) => Ok(Bound::Unbounded),
@@ -724,11 +949,21 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        }
 +    };
 +    let test = match v.get("test").and_then(Value::as_str) {
-+        Some("equal") => ValueTest::Equal(scalar_from(v.get("value").ok_or_else(|| bad("equal needs a value"))?)?),
++        Some("equal") => ValueTest::Equal(scalar_from(
++            v.get("value").ok_or_else(|| bad("equal needs a value"))?,
++        )?),
 +        Some("one_of") => ValueTest::OneOf(
-+            v.get("values").and_then(Value::as_array).ok_or_else(|| bad("one_of needs values"))?.iter().map(scalar_from).collect::<Result<_>>()?,
++            v.get("values")
++                .and_then(Value::as_array)
++                .ok_or_else(|| bad("one_of needs values"))?
++                .iter()
++                .map(scalar_from)
++                .collect::<Result<_>>()?,
 +        ),
-+        Some("range") => ValueTest::Range { lower: bound(v.get("lower"))?, upper: bound(v.get("upper"))? },
++        Some("range") => ValueTest::Range {
++            lower: bound(v.get("lower"))?,
++            upper: bound(v.get("upper"))?,
++        },
 +        other => return Err(bad(format!("unknown test {other:?}"))),
 +    };
 +    Ok((id, test))
@@ -736,19 +971,31 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +
 +fn scalar_json(v: &ScalarValue) -> Result<Value> {
 +    let t = v.data_type();
-+    if matches!(t, DataType::Binary | DataType::LargeBinary | DataType::BinaryView | DataType::FixedSizeBinary(_)) {
-+        return Err(bad(format!("{t} values are not written to the log yet")));
++    if matches!(
++        t,
++        DataType::Binary
++            | DataType::LargeBinary
++            | DataType::BinaryView
++            | DataType::FixedSizeBinary(_)
++    ) {
++        return Err(bad(format!(
++            "{t} values do not cast to a string, so the log refuses them"
++        )));
 +    }
 +    let value = if v.is_null() {
 +        Value::Null
 +    } else {
-+        let s = cast(&v.to_array()?, &DataType::Utf8).map_err(datafusion::common::DataFusionError::from)?;
++        let s = cast(&v.to_array()?, &DataType::Utf8)
++            .map_err(datafusion::common::DataFusionError::from)?;
 +        Value::String(ScalarValue::try_from_array(&s, 0)?.to_string())
 +    };
 +    Ok(json!({"type": t.to_string(), "value": value}))
 +}
 +fn scalar_from(v: &Value) -> Result<ScalarValue> {
-+    let t = v.get("type").and_then(Value::as_str).ok_or_else(|| bad("a scalar needs a type"))?;
++    let t = v
++        .get("type")
++        .and_then(Value::as_str)
++        .ok_or_else(|| bad("a scalar needs a type"))?;
 +    let t = DataType::from_str(t).map_err(|e| bad(format!("type {t}: {e}")))?;
 +    Ok(match v.get("value") {
 +        None | Some(Value::Null) => ScalarValue::try_from(&t)?,
@@ -764,17 +1011,32 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +}
 +
 +fn gesture_json(g: &Gesture) -> Result<Value> {
-+    let finite = g.points().iter().flatten().chain(g.params().iter().map(|(_, v)| v)).all(|v| v.is_finite());
++    let finite = g
++        .points()
++        .iter()
++        .flatten()
++        .chain(g.params().iter().map(|(_, v)| v))
++        .all(|v| v.is_finite());
 +    if !finite {
 +        return Err(bad("a gesture's numbers must be finite"));
 +    }
-+    let params: Map<String, Value> = g.params().iter().map(|(n, v)| (n.clone(), json!(v))).collect();
++    let params: Map<String, Value> = g
++        .params()
++        .iter()
++        .map(|(n, v)| (n.clone(), json!(v)))
++        .collect();
 +    let on: Vec<&str> = g.projections().iter().map(|p| p.as_str()).collect();
 +    Ok(json!({"kind": g.kind(), "points": g.points(), "params": params, "on": on}))
 +}
 +fn gesture_from(v: &Value) -> Result<Gesture> {
-+    let kind = v.get("kind").and_then(Value::as_str).ok_or_else(|| bad("a gesture needs a kind"))?;
-+    let num = |x: &Value| x.as_f64().ok_or_else(|| bad("a gesture's numbers are numbers"));
++    let kind = v
++        .get("kind")
++        .and_then(Value::as_str)
++        .ok_or_else(|| bad("a gesture needs a kind"))?;
++    let num = |x: &Value| {
++        x.as_f64()
++            .ok_or_else(|| bad("a gesture's numbers are numbers"))
++    };
 +    let points = v
 +        .get("points")
 +        .and_then(Value::as_array)
@@ -789,7 +1051,12 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        None => Vec::new(),
 +        Some(a) => a
 +            .iter()
-+            .map(|p| ProjectionId::new(p.as_str().ok_or_else(|| bad("a gesture's projections are names"))?))
++            .map(|p| {
++                ProjectionId::new(
++                    p.as_str()
++                        .ok_or_else(|| bad("a gesture's projections are names"))?,
++                )
++            })
 +            .collect::<Result<Vec<_>>>()?,
 +    };
 +    let mut g = Gesture::new(kind, points).on(on);
@@ -802,29 +1069,39 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/pixels.rs avenger-selection/src/pixels.rs
 --- avenger-selection/src/pixels.rs	2026-09-27 19:07:16.070710881 +0000
-+++ avenger-selection/src/pixels.rs	2026-09-27 22:06:34.682581850 +0000
-@@ -455,5 +455,5 @@
++++ avenger-selection/src/pixels.rs	2026-09-28 09:11:12.430302384 +0000
+@@ -455,5 +455,9 @@
              }
          }
      }
 -    Ok(Some(SelectionValue { tuples }))
-+    Ok(Some(SelectionValue { tuples, gesture: None, partial: None }))
++    Ok(Some(SelectionValue {
++        tuples,
++        gesture: None,
++        partial: None,
++    }))
  }
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/polygon.rs avenger-selection/src/polygon.rs
 --- avenger-selection/src/polygon.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/src/polygon.rs	2026-09-28 07:07:55.516603631 +0000
-@@ -0,0 +1,196 @@
-+//! A polygon drawn on the screen, such as a lasso, as ordinary tuples.
++++ avenger-selection/src/polygon.rs	2026-09-28 09:11:12.434302384 +0000
+@@ -0,0 +1,232 @@
++//! A polygon drawn on the screen, such as a lasso, and a set of grid cells,
++//! as ordinary tuples.
 +//!
-+//! Not upstream: added in this repo (VENDORED.md). The polygon becomes one
++//! Not upstream: added in this repo (VENDORED.md). A polygon becomes one
 +//! tuple per run of pixel cells: the cell row on `v` and a range of cells on
 +//! `u`. Everything downstream — resolution, cross-filtering, toggles and the
-+//! preaggregation split — sees ranges on two gridded projections, as for a
++//! preaggregation split — sees ranges on gridded projections, as for a
 +//! two-dimensional brush.
 +
 +use datafusion::{arrow::datatypes::DataType, common::ScalarValue};
 +
-+use crate::{Error, PixelGrid, ProducerDefinition, ProjectionId, Result, SelectionValue, ValueTest};
++use crate::{
++    Error, Gesture, PixelGrid, ProducerDefinition, ProjectionId, Result, SelectionValue, ValueTest,
++};
++
++/// Polygons over more rows of cells than this are refused.
++const MAX_ROWS: i64 = 1 << 20;
 +
 +impl SelectionValue {
 +    /// Select the rows whose pixel cell has its centre inside `ring`.
@@ -840,60 +1117,56 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    /// more than a million rows of cells is refused. On a clamped grid, where
 +    /// data beyond the plot lands in its edge cells, only the cells data can
 +    /// reach are listed.
-+    pub fn polygon(producer: &ProducerDefinition, u: &ProjectionId, v: &ProjectionId, ring: &[[f64; 2]]) -> Result<Self> {
-+        let (u, v) = ((u, grid_of(producer, u)?), (v, grid_of(producer, v)?));
++    pub fn polygon(
++        producer: &ProducerDefinition,
++        u: &ProjectionId,
++        v: &ProjectionId,
++        ring: &[[f64; 2]],
++    ) -> Result<Self> {
 +        if ring.len() < 3 || ring.iter().flatten().any(|c| !c.is_finite()) {
 +            return Err(Error::InvalidValue(
 +                "a polygon needs three or more finite points".into(),
 +            ));
 +        }
-+        let (gu, gv) = (Inverse::new(u.1)?, Inverse::new(v.1)?);
++        let (gu, gv) = (
++            Inverse::new(grid_of(producer, u)?)?,
++            Inverse::new(grid_of(producer, v)?)?,
++        );
 +        let lo = ring.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
 +        let hi = ring.iter().map(|p| p[1]).fold(f64::NEG_INFINITY, f64::max);
 +        let (first, last) = (gv.first_centre(lo), gv.last_centre(hi));
 +        if last.saturating_sub(first) >= MAX_ROWS {
-+            return Err(Error::InvalidValue(format!("a polygon over {} rows of cells; at most {MAX_ROWS}", last.saturating_sub(first) + 1)));
++            return Err(Error::InvalidValue(format!(
++                "a polygon over {} rows of cells; at most {MAX_ROWS}",
++                last.saturating_sub(first) + 1
++            )));
 +        }
 +        let mut tuples = Vec::new();
 +        for row in first..=last {
-+            let y = gv.centre(row);
-+            let mut xs: Vec<f64> = Vec::new();
-+            for i in 0..ring.len() {
-+                let (a, b) = (ring[i], ring[(i + ring.len() - 1) % ring.len()]);
-+                if (a[1] > y) != (b[1] > y) {
-+                    xs.push((b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]);
-+                }
-+            }
-+            xs.sort_by(f64::total_cmp);
++            let xs = crossings(ring, gv.centre(row));
 +            for pair in xs.chunks_exact(2) {
 +                let (c0, c1) = (gu.first_centre(pair[0]), gu.last_centre(pair[1]));
-+                if c0 > c1 {
-+                    continue;
++                if c0 <= c1 {
++                    tuples.push(vec![
++                        (u.clone(), gu.cells(c0, c1)?),
++                        (v.clone(), gv.cells(row, row)?),
++                    ]);
 +                }
-+                let (a, b) = (gu.value(c0, u.1)?, gu.value(c1, u.1)?);
-+                let r = gv.value(row, v.1)?;
-+                tuples.push([
-+                    (u.0.clone(), ValueTest::Range { lower: incl(&a, &b, true), upper: incl(&a, &b, false) }),
-+                    (v.0.clone(), ValueTest::Range { lower: std::ops::Bound::Included(r.clone()), upper: std::ops::Bound::Included(r) }),
-+                ]);
 +            }
 +        }
-+        let (u, v) = (u.0.clone(), v.0.clone());
-+        Ok(SelectionValue::tuples(tuples).with_gesture(crate::Gesture::new("polygon", ring.iter().copied()).on([u, v])))
++        let gesture = Gesture::new("polygon", ring.iter().copied()).on([u.clone(), v.clone()]);
++        Ok(SelectionValue::tuples(tuples).with_gesture(gesture))
 +    }
-+}
 +
-+impl SelectionValue {
 +    /// Draw a gesture again with the crate's own kinds: `"polygon"` on the
 +    /// two projections it names. None for other kinds, which are the chart's
 +    /// to redraw (a line brush or CloudLasso depends on the data as well).
-+    pub fn from_gesture(producer: &ProducerDefinition, gesture: &crate::Gesture) -> Option<Result<Self>> {
++    pub fn from_gesture(producer: &ProducerDefinition, gesture: &Gesture) -> Option<Result<Self>> {
 +        match (gesture.kind(), gesture.projections()) {
++            // Keep the gesture as drawn, named numbers included.
 +            ("polygon", [u, v]) => Some(
-+                SelectionValue::polygon(producer, u, v, gesture.points()).map(|value| {
-+                    // Keep the gesture as drawn, named numbers included.
-+                    value.with_gesture(gesture.clone())
-+                }),
++                Self::polygon(producer, u, v, gesture.points())
++                    .map(|value| value.with_gesture(gesture.clone())),
 +            ),
 +            _ => None,
 +        }
@@ -903,53 +1176,68 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    /// gridded projection per dimension, such as the voxels CloudLasso keeps.
 +    /// Each cell lists its index per projection, in the order of `ids`; the
 +    /// grids come from the producer and follow the rules of `polygon`.
-+    pub fn cells(producer: &ProducerDefinition, ids: &[&ProjectionId], cells: impl IntoIterator<Item = Vec<i64>>) -> Result<Self> {
-+        let grids = ids.iter().map(|id| Ok((*id, grid_of(producer, id)?))).collect::<Result<Vec<_>>>()?;
-+        let inverse = grids.iter().map(|(_, g)| Inverse::new(g)).collect::<Result<Vec<_>>>()?;
-+        let mut tuples = Vec::new();
-+        for cell in cells {
-+            if cell.len() != grids.len() {
-+                return Err(Error::InvalidValue(format!("a cell needs {} indices, one per grid", grids.len())));
-+            }
-+            let mut tuple = Vec::with_capacity(cell.len());
-+            for ((c, (id, g)), inv) in cell.iter().zip(&grids).zip(&inverse) {
-+                let v = inv.value(*c, g)?;
-+                tuple.push(((*id).clone(), ValueTest::Range { lower: std::ops::Bound::Included(v.clone()), upper: std::ops::Bound::Included(v) }));
-+            }
-+            tuples.push(tuple);
-+        }
++    pub fn cells(
++        producer: &ProducerDefinition,
++        ids: &[&ProjectionId],
++        cells: impl IntoIterator<Item = Vec<i64>>,
++    ) -> Result<Self> {
++        let grids = ids
++            .iter()
++            .map(|id| Inverse::new(grid_of(producer, id)?))
++            .collect::<Result<Vec<_>>>()?;
++        let tuples = cells
++            .into_iter()
++            .map(|cell| {
++                if cell.len() != grids.len() {
++                    return Err(Error::InvalidValue(format!(
++                        "a cell needs {} indices, one per grid",
++                        grids.len()
++                    )));
++                }
++                cell.iter()
++                    .zip(ids)
++                    .zip(&grids)
++                    .map(|((c, id), g)| Ok(((*id).clone(), g.cells(*c, *c)?)))
++                    .collect()
++            })
++            .collect::<Result<Vec<Vec<_>>>>()?;
 +        Ok(SelectionValue::tuples(tuples))
 +    }
 +}
 +
 +fn grid_of<'a>(producer: &'a ProducerDefinition, id: &ProjectionId) -> Result<&'a PixelGrid> {
-+    producer
-+        .pixel_grid(id)
-+        .ok_or_else(|| Error::InvalidDefinition(format!("{id} needs a pixel grid in the producer's definition")))
++    producer.pixel_grid(id).ok_or_else(|| {
++        Error::InvalidDefinition(format!(
++            "{id} needs a pixel grid in the producer's definition"
++        ))
++    })
 +}
 +
-+const MAX_ROWS: i64 = 1 << 20;
-+
-+// Decreasing scales map the first cell to the larger value.
-+fn incl(a: &ScalarValue, b: &ScalarValue, lower: bool) -> std::ops::Bound<ScalarValue> {
-+    let a_first = a.partial_cmp(b).is_some_and(|o| o.is_le());
-+    std::ops::Bound::Included(if a_first == lower { a.clone() } else { b.clone() })
++/// Where the horizontal line at `y` crosses the ring's edges, left to right:
++/// even-odd pairs of these bound the inside.
++fn crossings(ring: &[[f64; 2]], y: f64) -> Vec<f64> {
++    let mut xs: Vec<f64> = (0..ring.len())
++        .map(|i| (ring[i], ring[(i + ring.len() - 1) % ring.len()]))
++        .filter(|(a, b)| (a[1] > y) != (b[1] > y))
++        .map(|(a, b)| (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0])
++        .collect();
++    xs.sort_by(f64::total_cmp);
++    xs
 +}
 +
 +/// A linear grid, run backwards: from a cell to a data value that the
 +/// grid's own kernel maps into that cell.
-+struct Inverse {
-+    d: (f64, f64),
-+    r: (f64, f64),
-+    origin: f64,
-+    size: f64,
++struct Inverse<'a> {
++    grid: &'a PixelGrid,
++    domain: (f64, f64),
++    range: (f64, f64),
 +    data_type: DataType,
 +    /// On a clamped grid, the cells the data can reach.
 +    clamp: Option<(i64, i64)>,
 +}
-+impl Inverse {
-+    fn new(grid: &PixelGrid) -> Result<Self> {
-+        let invalid = |m: &str| Error::InvalidValue(format!("polygon grids {m}"));
++impl<'a> Inverse<'a> {
++    fn new(grid: &'a PixelGrid) -> Result<Self> {
++        let invalid = |m: &str| Error::InvalidValue(format!("polygon and cell grids {m}"));
 +        if grid.builtin() != avenger_scales_datafusion::BuiltinScale::Linear {
 +            return Err(invalid("must be linear"));
 +        }
@@ -960,49 +1248,68 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        if !matches!(data_type, DataType::Float32 | DataType::Float64) {
 +            return Err(invalid("need a Float32 or Float64 domain"));
 +        }
++        // PixelGrid::new has checked that both are two finite numbers.
 +        let pair = |a: &datafusion::arrow::array::ArrayRef| -> Result<(f64, f64)> {
-+            let f = |i| -> Result<f64> {
-+                match ScalarValue::try_from_array(a, i)?.cast_to(&DataType::Float64)? {
-+                    ScalarValue::Float64(Some(x)) => Ok(x),
-+                    _ => Err(invalid("need non-null numeric endpoints")),
-+                }
++            let f = |i| -> Result<ScalarValue> {
++                Ok(ScalarValue::try_from_array(a, i)?.cast_to(&DataType::Float64)?)
 +            };
-+            Ok((f(0)?, f(1)?))
++            match (f(0)?, f(1)?) {
++                (ScalarValue::Float64(Some(a)), ScalarValue::Float64(Some(b))) => Ok((a, b)),
++                _ => Err(invalid("need numeric endpoints")),
++            }
 +        };
 +        let clamped = grid.options().get("clamp").is_some_and(|c| {
-+            ScalarValue::try_from_array(&c.0, 0).is_ok_and(|v| v == ScalarValue::Boolean(Some(true)))
++            ScalarValue::try_from_array(&c.0, 0)
++                .is_ok_and(|v| v == ScalarValue::Boolean(Some(true)))
 +        });
 +        let clamp = if clamped {
 +            let cell = |i| -> Result<i64> {
-+                grid.cell(&ScalarValue::try_from_array(grid.domain(), i)?)?.ok_or_else(|| invalid("have a domain the kernel maps"))
++                grid.cell(&ScalarValue::try_from_array(grid.domain(), i)?)?
++                    .ok_or_else(|| invalid("have a domain the kernel maps"))
 +            };
 +            let (a, b) = (cell(0)?, cell(1)?);
 +            Some((a.min(b), a.max(b)))
 +        } else {
 +            None
 +        };
-+        Ok(Self { d: pair(grid.domain())?, r: pair(grid.range())?, origin: grid.origin(), size: grid.size(), data_type, clamp })
++        Ok(Self {
++            grid,
++            domain: pair(grid.domain())?,
++            range: pair(grid.range())?,
++            data_type,
++            clamp,
++        })
 +    }
 +    fn centre(&self, cell: i64) -> f64 {
-+        self.origin + (cell as f64 + 0.5) * self.size
++        self.grid.origin() + (cell as f64 + 0.5) * self.grid.size()
 +    }
 +    /// The first cell whose centre lies beyond a pixel coordinate, within
 +    /// the cells the data reaches.
 +    fn first_centre(&self, p: f64) -> i64 {
-+        let c = ((p - self.origin) / self.size - 0.5).floor() as i64 + 1;
++        let c = ((p - self.grid.origin()) / self.grid.size() - 0.5).floor() as i64 + 1;
 +        self.clamp.map_or(c, |(lo, _)| c.max(lo))
 +    }
 +    /// The last cell whose centre lies before it.
 +    fn last_centre(&self, p: f64) -> i64 {
-+        let c = ((p - self.origin) / self.size - 0.5).ceil() as i64 - 1;
++        let c = ((p - self.grid.origin()) / self.grid.size() - 0.5).ceil() as i64 - 1;
 +        self.clamp.map_or(c, |(_, hi)| c.min(hi))
 +    }
++    /// The closed range of values that selects cells `c0` to `c1` on this grid.
++    fn cells(&self, c0: i64, c1: i64) -> Result<ValueTest> {
++        let (a, b) = (self.value(c0)?, self.value(c1)?);
++        let (lo, hi) = if self.grid.is_decreasing() {
++            (b, a)
++        } else {
++            (a, b)
++        };
++        Ok(ValueTest::range(lo..=hi))
++    }
 +    /// A value at the cell's centre, checked against the grid's kernel.
-+    fn value(&self, cell: i64, grid: &PixelGrid) -> Result<ScalarValue> {
-+        let p = self.centre(cell);
-+        let x = self.d.0 + (p - self.r.0) / (self.r.1 - self.r.0) * (self.d.1 - self.d.0);
++    fn value(&self, cell: i64) -> Result<ScalarValue> {
++        let (d, r) = (self.domain, self.range);
++        let x = d.0 + (self.centre(cell) - r.0) / (r.1 - r.0) * (d.1 - d.0);
 +        let value = ScalarValue::Float64(Some(x)).cast_to(&self.data_type)?;
-+        match grid.cell(&value)? {
++        match self.grid.cell(&value)? {
 +            Some(c) if c == cell => Ok(value),
 +            other => Err(Error::InvalidValue(format!(
 +                "cell {cell} did not survive the grid's kernel (got {other:?})"
@@ -1028,38 +1335,39 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
              combine(
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/series.rs avenger-selection/src/series.rs
 --- avenger-selection/src/series.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/src/series.rs	2026-09-28 07:07:55.519064929 +0000
-@@ -0,0 +1,294 @@
++++ avenger-selection/src/series.rs	2026-09-28 09:11:12.446302384 +0000
+@@ -0,0 +1,372 @@
 +//! Tests over a whole series: a line brush and a timebox.
 +//!
 +//! Not upstream: added in this repo (VENDORED.md). The crate's predicates are
 +//! row-local, and a filter cannot hold the aggregate or window a series test
 +//! needs. So the test runs in two steps: one DataFusion query over the
-+//! chart's series finds the keys that pass, and those keys become an ordinary
-+//! `one_of` on the key projection. Cross-filtering, toggles and the split then
-+//! see a set, and the keys select rows in any relation that shares them,
-+//! such as the raw points behind an aggregated line chart. On data that
-+//! grows, the keys are the chart's to recompute.
++//! chart's series measures each series, and the series that pass become an
++//! ordinary `one_of` on the key projection (with partial degrees for a soft
++//! test). Cross-filtering, toggles and the split then see a set, and the keys
++//! select rows in any relation that shares them, such as the raw points
++//! behind an aggregated line chart. On data that grows, the keys are the
++//! chart's to recompute.
 +
 +use std::sync::Arc;
 +
 +use datafusion::{
 +    arrow::{
-+        array::{Array, BooleanArray, Float64Array},
++        array::{Array, AsArray, BooleanArray, Float64Array},
 +        compute::cast,
 +        datatypes::{DataType, Float64Type},
 +    },
 +    common::{Result as DFResult, ScalarValue},
-+    functions_aggregate::expr_fn::sum,
++    functions_aggregate::expr_fn::{bool_or, min, sum},
 +    functions_window::expr_fn::lag,
 +    logical_expr::{
-+        col, lit, when, ColumnarValue, Expr, ExprFunctionExt, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature,
-+        Volatility,
++        col, lit, when, ColumnarValue, Expr, ExprFunctionExt, ScalarFunctionArgs, ScalarUDF,
++        ScalarUDFImpl, Signature, Volatility,
 +    },
 +    prelude::DataFrame,
 +};
 +
-+use crate::{Error, ProjectionId, Result, SelectionValue, ValueTest};
++use crate::{udf::columns, Error, Gesture, ProjectionId, Result, SelectionValue, ValueTest};
 +
 +/// A test that a series passes or fails as a whole.
 +#[derive(Clone, Debug, PartialEq)]
@@ -1073,53 +1381,37 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    Within { x: (f64, f64), y: (f64, f64) },
 +}
 +
++/// What one query measures of each series: for a line brush, whether it
++/// crosses (`hit`) and its nearest vertex's distance (`near`); for a
++/// timebox, its vertices within the x-range (`hit`) and those of them inside
++/// the box (`near`).
++struct Measure {
++    key: ScalarValue,
++    hit: f64,
++    near: f64,
++}
++
 +impl SeriesTest {
 +    /// The keys of the series in `rows` that pass, in key order. `key`,
 +    /// `x` and `y` are expressions over `rows`; x and y are cast to Float64.
-+    pub async fn keys(&self, rows: DataFrame, key: Expr, x: Expr, y: Expr) -> Result<Vec<ScalarValue>> {
-+        let f64 = |e: Expr| datafusion::logical_expr::cast(e, DataType::Float64);
-+        let rows = rows.select(vec![key.alias("k"), f64(x).alias("x"), f64(y).alias("y")])?;
-+        let passing = match self {
-+            SeriesTest::Crosses { from, to } => {
-+                if from.iter().chain(to).any(|c| !c.is_finite()) {
-+                    return Err(Error::InvalidValue("a line brush needs finite end points".into()));
-+                }
-+                // The offset must be given: `lag(_, None, _)` returned the row
-+                // itself here (DataFusion 54.1), not the one before it.
-+                let prev = |c: &str| {
-+                    lag(col(c), Some(1), None)
-+                        .partition_by(vec![col("k")])
-+                        .order_by(vec![col("x").sort(true, false)])
-+                        .build()
-+                };
-+                rows.window(vec![prev("x")?.alias("px"), prev("y")?.alias("py")])?
-+                    .filter(crosses(*from, *to).call(vec![col("px"), col("py"), col("x"), col("y")]))?
-+                    .aggregate(vec![col("k")], vec![])?
-+            }
-+            SeriesTest::Within { x, y } => {
-+                let ok = |(lo, hi): (f64, f64)| lo.is_finite() && hi.is_finite() && lo <= hi;
-+                if !ok(*x) || !ok(*y) {
-+                    return Err(Error::InvalidValue("a timebox needs finite, ordered ranges".into()));
-+                }
-+                let in_x = col("x").between(lit(x.0), lit(x.1));
-+                let in_y = col("y").between(lit(y.0), lit(y.1));
-+                let one = |c: Expr| when(c, lit(1_i64)).otherwise(lit(0_i64));
-+                rows.aggregate(
-+                    vec![col("k")],
-+                    vec![sum(one(in_x.clone())?).alias("n_in"), sum(one(in_x.and(std::ops::Not::not(in_y)))?).alias("n_out")],
-+                )?
-+                .filter(col("n_in").gt(lit(0_i64)).and(col("n_out").eq(lit(0_i64))))?
-+                .select(vec![col("k")])?
-+            }
++    pub async fn keys(
++        &self,
++        rows: DataFrame,
++        key: Expr,
++        x: Expr,
++        y: Expr,
++    ) -> Result<Vec<ScalarValue>> {
++        let passes = |m: &Measure| match self {
++            SeriesTest::Crosses { .. } => m.hit > 0.0,
++            SeriesTest::Within { .. } => m.hit > 0.0 && m.near == m.hit,
 +        };
-+        let mut keys = Vec::new();
-+        for batch in passing.sort(vec![col("k").sort(true, false)])?.collect().await? {
-+            let k = batch.column(0);
-+            for i in 0..k.len() {
-+                keys.push(ScalarValue::try_from_array(k, i)?);
-+            }
-+        }
-+        Ok(keys)
++        Ok(self
++            .measure(rows, key, x, y, [1.0, 1.0])
++            .await?
++            .into_iter()
++            .filter(passes)
++            .map(|m| m.key)
++            .collect())
 +    }
 +
 +    /// Soft selection over whole series (experiment 7's `--soft`): each
@@ -1132,61 +1424,133 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    /// square as experiment 7 measures. A timebox gives the share of a
 +    /// series' vertices within its x-range whose y lies in its y-range; it
 +    /// has no distance, and ignores `scale` and `width`.
-+    pub async fn degrees(&self, rows: DataFrame, key: Expr, x: Expr, y: Expr, scale: [f64; 2], width: f64) -> Result<Vec<(ScalarValue, f64)>> {
-+        use datafusion::functions_aggregate::expr_fn::{bool_or, min};
-+        if !(scale.iter().all(|s| s.is_finite() && *s > 0.0) && width.is_finite() && width > 0.0) {
-+            return Err(Error::InvalidValue("soft series need a positive scale and width".into()));
++    pub async fn degrees(
++        &self,
++        rows: DataFrame,
++        key: Expr,
++        x: Expr,
++        y: Expr,
++        scale: [f64; 2],
++        width: f64,
++    ) -> Result<Vec<(ScalarValue, f64)>> {
++        let positive =
++            scale.iter().all(|s| s.is_finite() && *s > 0.0) && width.is_finite() && width > 0.0;
++        if matches!(self, SeriesTest::Crosses { .. }) && !positive {
++            return Err(Error::InvalidValue(
++                "a soft line brush needs a positive scale and width".into(),
++            ));
 +        }
++        let degree = |m: &Measure| match self {
++            SeriesTest::Crosses { .. } if m.hit > 0.0 => 1.0,
++            SeriesTest::Crosses { .. } => (1.0 - m.near / width).max(0.0),
++            SeriesTest::Within { .. } if m.hit > 0.0 => m.near / m.hit,
++            SeriesTest::Within { .. } => 0.0,
++        };
++        let measured = self.measure(rows, key, x, y, scale).await?;
++        Ok(measured
++            .into_iter()
++            .map(|m| (degree(&m), m.key))
++            .filter(|(d, _)| *d > 0.0)
++            .map(|(d, k)| (k, d))
++            .collect())
++    }
++
++    fn check(&self) -> Result<()> {
++        let ordered = |(lo, hi): (f64, f64)| lo.is_finite() && hi.is_finite() && lo <= hi;
++        match self {
++            SeriesTest::Crosses { from, to } if from.iter().chain(to).any(|c| !c.is_finite()) => {
++                Err(Error::InvalidValue(
++                    "a line brush needs finite end points".into(),
++                ))
++            }
++            SeriesTest::Within { x, y } if !ordered(*x) || !ordered(*y) => Err(
++                Error::InvalidValue("a timebox needs finite, ordered ranges".into()),
++            ),
++            _ => Ok(()),
++        }
++    }
++
++    /// One query over `rows`: a `Measure` per series, in key order.
++    async fn measure(
++        &self,
++        rows: DataFrame,
++        key: Expr,
++        x: Expr,
++        y: Expr,
++        scale: [f64; 2],
++    ) -> Result<Vec<Measure>> {
++        self.check()?;
 +        let f64 = |e: Expr| datafusion::logical_expr::cast(e, DataType::Float64);
 +        let rows = rows.select(vec![key.alias("k"), f64(x).alias("x"), f64(y).alias("y")])?;
-+        // Per series: a = crossed (line brush) or vertices in the window
-+        // (timebox); b = nearest vertex's distance, or those also in the box.
-+        let agg = match self {
++        let measured = match self {
 +            SeriesTest::Crosses { from, to } => {
++                // The offset must be given: `lag(_, None, _)` returned the row
++                // itself here (DataFusion 54.1), not the one before it.
 +                let prev = |c: &str| {
-+                    lag(col(c), Some(1), None).partition_by(vec![col("k")]).order_by(vec![col("x").sort(true, false)]).build()
++                    lag(col(c), Some(1), None)
++                        .partition_by(vec![col("k")])
++                        .order_by(vec![col("x").sort(true, false)])
++                        .build()
 +                };
-+                let near = ScalarUDF::from(Distance {
-+                    segment: [from[0], from[1], to[0], to[1]].map(f64::to_bits),
-+                    scale: scale.map(f64::to_bits),
-+                    signature: Signature::uniform(2, vec![DataType::Float64], Volatility::Immutable),
++                let crossing = udf(Crosses {
++                    segment: segment_bits(*from, *to),
++                    signature: float_args(4),
 +                });
-+                rows
-+                    .window(vec![prev("x")?.alias("px"), prev("y")?.alias("py")])?
++                let near = udf(Distance {
++                    segment: segment_bits(*from, *to),
++                    scale: scale.map(f64::to_bits),
++                    signature: float_args(2),
++                });
++                rows.window(vec![prev("x")?.alias("px"), prev("y")?.alias("py")])?
 +                    .aggregate(
 +                        vec![col("k")],
 +                        vec![
-+                            bool_or(crosses(*from, *to).call(vec![col("px"), col("py"), col("x"), col("y")])).alias("a"),
-+                            min(near.call(vec![col("x"), col("y")])).alias("b"),
++                            bool_or(crossing.call(vec![col("px"), col("py"), col("x"), col("y")]))
++                                .alias("hit"),
++                            min(near.call(vec![col("x"), col("y")])).alias("near"),
 +                        ],
 +                    )?
 +            }
 +            SeriesTest::Within { x, y } => {
 +                let in_x = col("x").between(lit(x.0), lit(x.1));
 +                let in_y = col("y").between(lit(y.0), lit(y.1));
-+                let one = |c: Expr| when(c, lit(1.0)).otherwise(lit(0.0));
-+                rows.aggregate(vec![col("k")], vec![sum(one(in_x.clone())?).alias("a"), sum(one(in_x.and(in_y))?).alias("b")])?
++                let count =
++                    |c: Expr| -> DFResult<Expr> { Ok(sum(when(c, lit(1.0)).otherwise(lit(0.0))?)) };
++                rows.aggregate(
++                    vec![col("k")],
++                    vec![
++                        count(in_x.clone())?.alias("hit"),
++                        count(in_x.and(in_y))?.alias("near"),
++                    ],
++                )?
 +            }
 +        };
 +        let mut out = Vec::new();
-+        for b in agg.sort(vec![col("k").sort(true, false)])?.collect().await? {
-+            let num = |c: &str| -> Result<datafusion::arrow::array::Float64Array> {
-+                let a = cast(b.column_by_name(c).unwrap(), &DataType::Float64).map_err(datafusion::common::DataFusionError::from)?;
-+                Ok(a.as_any().downcast_ref::<Float64Array>().unwrap().clone())
++        for batch in measured
++            .sort(vec![col("k").sort(true, false)])?
++            .collect()
++            .await?
++        {
++            let number = |name: &str| -> Result<Float64Array> {
++                let c = batch
++                    .column_by_name(name)
++                    .ok_or_else(|| Error::InvalidValue(format!("no {name} column")))?;
++                Ok(cast(c, &DataType::Float64)
++                    .map_err(datafusion::common::DataFusionError::from)?
++                    .as_primitive::<Float64Type>()
++                    .clone())
 +            };
-+            let (a, bb) = (num("a")?, num("b")?);
-+            let k = b.column_by_name("k").unwrap();
-+            for i in 0..b.num_rows() {
-+                let (a, b) = (if a.is_null(i) { 0.0 } else { a.value(i) }, if bb.is_null(i) { f64::INFINITY } else { bb.value(i) });
-+                let d = match self {
-+                    SeriesTest::Crosses { .. } if a > 0.0 => 1.0,
-+                    SeriesTest::Crosses { .. } => (1.0 - b / width).max(0.0),
-+                    SeriesTest::Within { .. } if a > 0.0 => b / a,
-+                    SeriesTest::Within { .. } => 0.0,
-+                };
-+                if d > 0.0 {
-+                    out.push((ScalarValue::try_from_array(k, i)?, d));
-+                }
++            let (hit, near, keys) = (number("hit")?, number("near")?, batch.column(0));
++            for i in 0..batch.num_rows() {
++                out.push(Measure {
++                    key: ScalarValue::try_from_array(keys, i)?,
++                    hit: if hit.is_null(i) { 0.0 } else { hit.value(i) },
++                    near: if near.is_null(i) {
++                        f64::INFINITY
++                    } else {
++                        near.value(i)
++                    },
++                });
 +            }
 +        }
 +        Ok(out)
@@ -1195,11 +1559,25 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    /// Soft degrees as a selection value: the series at 1 as tuples, the
 +    /// rest as partial degrees, and the gesture with `soft` (the width) and
 +    /// `sx`, `sy` (the scale), so a log can draw it again.
-+    pub fn soft_value(&self, key: &ProjectionId, degrees: Vec<(ScalarValue, f64)>, scale: [f64; 2], width: f64) -> SelectionValue {
++    pub fn soft_value(
++        &self,
++        key: &ProjectionId,
++        degrees: Vec<(ScalarValue, f64)>,
++        scale: [f64; 2],
++        width: f64,
++    ) -> SelectionValue {
 +        let (full, part): (Vec<_>, Vec<_>) = degrees.into_iter().partition(|(_, d)| *d >= 1.0);
-+        SelectionValue::tuple([(key.clone(), ValueTest::OneOf(full.into_iter().map(|(k, _)| k).collect()))])
-+            .with_partial(key.clone(), part)
-+            .with_gesture(self.gesture().with_param("soft", width).with_param("sx", scale[0]).with_param("sy", scale[1]))
++        SelectionValue::tuple([(
++            key.clone(),
++            ValueTest::OneOf(full.into_iter().map(|(k, _)| k).collect()),
++        )])
++        .with_partial(key.clone(), part)
++        .with_gesture(
++            self.gesture()
++                .with_param("soft", width)
++                .with_param("sx", scale[0])
++                .with_param("sy", scale[1]),
++        )
 +    }
 +
 +    /// The keys as a selection value on the producer's key projection,
@@ -1207,31 +1585,39 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    pub fn value(&self, key: &ProjectionId, keys: Vec<ScalarValue>) -> SelectionValue {
 +        SelectionValue::tuple([(key.clone(), ValueTest::OneOf(keys))]).with_gesture(self.gesture())
 +    }
++
 +    /// The test as a gesture, in the series' data units.
-+    pub fn gesture(&self) -> crate::Gesture {
++    pub fn gesture(&self) -> Gesture {
 +        match self {
-+            SeriesTest::Crosses { from, to } => crate::Gesture::new("segment", [*from, *to]),
-+            SeriesTest::Within { x, y } => crate::Gesture::new("timebox", [[x.0, y.0], [x.1, y.1]]),
++            SeriesTest::Crosses { from, to } => Gesture::new("segment", [*from, *to]),
++            SeriesTest::Within { x, y } => Gesture::new("timebox", [[x.0, y.0], [x.1, y.1]]),
 +        }
 +    }
++
 +    /// The test back from its gesture, as a replayed log gives it.
-+    pub fn from_gesture(g: &crate::Gesture) -> Option<Self> {
++    pub fn from_gesture(g: &Gesture) -> Option<Self> {
 +        match (g.kind(), g.points()) {
 +            ("segment", [a, b]) => Some(SeriesTest::Crosses { from: *a, to: *b }),
-+            ("timebox", [a, b]) => Some(SeriesTest::Within { x: (a[0], b[0]), y: (a[1], b[1]) }),
++            ("timebox", [a, b]) => Some(SeriesTest::Within {
++                x: (a[0], b[0]),
++                y: (a[1], b[1]),
++            }),
 +            _ => None,
 +        }
 +    }
 +}
 +
-+fn crosses(from: [f64; 2], to: [f64; 2]) -> ScalarUDF {
-+    ScalarUDF::from(Crosses {
-+        segment: [from[0], from[1], to[0], to[1]].map(f64::to_bits),
-+        signature: Signature::uniform(4, vec![DataType::Float64], Volatility::Immutable),
-+    })
++fn segment_bits(from: [f64; 2], to: [f64; 2]) -> [u64; 4] {
++    [from[0], from[1], to[0], to[1]].map(f64::to_bits)
++}
++fn float_args(n: usize) -> Signature {
++    Signature::uniform(n, vec![DataType::Float64], Volatility::Immutable)
++}
++fn udf(f: impl ScalarUDFImpl + 'static) -> ScalarUDF {
++    ScalarUDF::new_from_impl(f)
 +}
 +
-+/// Whether the vertex pair (px, py)–(x, y) crosses the segment, touching
++/// Whether the vertex pair (px, py)–(x, y) meets the segment, touching
 +/// included. Orientation signs do not change under positive scaling of
 +/// either axis, so data units serve as well as pixels.
 +#[derive(Debug, PartialEq, Eq, Hash)]
@@ -1250,19 +1636,18 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        Ok(DataType::Boolean)
 +    }
 +    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
-+        let rows = args.number_rows;
-+        let c = crate::cell_boxes::columns::<Float64Type>(&args)?;
-+        let [q1x, q1y, q2x, q2y] = self.segment.map(f64::from_bits);
-+        let (q1, q2) = ([q1x, q1y], [q2x, q2y]);
-+        let out: BooleanArray = (0..rows)
-+            .map(|i| {
-+                if c.iter().any(|a| a.is_null(i)) {
-+                    return Some(false);
-+                }
-+                let (p1, p2) = ([c[0].value(i), c[1].value(i)], [c[2].value(i), c[3].value(i)]);
-+                Some(segments_meet(p1, p2, q1, q2))
-+            })
-+            .collect();
++        let c = columns::<Float64Type>(&args)?;
++        let [ax, ay, bx, by] = self.segment.map(f64::from_bits);
++        let meets = |i: usize| {
++            !c.iter().any(|a| a.is_null(i))
++                && segments_meet(
++                    [c[0].value(i), c[1].value(i)],
++                    [c[2].value(i), c[3].value(i)],
++                    [ax, ay],
++                    [bx, by],
++                )
++        };
++        let out: BooleanArray = (0..args.number_rows).map(|i| Some(meets(i))).collect();
 +        Ok(ColumnarValue::Array(Arc::new(out)))
 +    }
 +}
@@ -1285,23 +1670,20 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        Ok(DataType::Float64)
 +    }
 +    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
-+        let rows = args.number_rows;
-+        let cols = crate::cell_boxes::columns::<Float64Type>(&args)?;
-+        let (x, y) = (&cols[0], &cols[1]);
++        let c = columns::<Float64Type>(&args)?;
 +        let [ax, ay, bx, by] = self.segment.map(f64::from_bits);
 +        let [sx, sy] = self.scale.map(f64::from_bits);
-+        let (ax, ay, bx, by) = (ax * sx, ay * sy, bx * sx, by * sy);
-+        let (vx, vy) = (bx - ax, by - ay);
-+        let out: Float64Array = (0..rows)
-+            .map(|i| {
-+                if x.is_null(i) || y.is_null(i) {
-+                    return None;
-+                }
-+                let (px, py) = (x.value(i) * sx, y.value(i) * sy);
-+                let t = (((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy).max(1e-12)).clamp(0.0, 1.0);
-+                Some((px - (ax + t * vx)).hypot(py - (ay + t * vy)))
++        let (a, b) = ([ax * sx, ay * sy], [bx * sx, by * sy]);
++        let (vx, vy) = (b[0] - a[0], b[1] - a[1]);
++        let distance = |i: usize| {
++            (!c[0].is_null(i) && !c[1].is_null(i)).then(|| {
++                let (px, py) = (c[0].value(i) * sx, c[1].value(i) * sy);
++                let t = (((px - a[0]) * vx + (py - a[1]) * vy) / (vx * vx + vy * vy).max(1e-12))
++                    .clamp(0.0, 1.0);
++                (px - (a[0] + t * vx)).hypot(py - (a[1] + t * vy))
 +            })
-+            .collect();
++        };
++        let out: Float64Array = (0..args.number_rows).map(distance).collect();
 +        Ok(ColumnarValue::Array(Arc::new(out)))
 +    }
 +}
@@ -1311,22 +1693,25 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +/// lie on the same line; those, and a segment that is a point, meet only
 +/// where a point lies within the other segment's extent.
 +pub(crate) fn segments_meet(p1: [f64; 2], p2: [f64; 2], q1: [f64; 2], q2: [f64; 2]) -> bool {
-+    let o = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
++    let o = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
++        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
++    };
 +    let within = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
-+        c[0] >= a[0].min(b[0]) && c[0] <= a[0].max(b[0]) && c[1] >= a[1].min(b[1]) && c[1] <= a[1].max(b[1])
++        c[0] >= a[0].min(b[0])
++            && c[0] <= a[0].max(b[0])
++            && c[1] >= a[1].min(b[1])
++            && c[1] <= a[1].max(b[1])
 +    };
 +    let (d1, d2, d3, d4) = (o(q1, q2, p1), o(q1, q2, p2), o(p1, p2, q1), o(p1, p2, q2));
-+    if d1 * d2 < 0.0 && d3 * d4 < 0.0 {
-+        return true;
-+    }
-+    (d1 == 0.0 && within(q1, q2, p1))
++    (d1 * d2 < 0.0 && d3 * d4 < 0.0)
++        || (d1 == 0.0 && within(q1, q2, p1))
 +        || (d2 == 0.0 && within(q1, q2, p2))
 +        || (d3 == 0.0 && within(p1, p2, q1))
 +        || (d4 == 0.0 && within(p1, p2, q2))
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/state.rs avenger-selection/src/state.rs
 --- avenger-selection/src/state.rs	2026-09-27 19:07:17.742710980 +0000
-+++ avenger-selection/src/state.rs	2026-09-27 22:06:34.686654776 +0000
++++ avenger-selection/src/state.rs	2026-09-28 09:11:12.450302385 +0000
 @@ -39,9 +39,9 @@
  
  /// A pending update carrying its destination selection, validated when applied to a set.
@@ -1339,27 +1724,66 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
      Set(Producer, SelectionValue),
      Toggle(Producer, SelectionValue),
      Clear(ProducerAddress),
-@@ -130,7 +130,7 @@
+@@ -130,7 +130,11 @@
                                      address,
                                      Arc::new(Contribution::from_canonical(
                                          old.producer.clone(),
 -                                        SelectionValue { tuples: retained },
-+                                        SelectionValue { tuples: retained, gesture: None, partial: None },
++                                        SelectionValue {
++                                            tuples: retained,
++                                            gesture: None,
++                                            partial: None,
++                                        },
                                      )?),
                                  );
                              }
-@@ -147,7 +147,7 @@
+@@ -147,7 +151,11 @@
                              producer.address().clone(),
                              Arc::new(Contribution::from_canonical(
                                  producer.clone(),
 -                                SelectionValue { tuples: selected },
-+                                SelectionValue { tuples: selected, gesture: None, partial: None },
++                                SelectionValue {
++                                    tuples: selected,
++                                    gesture: None,
++                                    partial: None,
++                                },
                              )?),
                          );
                      }
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/udf.rs avenger-selection/src/udf.rs
+--- avenger-selection/src/udf.rs	1970-01-01 00:00:00.000000000 +0000
++++ avenger-selection/src/udf.rs	2026-09-28 09:11:12.450302385 +0000
+@@ -0,0 +1,27 @@
++//! Not upstream (VENDORED.md): what the added DataFusion functions share.
++
++use datafusion::{
++    arrow::{
++        array::{AsArray, PrimitiveArray},
++        compute::cast,
++        datatypes::ArrowPrimitiveType,
++    },
++    common::Result,
++    logical_expr::ScalarFunctionArgs,
++};
++
++/// A function's arguments cast to one primitive type, one array per argument.
++pub(crate) fn columns<T: ArrowPrimitiveType>(
++    args: &ScalarFunctionArgs,
++) -> Result<Vec<PrimitiveArray<T>>> {
++    args.args
++        .iter()
++        .map(|a| {
++            Ok(
++                cast(&a.clone().into_array(args.number_rows)?, &T::DATA_TYPE)?
++                    .as_primitive::<T>()
++                    .clone(),
++            )
++        })
++        .collect()
++}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/src/values.rs avenger-selection/src/values.rs
 --- avenger-selection/src/values.rs	2026-09-27 19:07:18.194711007 +0000
-+++ avenger-selection/src/values.rs	2026-09-27 22:06:34.687285674 +0000
++++ avenger-selection/src/values.rs	2026-09-28 09:11:12.454302385 +0000
 @@ -44,6 +44,10 @@
  #[derive(Clone, Debug, Default, PartialEq, Eq)]
  pub struct SelectionValue {
@@ -1380,7 +1804,7 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
          }
      }
  
-@@ -66,12 +72,35 @@
+@@ -66,12 +72,44 @@
                  .into_iter()
                  .map(|terms| terms.into_iter().collect())
                  .collect(),
@@ -1401,13 +1825,22 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    /// not select, by the value of one ungridded projection, such as the
 +    /// series a soft line brush comes near. `predicate` ignores them;
 +    /// `degree` gives them. Degrees outside (0, 1) are refused when applied.
-+    pub fn with_partial(mut self, projection: ProjectionId, degrees: impl IntoIterator<Item = (ScalarValue, f64)>) -> Self {
-+        self.partial = Some(crate::degree::KeyDegrees { projection, degrees: degrees.into_iter().collect() });
++    pub fn with_partial(
++        mut self,
++        projection: ProjectionId,
++        degrees: impl IntoIterator<Item = (ScalarValue, f64)>,
++    ) -> Self {
++        self.partial = Some(crate::degree::KeyDegrees {
++            projection,
++            degrees: degrees.into_iter().collect(),
++        });
 +        self
 +    }
 +    /// The partial degrees, if any: the projection and (value, degree) pairs.
 +    pub fn partial(&self) -> Option<(&ProjectionId, &[(ScalarValue, f64)])> {
-+        self.partial.as_ref().map(|p| (&p.projection, p.degrees.as_slice()))
++        self.partial
++            .as_ref()
++            .map(|p| (&p.projection, p.degrees.as_slice()))
 +    }
 +    /// The gesture this value came from, if the chart attached one.
 +    pub fn gesture(&self) -> Option<&crate::Gesture> {
@@ -1416,7 +1849,7 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
  }
  
  impl ValueTest {
-@@ -328,6 +357,8 @@
+@@ -328,6 +366,8 @@
  ) -> Result<SelectionValue> {
      Ok(SelectionValue {
          tuples: canonical_tuples(producer, value.tuples)?,
@@ -1427,137 +1860,231 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
  
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/tests/adversarial.rs avenger-selection/tests/adversarial.rs
 --- avenger-selection/tests/adversarial.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/tests/adversarial.rs	2026-09-28 06:38:25.660165688 +0000
-@@ -0,0 +1,83 @@
++++ avenger-selection/tests/adversarial.rs	2026-09-28 09:11:12.458302385 +0000
+@@ -0,0 +1,161 @@
 +// Not upstream: edge cases for the additions (VENDORED.md).
 +mod common;
++mod support;
 +
 +use avenger_scales_datafusion::{avenger_scales::scalar::Scalar, BuiltinScale};
 +use avenger_selection::*;
 +use common::*;
 +use datafusion::{
-+    arrow::array::{ArrayRef, Float64Array, Int64Array, RecordBatch},
++    arrow::array::{Int64Array, RecordBatch},
 +    common::ScalarValue,
 +    logical_expr::col,
 +    prelude::SessionContext,
 +};
 +use std::{collections::HashMap, sync::Arc};
++use support::*;
 +
-+fn numbers(values: &[f64]) -> ArrayRef {
-+    Arc::new(Float64Array::from(values.to_vec()))
-+}
-+fn pid(name: &str) -> ProjectionId {
-+    ProjectionId::new(name).unwrap()
-+}
 +fn series(rows: &[(i64, f64, f64)]) -> RecordBatch {
 +    batch(vec![
-+        ("line", Arc::new(Int64Array::from(rows.iter().map(|r| r.0).collect::<Vec<_>>()))),
++        (
++            "line",
++            Arc::new(Int64Array::from(
++                rows.iter().map(|r| r.0).collect::<Vec<_>>(),
++            )),
++        ),
 +        ("t", numbers(&rows.iter().map(|r| r.1).collect::<Vec<_>>())),
 +        ("n", numbers(&rows.iter().map(|r| r.2).collect::<Vec<_>>())),
 +    ])
 +}
 +async fn crossing(rows: &[(i64, f64, f64)], from: [f64; 2], to: [f64; 2]) -> Vec<ScalarValue> {
 +    let df = SessionContext::new().read_batch(series(rows)).unwrap();
-+    SeriesTest::Crosses { from, to }.keys(df, col("line"), col("t"), col("n")).await.unwrap()
++    SeriesTest::Crosses { from, to }
++        .keys(df, col("line"), col("t"), col("n"))
++        .await
++        .unwrap()
 +}
 +
 +#[tokio::test]
 +async fn collinear_segments_cross_only_where_they_overlap() {
 +    // Line 1 lies on y = 0 from 0 to 1; the brush on y = 0 from 2 to 3.
-+    assert!(crossing(&[(1, 0.0, 0.0), (1, 1.0, 0.0)], [2.0, 0.0], [3.0, 0.0]).await.is_empty());
++    assert!(
++        crossing(&[(1, 0.0, 0.0), (1, 1.0, 0.0)], [2.0, 0.0], [3.0, 0.0])
++            .await
++            .is_empty()
++    );
 +    // Overlapping, and touching end to end, do cross.
-+    assert_eq!(crossing(&[(1, 0.0, 0.0), (1, 2.0, 0.0)], [1.0, 0.0], [3.0, 0.0]).await.len(), 1);
-+    assert_eq!(crossing(&[(1, 0.0, 0.0), (1, 2.0, 0.0)], [2.0, 0.0], [3.0, 0.0]).await.len(), 1);
++    assert_eq!(
++        crossing(&[(1, 0.0, 0.0), (1, 2.0, 0.0)], [1.0, 0.0], [3.0, 0.0])
++            .await
++            .len(),
++        1
++    );
++    assert_eq!(
++        crossing(&[(1, 0.0, 0.0), (1, 2.0, 0.0)], [2.0, 0.0], [3.0, 0.0])
++            .await
++            .len(),
++        1
++    );
 +}
 +
 +#[tokio::test]
 +async fn a_point_brush_takes_only_the_series_through_it() {
 +    // (5, 5) lies on line 1's segment, and on line 2's supporting line only.
 +    let rows = [(1, 0.0, 0.0), (1, 10.0, 10.0), (2, 0.0, 0.0), (2, 1.0, 1.0)];
-+    assert_eq!(crossing(&rows, [5.0, 5.0], [5.0, 5.0]).await, vec![ScalarValue::Int64(Some(1))]);
++    assert_eq!(
++        crossing(&rows, [5.0, 5.0], [5.0, 5.0]).await,
++        vec![ScalarValue::Int64(Some(1))]
++    );
 +}
 +
 +#[tokio::test]
 +async fn a_lasso_may_leave_a_clamped_plot() {
 +    let mut opts = HashMap::new();
 +    opts.insert("clamp".to_string(), Scalar::from(true));
-+    let g = PixelGrid::new(BuiltinScale::Linear, numbers(&[0.0, 100.0]), numbers(&[0.0, 100.0]), opts, 0.0, 1.0).unwrap();
-+    let p = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(pid("x"), g.clone()), (pid("y"), g)]).unwrap();
++    let g = PixelGrid::new(
++        BuiltinScale::Linear,
++        numbers(&[0.0, 100.0]),
++        numbers(&[0.0, 100.0]),
++        opts,
++        0.0,
++        1.0,
++    )
++    .unwrap();
++    let p = producer("lasso", view("map"), &["x", "y"])
++        .with_pixel_grids([(pid("x"), g.clone()), (pid("y"), g)])
++        .unwrap();
 +    // Half of it beyond the right edge of the plot.
 +    let ring = [[80.0, 10.0], [140.0, 10.0], [140.0, 30.0], [80.0, 30.0]];
-+    let v = SelectionValue::polygon(&p, &pid("x"), &pid("y"), &ring).expect("a lasso over the edge");
++    let v =
++        SelectionValue::polygon(&p, &pid("x"), &pid("y"), &ring).expect("a lasso over the edge");
 +    let s = state(Resolution::Intersect).set(&p, v).unwrap();
 +    let rows = batch(vec![
 +        ("id", Arc::new(Int64Array::from(vec![0_i64, 1, 2]))),
 +        ("x", numbers(&[85.5, 99.5, 50.5])),
 +        ("y", numbers(&[20.5, 20.5, 20.5])),
 +    ]);
-+    assert_eq!(selected(rows, membership().predicate(&s).unwrap()).await, vec![0, 1]);
++    assert_eq!(
++        selected(rows, membership().predicate(&s).unwrap()).await,
++        vec![0, 1]
++    );
 +}
 +
 +#[test]
 +fn a_huge_lasso_is_refused_not_expanded() {
-+    let g = PixelGrid::new(BuiltinScale::Linear, numbers(&[0.0, 100.0]), numbers(&[0.0, 100.0]), HashMap::new(), 0.0, 1.0).unwrap();
-+    let p = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(pid("x"), g.clone()), (pid("y"), g)]).unwrap();
++    let g = PixelGrid::new(
++        BuiltinScale::Linear,
++        numbers(&[0.0, 100.0]),
++        numbers(&[0.0, 100.0]),
++        HashMap::new(),
++        0.0,
++        1.0,
++    )
++    .unwrap();
++    let p = producer("lasso", view("map"), &["x", "y"])
++        .with_pixel_grids([(pid("x"), g.clone()), (pid("y"), g)])
++        .unwrap();
 +    let ring = [[0.0, 0.0], [10.0, 0.0], [10.0, 1e9], [0.0, 1e9]];
-+    let t = std::time::Instant::now();
++    // Refused before any row is built: the check comes first.
 +    assert!(SelectionValue::polygon(&p, &pid("x"), &pid("y"), &ring).is_err());
-+    assert!(t.elapsed().as_millis() < 100, "refused quickly");
 +}
 +
 +#[test]
 +fn partial_degrees_are_not_lost_in_the_log() {
 +    let p = producer("keys", view("lines"), &["line"]);
-+    let v = SelectionValue::tuple([(pid("line"), ValueTest::one_of([1_i64]))]).with_partial(pid("line"), [(ScalarValue::Int64(Some(2)), 0.5)]);
++    let v = SelectionValue::tuple([(pid("line"), ValueTest::one_of([1_i64]))])
++        .with_partial(pid("line"), [(ScalarValue::Int64(Some(2)), 0.5)]);
 +    // Without a gesture there is nothing to redraw them from.
 +    assert!(SelectionUpdate::set(&p, v).to_json().is_err());
 +}
++
++#[tokio::test]
++async fn cells_far_apart_are_found_by_search() {
++    // Nine cells up to ten million apart: too sparse for the dense table.
++    let g = PixelGrid::new(
++        BuiltinScale::Linear,
++        numbers(&[0.0, 100.0]),
++        numbers(&[0.0, 100.0]),
++        HashMap::new(),
++        0.0,
++        1.0,
++    )
++    .unwrap();
++    let p = producer("cells", view("map"), &["x", "y"])
++        .with_pixel_grids([(pid("x"), g.clone()), (pid("y"), g)])
++        .unwrap();
++    let cells: Vec<Vec<i64>> = (0..9).map(|k| vec![k * 1_250_000, 3]).collect();
++    let s = state(Resolution::Intersect)
++        .set(
++            &p,
++            SelectionValue::cells(&p, &[&pid("x"), &pid("y")], cells).unwrap(),
++        )
++        .unwrap();
++    let rows = batch(vec![
++        ("id", Arc::new(Int64Array::from(vec![0_i64, 1, 2, 3]))),
++        ("x", numbers(&[0.5, 2_500_000.5, 2_500_001.5, 10_000_000.5])),
++        ("y", numbers(&[3.5, 3.5, 3.5, 3.5])),
++    ]);
++    assert_eq!(
++        selected(rows, membership().predicate(&s).unwrap()).await,
++        vec![0, 1, 3]
++    );
++}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/tests/degree.rs avenger-selection/tests/degree.rs
 --- avenger-selection/tests/degree.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/tests/degree.rs	2026-09-27 21:38:44.117937177 +0000
-@@ -0,0 +1,122 @@
++++ avenger-selection/tests/degree.rs	2026-09-28 09:11:12.490302387 +0000
+@@ -0,0 +1,189 @@
 +// Not upstream: tests for `ConsumerFilter::degree` (VENDORED.md).
 +mod common;
++mod support;
 +
-+use avenger_scales_datafusion::BuiltinScale;
 +use avenger_selection::*;
 +use common::*;
 +use datafusion::{
-+    arrow::array::{Array, ArrayRef, BooleanArray, Float64Array, Int64Array, RecordBatch},
++    arrow::array::{Array, BooleanArray, Float64Array, Int64Array, RecordBatch},
 +    logical_expr::Expr,
 +    prelude::SessionContext,
 +};
-+use std::{collections::HashMap, sync::Arc};
++use std::sync::Arc;
++use support::*;
 +
-+fn numbers(values: &[f64]) -> ArrayRef {
-+    Arc::new(Float64Array::from(values.to_vec()))
-+}
-+fn grid(size: f64) -> PixelGrid {
-+    // Data 0..100 on 0..100 px: a data unit is a pixel.
-+    PixelGrid::new(BuiltinScale::Linear, numbers(&[0.0, 100.0]), numbers(&[0.0, 100.0]), HashMap::new(), 0.0, size).unwrap()
-+}
-+fn pid(name: &str) -> ProjectionId {
-+    ProjectionId::new(name).unwrap()
-+}
 +fn brush(size: f64) -> ProducerDefinition {
-+    producer("brush", view("map"), &["x", "y"]).with_pixel_grids([(pid("x"), grid(size)), (pid("y"), grid(size))]).unwrap()
++    producer("brush", view("map"), &["x", "y"])
++        .with_pixel_grids([(pid("x"), grid(size)), (pid("y"), grid(size))])
++        .unwrap()
 +}
 +fn rect(x: (f64, f64), y: (f64, f64)) -> SelectionValue {
-+    SelectionValue::tuple([(pid("x"), ValueTest::range(x.0..=x.1)), (pid("y"), ValueTest::range(y.0..=y.1))])
++    SelectionValue::tuple([
++        (pid("x"), ValueTest::range(x.0..=x.1)),
++        (pid("y"), ValueTest::range(y.0..=y.1)),
++    ])
 +}
 +fn points(xy: &[(f64, f64)]) -> RecordBatch {
 +    batch(vec![
-+        ("id", Arc::new(Int64Array::from_iter_values(0..xy.len() as i64))),
++        (
++            "id",
++            Arc::new(Int64Array::from_iter_values(0..xy.len() as i64)),
++        ),
 +        ("x", numbers(&xy.iter().map(|p| p.0).collect::<Vec<_>>())),
 +        ("y", numbers(&xy.iter().map(|p| p.1).collect::<Vec<_>>())),
 +    ])
 +}
 +async fn eval(rows: RecordBatch, degree: Expr, pred: Expr) -> Vec<(f64, bool)> {
-+    let out = SessionContext::new().read_batch(rows).unwrap().select(vec![degree.alias("d"), pred.alias("p")]).unwrap().collect().await.unwrap();
++    let out = SessionContext::new()
++        .read_batch(rows)
++        .unwrap()
++        .select(vec![degree.alias("d"), pred.alias("p")])
++        .unwrap()
++        .collect()
++        .await
++        .unwrap();
 +    out.iter()
 +        .flat_map(|b| {
-+            let d = b.column(0).as_any().downcast_ref::<Float64Array>().unwrap().clone();
-+            let p = b.column(1).as_any().downcast_ref::<BooleanArray>().unwrap().clone();
++            let d = b
++                .column(0)
++                .as_any()
++                .downcast_ref::<Float64Array>()
++                .unwrap()
++                .clone();
++            let p = b
++                .column(1)
++                .as_any()
++                .downcast_ref::<BooleanArray>()
++                .unwrap()
++                .clone();
 +            (0..b.num_rows()).map(move |i| (d.value(i), p.value(i)))
 +        })
 +        .collect()
@@ -1566,33 +2093,51 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +#[tokio::test]
 +async fn falls_off_with_the_distance_in_pixels() {
 +    let p = brush(2.0);
-+    let s = state(Resolution::Intersect).set(&p, rect((20.0, 40.0), (20.0, 40.0))).unwrap();
++    let s = state(Resolution::Intersect)
++        .set(&p, rect((20.0, 40.0), (20.0, 40.0)))
++        .unwrap();
 +    // Inside; 6 px right of the brush (3 cells of 2 px); 6 px right and 8 px up
 +    // (a 10 px diagonal); beyond the width.
 +    let rows = points(&[(30.0, 30.0), (46.5, 30.0), (46.5, 48.5), (80.0, 80.0)]);
-+    let got = eval(rows, membership().degree(&s, 20.0).unwrap(), membership().predicate(&s).unwrap()).await;
++    let got = eval(
++        rows,
++        membership().degree(&s, 20.0).unwrap(),
++        membership().predicate(&s).unwrap(),
++    )
++    .await;
 +    let d: Vec<f64> = got.iter().map(|g| g.0).collect();
 +    assert_eq!(d, vec![1.0, 1.0 - 6.0 / 20.0, 1.0 - 10.0 / 20.0, 0.0]);
-+    assert_eq!(got.iter().map(|g| g.1).collect::<Vec<_>>(), vec![true, false, false, false]);
++    assert_eq!(
++        got.iter().map(|g| g.1).collect::<Vec<_>>(),
++        vec![true, false, false, false]
++    );
 +}
 +
 +#[tokio::test]
 +async fn a_degree_of_one_is_exactly_the_predicate() {
 +    // A brush, and a lasso of many cell runs (the lookup path).
 +    let p = brush(1.0);
-+    let ring = [[10.0, 10.0], [90.0, 20.0], [60.0, 50.0], [85.0, 90.0], [15.0, 70.0]];
++    let ring = [
++        [10.0, 10.0],
++        [90.0, 20.0],
++        [60.0, 50.0],
++        [85.0, 90.0],
++        [15.0, 70.0],
++    ];
 +    let lasso = SelectionValue::polygon(&p, &pid("x"), &pid("y"), &ring).unwrap();
 +    assert!(lasso.as_tuples().len() >= 8);
-+    let mut s = 7_u64;
-+    let mut next = || {
-+        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-+        (s >> 11) as f64 / (1u64 << 53) as f64 * 110.0 - 5.0
-+    };
++    let mut r = uniform(7);
++    let mut next = || r() * 110.0 - 5.0;
 +    let xy: Vec<(f64, f64)> = (0..3000).map(|_| (next(), next())).collect();
 +    for value in [rect((20.0, 45.0), (30.0, 60.0)), lasso] {
 +        let st = state(Resolution::Intersect).set(&p, value).unwrap();
 +        for width in [0.0, 5.0, 25.0] {
-+            let got = eval(points(&xy), membership().degree(&st, width).unwrap(), membership().predicate(&st).unwrap()).await;
++            let got = eval(
++                points(&xy),
++                membership().degree(&st, width).unwrap(),
++                membership().predicate(&st).unwrap(),
++            )
++            .await;
 +            assert!(got.iter().any(|g| g.1) && got.iter().any(|g| !g.1));
 +            for (d, pred) in &got {
 +                assert!((0.0..=1.0).contains(d));
@@ -1609,9 +2154,12 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +async fn keys_give_one_or_zero_and_composition_is_fuzzy() {
 +    let keys = producer("keys", view("legend"), &["class"]);
 +    let p = brush(1.0);
-+    let s = SelectionSet::new([(id(), Resolution::Intersect)]).unwrap()
-+        .set(&keys, values("class", [2_i64.into(), 6_i64.into()])).unwrap()
-+        .set(&p, rect((0.0, 10.0), (0.0, 10.0))).unwrap();
++    let s = SelectionSet::new([(id(), Resolution::Intersect)])
++        .unwrap()
++        .set(&keys, values("class", [2_i64.into(), 6_i64.into()]))
++        .unwrap()
++        .set(&p, rect((0.0, 10.0), (0.0, 10.0)))
++        .unwrap();
 +    let rows = batch(vec![
 +        ("id", Arc::new(Int64Array::from(vec![0_i64, 1, 2]))),
 +        ("class", Arc::new(Int64Array::from(vec![6_i64, 6, 3]))),
@@ -1619,63 +2167,94 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        ("y", numbers(&[5.0, 5.0, 5.0])),
 +    ]);
 +    // Intersected: the least of the key's 1/0 and the brush's degree.
-+    let got = eval(rows.clone(), membership().degree(&s, 10.0).unwrap(), membership().predicate(&s).unwrap()).await;
-+    assert_eq!(got.iter().map(|g| g.0).collect::<Vec<_>>(), vec![1.0, 1.0 - 5.0 / 10.0, 0.0]);
++    let got = eval(
++        rows.clone(),
++        membership().degree(&s, 10.0).unwrap(),
++        membership().predicate(&s).unwrap(),
++    )
++    .await;
++    assert_eq!(
++        got.iter().map(|g| g.0).collect::<Vec<_>>(),
++        vec![1.0, 1.0 - 5.0 / 10.0, 0.0]
++    );
 +    // Not: the complement.
-+    let not = filter(view("other"), SelectionFilter::Not(Box::new(SelectionFilter::membership(&id(), EmptySelection::MatchAll))));
-+    let got = eval(rows, not.degree(&s, 10.0).unwrap(), not.predicate(&s).unwrap()).await;
-+    assert_eq!(got.iter().map(|g| g.0).collect::<Vec<_>>(), vec![0.0, 0.5, 1.0]);
++    let not = filter(
++        view("other"),
++        SelectionFilter::Not(Box::new(SelectionFilter::membership(
++            &id(),
++            EmptySelection::MatchAll,
++        ))),
++    );
++    let got = eval(
++        rows,
++        not.degree(&s, 10.0).unwrap(),
++        not.predicate(&s).unwrap(),
++    )
++    .await;
++    assert_eq!(
++        got.iter().map(|g| g.0).collect::<Vec<_>>(),
++        vec![0.0, 0.5, 1.0]
++    );
 +}
 +
 +#[test]
 +fn refuses_ranges_without_a_grid_and_bad_widths() {
 +    let plain = interval("brush", "x");
-+    let s = state(Resolution::Intersect).set(&plain, between("x", 0, 10)).unwrap();
-+    assert!(matches!(membership().degree(&s, 5.0), Err(Error::InvalidDefinition(_))));
++    let s = state(Resolution::Intersect)
++        .set(&plain, between("x", 0, 10))
++        .unwrap();
++    assert!(matches!(
++        membership().degree(&s, 5.0),
++        Err(Error::InvalidDefinition(_))
++    ));
 +    let s = state(Resolution::Intersect);
 +    assert!(membership().degree(&s, f64::NAN).is_err());
 +    assert!(membership().degree(&s, -1.0).is_err());
 +    // Inactive: the empty policy, as a degree.
-+    assert_eq!(format!("{}", membership().degree(&s, 5.0).unwrap()), format!("{}", datafusion::logical_expr::lit(1.0)));
++    assert_eq!(
++        format!("{}", membership().degree(&s, 5.0).unwrap()),
++        format!("{}", datafusion::logical_expr::lit(1.0))
++    );
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/tests/log.rs avenger-selection/tests/log.rs
 --- avenger-selection/tests/log.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/tests/log.rs	2026-09-27 21:53:35.601810422 +0000
-@@ -0,0 +1,152 @@
-+// Not upstream: tests for gestures, the selection log and `cells` (VENDORED.md).
++++ avenger-selection/tests/log.rs	2026-09-28 09:11:12.502302388 +0000
+@@ -0,0 +1,248 @@
++// Not upstream: tests for gestures and the selection log (VENDORED.md).
 +mod common;
++mod support;
 +
-+use avenger_scales_datafusion::BuiltinScale;
 +use avenger_selection::*;
 +use common::*;
-+use datafusion::{
-+    arrow::array::{ArrayRef, Float64Array, Int64Array},
-+    arrow::datatypes::TimeUnit,
-+    common::ScalarValue,
-+    logical_expr::col,
-+};
-+use std::{collections::HashMap, ops::Bound, sync::Arc};
++use datafusion::{common::ScalarValue, logical_expr::col};
++use std::ops::Bound;
++use support::*;
 +
-+fn numbers(values: &[f64]) -> ArrayRef {
-+    Arc::new(Float64Array::from(values.to_vec()))
-+}
-+fn grid(size: f64) -> PixelGrid {
-+    PixelGrid::new(BuiltinScale::Linear, numbers(&[0.0, 100.0]), numbers(&[0.0, 100.0]), HashMap::new(), 0.0, size).unwrap()
-+}
-+fn pid(name: &str) -> ProjectionId {
-+    ProjectionId::new(name).unwrap()
-+}
 +fn map_producer(name: &str) -> ProducerDefinition {
-+    producer(name, view("map"), &["x", "y"]).with_pixel_grids([(pid("x"), grid(1.0)), (pid("y"), grid(1.0))]).unwrap()
++    producer(name, view("map"), &["x", "y"])
++        .with_pixel_grids([(pid("x"), grid(1.0)), (pid("y"), grid(1.0))])
++        .unwrap()
 +}
-+const RING: [[f64; 2]; 5] = [[10.0, 10.0], [90.0, 20.0], [60.0, 50.0], [85.0, 90.0], [15.0, 70.0]];
++const RING: [[f64; 2]; 5] = [
++    [10.0, 10.0],
++    [90.0, 20.0],
++    [60.0, 50.0],
++    [85.0, 90.0],
++    [15.0, 70.0],
++];
 +
 +#[test]
 +fn a_gesture_survives_set_and_leaves_with_toggle() {
 +    let lasso = map_producer("lasso");
 +    let value = SelectionValue::polygon(&lasso, &pid("x"), &pid("y"), &RING).unwrap();
 +    assert_eq!(value.gesture().unwrap().kind(), "polygon");
-+    let value = value.clone().with_gesture(value.gesture().unwrap().clone().with_param("structure", 0.3));
++    let value = value.clone().with_gesture(
++        value
++            .gesture()
++            .unwrap()
++            .clone()
++            .with_param("structure", 0.3),
++    );
 +    let s = state(Resolution::Intersect).set(&lasso, value).unwrap();
 +    let c = s.contributions(&id()).unwrap().next().unwrap();
 +    let g = c.value().gesture().unwrap();
@@ -1683,11 +2262,21 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    // Toggling a tuple changes what the outline stood for: the gesture goes.
 +    let keys = producer("keys", view("legend"), &["class"]);
 +    let s = state(Resolution::Intersect)
-+        .set(&keys, values("class", [2_i64.into(), 6_i64.into()]).with_gesture(Gesture::new("legend", [])))
++        .set(
++            &keys,
++            values("class", [2_i64.into(), 6_i64.into()]).with_gesture(Gesture::new("legend", [])),
++        )
 +        .unwrap()
 +        .toggle(&keys, values("class", [3_i64.into()]))
 +        .unwrap();
-+    assert!(s.contributions(&id()).unwrap().next().unwrap().value().gesture().is_none());
++    assert!(s
++        .contributions(&id())
++        .unwrap()
++        .next()
++        .unwrap()
++        .value()
++        .gesture()
++        .is_none());
 +}
 +
 +#[tokio::test]
@@ -1696,28 +2285,76 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    let lasso = map_producer("lasso");
 +    let brush = map_producer("brush");
 +    let keys = producer("keys", view("legend"), &["class", "name"]);
-+    let when = ProducerDefinition::new(other.clone(), ProducerId::new("time").unwrap(), view("clock"),
-+        [Projection::new(pid("t"), col("t")).unwrap()]).unwrap();
++    let when = ProducerDefinition::new(
++        other.clone(),
++        ProducerId::new("time").unwrap(),
++        view("clock"),
++        [Projection::new(pid("t"), col("t")).unwrap()],
++    )
++    .unwrap();
 +    let defs = [lasso.clone(), brush.clone(), keys.clone(), when.clone()];
 +    let ts = |v: i64| ScalarValue::TimestampMillisecond(Some(v), Some("UTC".into()));
 +    let updates = vec![
-+        SelectionUpdate::set(&lasso, SelectionValue::polygon(&lasso, &pid("x"), &pid("y"), &RING).unwrap()),
-+        SelectionUpdate::set(&keys, SelectionValue::tuples([
-+            [(pid("class"), ValueTest::equal(6_i64)), (pid("name"), ValueTest::one_of(["Building", "Bâtiment"]))],
-+            [(pid("class"), ValueTest::equal(f64::NAN)), (pid("name"), ValueTest::equal(ScalarValue::Utf8(None)))],
-+        ])),
-+        SelectionUpdate::toggle(&keys, SelectionValue::tuple([(pid("class"), ValueTest::equal(2_i64)), (pid("name"), ValueTest::equal("Ground"))])),
-+        SelectionUpdate::set(&brush, SelectionValue::tuple([
-+            (pid("x"), ValueTest::Range { lower: Bound::Excluded(ScalarValue::Float64(Some(0.1 + 0.2))), upper: Bound::Unbounded }),
-+            (pid("y"), ValueTest::range(20.0..40.0)),
-+        ])),
-+        SelectionUpdate::set(&when, SelectionValue::tuple([(pid("t"), ValueTest::range(ts(1_700_000_000_123)..ts(1_700_000_060_000)))])),
++        SelectionUpdate::set(
++            &lasso,
++            SelectionValue::polygon(&lasso, &pid("x"), &pid("y"), &RING).unwrap(),
++        ),
++        SelectionUpdate::set(
++            &keys,
++            SelectionValue::tuples([
++                [
++                    (pid("class"), ValueTest::equal(6_i64)),
++                    (pid("name"), ValueTest::one_of(["Building", "Bâtiment"])),
++                ],
++                [
++                    (pid("class"), ValueTest::equal(f64::NAN)),
++                    (pid("name"), ValueTest::equal(ScalarValue::Utf8(None))),
++                ],
++            ]),
++        ),
++        SelectionUpdate::toggle(
++            &keys,
++            SelectionValue::tuple([
++                (pid("class"), ValueTest::equal(2_i64)),
++                (pid("name"), ValueTest::equal("Ground")),
++            ]),
++        ),
++        SelectionUpdate::set(
++            &brush,
++            SelectionValue::tuple([
++                (
++                    pid("x"),
++                    ValueTest::Range {
++                        lower: Bound::Excluded(ScalarValue::Float64(Some(0.1 + 0.2))),
++                        upper: Bound::Unbounded,
++                    },
++                ),
++                (pid("y"), ValueTest::range(20.0..40.0)),
++            ]),
++        ),
++        SelectionUpdate::set(
++            &when,
++            SelectionValue::tuple([(
++                pid("t"),
++                ValueTest::range(ts(1_700_000_000_123)..ts(1_700_000_060_000)),
++            )]),
++        ),
 +        SelectionUpdate::clear(&brush),
 +        SelectionUpdate::clear_all(&other),
-+        SelectionUpdate::set(&when, SelectionValue::tuple([(pid("t"), ValueTest::range(ts(-5)..=ts(5)))])),
++        SelectionUpdate::set(
++            &when,
++            SelectionValue::tuple([(pid("t"), ValueTest::range(ts(-5)..=ts(5)))]),
++        ),
 +    ];
-+    let start = SelectionSet::new([(id(), Resolution::Intersect), (other.clone(), Resolution::Union)]).unwrap();
-+    let lines: Vec<String> = updates.iter().map(|u| serde_json::to_string(&u.to_json().unwrap()).unwrap()).collect();
++    let start = SelectionSet::new([
++        (id(), Resolution::Intersect),
++        (other.clone(), Resolution::Union),
++    ])
++    .unwrap();
++    let lines: Vec<String> = updates
++        .iter()
++        .map(|u| serde_json::to_string(&u.to_json().unwrap()).unwrap())
++        .collect();
 +    let producers = Producers::new(defs);
 +    let replayed: Vec<SelectionUpdate> = lines
 +        .iter()
@@ -1728,141 +2365,199 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        a = a.apply(u).unwrap();
 +        b = b.apply(r).unwrap();
 +        for sel in [id(), other.clone()] {
-+            let f = filter(view("points"), SelectionFilter::membership(&sel, EmptySelection::MatchNone));
-+            assert_eq!(format!("{}", f.predicate(&a).unwrap()), format!("{}", f.predicate(&b).unwrap()));
-+            let (ca, cb): (Vec<_>, Vec<_>) = (a.contributions(&sel).unwrap().collect(), b.contributions(&sel).unwrap().collect());
-+            assert_eq!(ca, cb, "contributions, gestures included, after {}", lines.len());
++            let f = filter(
++                view("points"),
++                SelectionFilter::membership(&sel, EmptySelection::MatchNone),
++            );
++            assert_eq!(
++                format!("{}", f.predicate(&a).unwrap()),
++                format!("{}", f.predicate(&b).unwrap())
++            );
++            let (ca, cb): (Vec<_>, Vec<_>) = (
++                a.contributions(&sel).unwrap().collect(),
++                b.contributions(&sel).unwrap().collect(),
++            );
++            assert_eq!(
++                ca,
++                cb,
++                "contributions, gestures included, after {}",
++                lines.len()
++            );
 +        }
 +    }
 +    // A timestamp keeps its unit and zone; a replayed log names what it misses.
-+    assert!(lines.iter().any(|l| l.contains("Timestamp") && l.contains("UTC")));
-+    let _ = TimeUnit::Millisecond;
-+    let err = SelectionUpdate::from_json(&serde_json::from_str(&lines[0]).unwrap(), &Producers::default()).unwrap_err();
-+    assert!(err.to_string().contains("producer lasso of view map"), "{err}");
-+}
-+
-+#[tokio::test]
-+async fn cells_select_exactly_their_rows() {
-+    let (gx, gy) = (grid(4.0), grid(4.0));
-+    let p = producer("voxels", view("map"), &["x", "y"]).with_pixel_grids([(pid("x"), gx.clone()), (pid("y"), gy.clone())]).unwrap();
-+    let cells = vec![vec![1, 2], vec![3, 4], vec![3, 5]];
-+    let v = SelectionValue::cells(&p, &[&pid("x"), &pid("y")], cells.clone()).unwrap();
-+    let s = state(Resolution::Intersect).set(&p, v).unwrap();
-+    let pts: Vec<(f64, f64)> = (0..25).flat_map(|i| (0..25).map(move |j| (i as f64 * 4.0 + 1.3, j as f64 * 4.0 + 2.1))).collect();
-+    let rows = batch(vec![
-+        ("id", Arc::new(Int64Array::from_iter_values(0..pts.len() as i64))),
-+        ("x", numbers(&pts.iter().map(|p| p.0).collect::<Vec<_>>())),
-+        ("y", numbers(&pts.iter().map(|p| p.1).collect::<Vec<_>>())),
-+    ]);
-+    let want: Vec<i64> = pts
++    assert!(lines
 +        .iter()
-+        .enumerate()
-+        .filter(|(_, p)| cells.contains(&vec![(p.0 / 4.0).floor() as i64, (p.1 / 4.0).floor() as i64]))
-+        .map(|(i, _)| i as i64)
-+        .collect();
-+    assert_eq!(want.len(), 3);
-+    assert_eq!(selected(rows, membership().predicate(&s).unwrap()).await, want);
++        .any(|l| l.contains("Timestamp") && l.contains("UTC")));
++    let err = SelectionUpdate::from_json(
++        &serde_json::from_str(&lines[0]).unwrap(),
++        &Producers::default(),
++    )
++    .unwrap_err();
++    assert!(
++        err.to_string().contains("producer lasso of view map"),
++        "{err}"
++    );
 +}
 +
 +#[tokio::test]
 +async fn a_log_records_what_was_drawn() {
 +    let lasso = map_producer("lasso");
 +    let drawn = SelectionValue::polygon(&lasso, &pid("x"), &pid("y"), &RING).unwrap();
-+    let with_structure = drawn.clone().with_gesture(drawn.gesture().unwrap().clone().with_param("structure", 0.3));
-+    let line = serde_json::to_string(&SelectionUpdate::set(&lasso, with_structure.clone()).to_json().unwrap()).unwrap();
++    let with_structure = drawn.clone().with_gesture(
++        drawn
++            .gesture()
++            .unwrap()
++            .clone()
++            .with_param("structure", 0.3),
++    );
++    let line = serde_json::to_string(
++        &SelectionUpdate::set(&lasso, with_structure.clone())
++            .to_json()
++            .unwrap(),
++    )
++    .unwrap();
 +    // The ring, not its runs of cells.
-+    assert!(!line.contains("tuples") && line.len() < 400, "{} bytes: {line}", line.len());
++    assert!(
++        !line.contains("tuples") && line.len() < 400,
++        "{} bytes: {line}",
++        line.len()
++    );
 +    let producers = Producers::new([lasso.clone()]);
-+    let replayed = SelectionUpdate::from_json(&serde_json::from_str(&line).unwrap(), &producers).unwrap();
-+    let a = state(Resolution::Intersect).set(&lasso, with_structure).unwrap();
++    let replayed =
++        SelectionUpdate::from_json(&serde_json::from_str(&line).unwrap(), &producers).unwrap();
++    let a = state(Resolution::Intersect)
++        .set(&lasso, with_structure)
++        .unwrap();
 +    let b = state(Resolution::Intersect).apply(replayed).unwrap();
-+    assert_eq!(a.contributions(&id()).unwrap().collect::<Vec<_>>(), b.contributions(&id()).unwrap().collect::<Vec<_>>());
++    assert_eq!(
++        a.contributions(&id()).unwrap().collect::<Vec<_>>(),
++        b.contributions(&id()).unwrap().collect::<Vec<_>>()
++    );
 +
 +    // A line brush is the chart's to draw again: its keys depend on the data.
 +    let brush = producer("brush", view("lines"), &["line"]);
-+    let test = SeriesTest::Crosses { from: [1.0, -1.0], to: [1.0, 3.0] };
-+    let set = SelectionUpdate::set(&brush, test.value(&pid("line"), vec![ScalarValue::Int64(Some(7))]));
++    let test = SeriesTest::Crosses {
++        from: [1.0, -1.0],
++        to: [1.0, 3.0],
++    };
++    let set = SelectionUpdate::set(
++        &brush,
++        test.value(&pid("line"), vec![ScalarValue::Int64(Some(7))]),
++    );
 +    let line = serde_json::to_string(&set.to_json().unwrap()).unwrap();
 +    let producers = Producers::new([brush.clone()]);
 +    assert!(SelectionUpdate::from_json(&serde_json::from_str(&line).unwrap(), &producers).is_err());
-+    let LogEntry::Drawn(d) = LogEntry::from_json(&serde_json::from_str(&line).unwrap(), &producers).unwrap() else {
++    let LogEntry::Drawn(d) =
++        LogEntry::from_json(&serde_json::from_str(&line).unwrap(), &producers).unwrap()
++    else {
 +        panic!("a line brush should come back drawn")
 +    };
 +    assert_eq!(SeriesTest::from_gesture(&d.gesture), Some(test.clone()));
 +    // The chart finds the keys again (here, the same ones) and redraws.
-+    let redrawn = d.redraw(SelectionValue::tuple([(pid("line"), ValueTest::one_of([7_i64]))]));
-+    let (a, b) = (state(Resolution::Intersect).apply(set).unwrap(), state(Resolution::Intersect).apply(redrawn).unwrap());
-+    assert_eq!(a.contributions(&id()).unwrap().collect::<Vec<_>>(), b.contributions(&id()).unwrap().collect::<Vec<_>>());
++    let redrawn = d.redraw(SelectionValue::tuple([(
++        pid("line"),
++        ValueTest::one_of([7_i64]),
++    )]));
++    let (a, b) = (
++        state(Resolution::Intersect).apply(set).unwrap(),
++        state(Resolution::Intersect).apply(redrawn).unwrap(),
++    );
++    assert_eq!(
++        a.contributions(&id()).unwrap().collect::<Vec<_>>(),
++        b.contributions(&id()).unwrap().collect::<Vec<_>>()
++    );
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/tests/polygon.rs avenger-selection/tests/polygon.rs
 --- avenger-selection/tests/polygon.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/tests/polygon.rs	2026-09-27 21:38:44.117803419 +0000
-@@ -0,0 +1,103 @@
++++ avenger-selection/tests/polygon.rs	2026-09-28 09:11:12.538302390 +0000
+@@ -0,0 +1,185 @@
 +// Not upstream: tests for `SelectionValue::polygon` (VENDORED.md).
 +mod common;
++mod support;
 +
 +use avenger_scales_datafusion::BuiltinScale;
 +use avenger_selection::*;
 +use common::*;
 +use datafusion::{
-+    arrow::array::{ArrayRef, Float64Array, Int64Array, TimestampMillisecondArray},
++    arrow::array::{Int64Array, TimestampMillisecondArray},
 +    common::ScalarValue,
 +};
 +use std::{collections::HashMap, sync::Arc};
++use support::*;
 +
-+fn numbers(values: &[f64]) -> ArrayRef {
-+    Arc::new(Float64Array::from(values.to_vec()))
-+}
-+fn linear(domain: [f64; 2], range: [f64; 2], size: f64) -> PixelGrid {
-+    PixelGrid::new(BuiltinScale::Linear, numbers(&domain), numbers(&range), HashMap::new(), 0.0, size).unwrap()
-+}
 +fn in_ring(p: [f64; 2], ring: &[[f64; 2]]) -> bool {
 +    let mut inside = false;
 +    for i in 0..ring.len() {
 +        let (a, b) = (ring[i], ring[(i + ring.len() - 1) % ring.len()]);
-+        if (a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0] {
++        if (a[1] > p[1]) != (b[1] > p[1])
++            && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]
++        {
 +            inside = !inside;
 +        }
 +    }
 +    inside
 +}
 +// A lasso that doubles back on itself: concave, with a notch from the top.
-+const RING: [[f64; 2]; 7] = [[20.0, 15.0], [180.0, 22.0], [170.0, 180.0], [110.0, 175.0], [100.0, 60.0], [85.0, 170.0], [30.0, 150.0]];
++const RING: [[f64; 2]; 7] = [
++    [20.0, 15.0],
++    [180.0, 22.0],
++    [170.0, 180.0],
++    [110.0, 175.0],
++    [100.0, 60.0],
++    [85.0, 170.0],
++    [30.0, 150.0],
++];
 +
 +/// Scattered points in data units, a map in metres whose screen y runs down.
 +fn scatter() -> (Vec<f64>, Vec<f64>) {
-+    let mut s = 12345_u64;
-+    let mut next = || {
-+        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-+        (s >> 11) as f64 / (1u64 << 53) as f64
-+    };
-+    (0..4000).map(|_| (1000.0 + 500.0 * next(), 2000.0 + 400.0 * next())).unzip()
++    let mut next = uniform(12345);
++    (0..4000)
++        .map(|_| (1000.0 + 500.0 * next(), 2000.0 + 400.0 * next()))
++        .unzip()
 +}
 +
 +#[tokio::test]
 +async fn selects_exactly_the_cells_whose_centre_lies_inside() {
 +    for size in [1.0, 2.5] {
-+        let (gx, gy) = (linear([1000.0, 1500.0], [0.0, 200.0], size), linear([2000.0, 2400.0], [200.0, 0.0], size));
-+        let (u, v) = (ProjectionId::new("x").unwrap(), ProjectionId::new("y").unwrap());
-+        let lasso = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), gx.clone()), (v.clone(), gy.clone())]).unwrap();
++        let (gx, gy) = (
++            linear([1000.0, 1500.0], [0.0, 200.0], size),
++            linear([2000.0, 2400.0], [200.0, 0.0], size),
++        );
++        let (u, v) = (
++            ProjectionId::new("x").unwrap(),
++            ProjectionId::new("y").unwrap(),
++        );
++        let lasso = producer("lasso", view("map"), &["x", "y"])
++            .with_pixel_grids([(u.clone(), gx.clone()), (v.clone(), gy.clone())])
++            .unwrap();
 +        let value = SelectionValue::polygon(&lasso, &u, &v, &RING).unwrap();
 +        let n_tuples = value.as_tuples().len();
 +        let s = state(Resolution::Intersect).set(&lasso, value).unwrap();
 +        let (xs, ys) = scatter();
 +        let rows = batch(vec![
-+            ("id", Arc::new(Int64Array::from_iter_values(0..xs.len() as i64))),
++            (
++                "id",
++                Arc::new(Int64Array::from_iter_values(0..xs.len() as i64)),
++            ),
 +            ("x", numbers(&xs)),
 +            ("y", numbers(&ys)),
 +        ]);
 +        let got = selected(rows, membership().predicate(&s).unwrap()).await;
 +        // The reference: each point's cell, through the grid's own kernel,
 +        // then that cell's centre tested against the ring.
-+        let centre = |g: &PixelGrid, x: f64| (g.cell(&ScalarValue::Float64(Some(x))).unwrap().unwrap() as f64 + 0.5) * size;
++        let centre = |g: &PixelGrid, x: f64| {
++            (g.cell(&ScalarValue::Float64(Some(x))).unwrap().unwrap() as f64 + 0.5) * size
++        };
 +        let want: Vec<i64> = (0..xs.len())
 +            .filter(|&i| in_ring([centre(&gx, xs[i]), centre(&gy, ys[i])], &RING))
 +            .map(|i| i as i64)
 +            .collect();
-+        assert!(want.len() > 500, "the ring should take a good share: {}", want.len());
++        assert!(
++            want.len() > 500,
++            "the ring should take a good share: {}",
++            want.len()
++        );
 +        assert_eq!(got, want, "cell size {size}, {n_tuples} tuples");
 +    }
 +}
@@ -1870,21 +2565,39 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +#[tokio::test]
 +async fn a_ring_off_the_grid_selects_nothing_and_stays_active() {
 +    let g = linear([0.0, 100.0], [0.0, 100.0], 1.0);
-+    let (u, v) = (ProjectionId::new("x").unwrap(), ProjectionId::new("y").unwrap());
++    let (u, v) = (
++        ProjectionId::new("x").unwrap(),
++        ProjectionId::new("y").unwrap(),
++    );
 +    // Thinner than a cell: no centre falls inside.
-+    let lasso = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), g.clone()), (v.clone(), g)]).unwrap();
-+    let value = SelectionValue::polygon(&lasso, &u, &v, &[[10.2, 10.2], [10.4, 10.2], [10.3, 10.4]]).unwrap();
++    let lasso = producer("lasso", view("map"), &["x", "y"])
++        .with_pixel_grids([(u.clone(), g.clone()), (v.clone(), g)])
++        .unwrap();
++    let value =
++        SelectionValue::polygon(&lasso, &u, &v, &[[10.2, 10.2], [10.4, 10.2], [10.3, 10.4]])
++            .unwrap();
 +    assert!(value.as_tuples().is_empty());
 +    let s = state(Resolution::Intersect).set(&lasso, value).unwrap();
-+    let rows = batch(vec![("id", Arc::new(Int64Array::from(vec![0_i64]))), ("x", numbers(&[10.3])), ("y", numbers(&[10.3]))]);
-+    assert!(selected(rows, membership().predicate(&s).unwrap()).await.is_empty());
++    let rows = batch(vec![
++        ("id", Arc::new(Int64Array::from(vec![0_i64]))),
++        ("x", numbers(&[10.3])),
++        ("y", numbers(&[10.3])),
++    ]);
++    assert!(selected(rows, membership().predicate(&s).unwrap())
++        .await
++        .is_empty());
 +}
 +
 +#[test]
 +fn rejects_what_it_cannot_invert() {
 +    let g = linear([0.0, 100.0], [0.0, 100.0], 1.0);
-+    let (u, v) = (ProjectionId::new("x").unwrap(), ProjectionId::new("y").unwrap());
-+    let ok = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), g.clone()), (v.clone(), g.clone())]).unwrap();
++    let (u, v) = (
++        ProjectionId::new("x").unwrap(),
++        ProjectionId::new("y").unwrap(),
++    );
++    let ok = producer("lasso", view("map"), &["x", "y"])
++        .with_pixel_grids([(u.clone(), g.clone()), (v.clone(), g.clone())])
++        .unwrap();
 +    assert!(SelectionValue::polygon(&ok, &u, &v, &[[0.0, 0.0], [1.0, 1.0]]).is_err());
 +    // A projection without a grid in the definition.
 +    let ungridded = producer("lasso", view("map"), &["x", "y"]);
@@ -1898,15 +2611,59 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        1.0,
 +    )
 +    .unwrap();
-+    let timed = producer("lasso", view("map"), &["x", "y"]).with_pixel_grids([(u.clone(), t), (v.clone(), g)]).unwrap();
++    let timed = producer("lasso", view("map"), &["x", "y"])
++        .with_pixel_grids([(u.clone(), t), (v.clone(), g)])
++        .unwrap();
 +    assert!(SelectionValue::polygon(&timed, &u, &v, &RING).is_err());
++}
++
++#[tokio::test]
++async fn cells_select_exactly_their_rows() {
++    let (gx, gy) = (
++        linear([0.0, 100.0], [0.0, 100.0], 4.0),
++        linear([0.0, 100.0], [0.0, 100.0], 4.0),
++    );
++    let p = producer("voxels", view("map"), &["x", "y"])
++        .with_pixel_grids([(pid("x"), gx.clone()), (pid("y"), gy.clone())])
++        .unwrap();
++    let cells = vec![vec![1, 2], vec![3, 4], vec![3, 5]];
++    let v = SelectionValue::cells(&p, &[&pid("x"), &pid("y")], cells.clone()).unwrap();
++    let s = state(Resolution::Intersect).set(&p, v).unwrap();
++    let pts: Vec<(f64, f64)> = (0..25)
++        .flat_map(|i| (0..25).map(move |j| (i as f64 * 4.0 + 1.3, j as f64 * 4.0 + 2.1)))
++        .collect();
++    let rows = batch(vec![
++        (
++            "id",
++            Arc::new(Int64Array::from_iter_values(0..pts.len() as i64)),
++        ),
++        ("x", numbers(&pts.iter().map(|p| p.0).collect::<Vec<_>>())),
++        ("y", numbers(&pts.iter().map(|p| p.1).collect::<Vec<_>>())),
++    ]);
++    let want: Vec<i64> = pts
++        .iter()
++        .enumerate()
++        .filter(|(_, p)| {
++            cells.contains(&vec![
++                (p.0 / 4.0).floor() as i64,
++                (p.1 / 4.0).floor() as i64,
++            ])
++        })
++        .map(|(i, _)| i as i64)
++        .collect();
++    assert_eq!(want.len(), 3);
++    assert_eq!(
++        selected(rows, membership().predicate(&s).unwrap()).await,
++        want
++    );
 +}
 diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/tests/series.rs avenger-selection/tests/series.rs
 --- avenger-selection/tests/series.rs	1970-01-01 00:00:00.000000000 +0000
-+++ avenger-selection/tests/series.rs	2026-09-27 22:08:01.002586981 +0000
-@@ -0,0 +1,151 @@
++++ avenger-selection/tests/series.rs	2026-09-28 09:11:12.574302392 +0000
+@@ -0,0 +1,274 @@
 +// Not upstream: tests for `SeriesTest` (VENDORED.md).
 +mod common;
++mod support;
 +
 +use avenger_selection::*;
 +use common::*;
@@ -1917,13 +2674,32 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    prelude::SessionContext,
 +};
 +use std::sync::Arc;
++use support::*;
 +
 +fn series(rows: &[(i64, f64, f64)]) -> RecordBatch {
 +    batch(vec![
-+        ("id", Arc::new(Int64Array::from_iter_values(0..rows.len() as i64))),
-+        ("line", Arc::new(Int64Array::from(rows.iter().map(|r| r.0).collect::<Vec<_>>()))),
-+        ("t", Arc::new(Float64Array::from(rows.iter().map(|r| r.1).collect::<Vec<_>>()))),
-+        ("n", Arc::new(Float64Array::from(rows.iter().map(|r| r.2).collect::<Vec<_>>()))),
++        (
++            "id",
++            Arc::new(Int64Array::from_iter_values(0..rows.len() as i64)),
++        ),
++        (
++            "line",
++            Arc::new(Int64Array::from(
++                rows.iter().map(|r| r.0).collect::<Vec<_>>(),
++            )),
++        ),
++        (
++            "t",
++            Arc::new(Float64Array::from(
++                rows.iter().map(|r| r.1).collect::<Vec<_>>(),
++            )),
++        ),
++        (
++            "n",
++            Arc::new(Float64Array::from(
++                rows.iter().map(|r| r.2).collect::<Vec<_>>(),
++            )),
++        ),
 +    ])
 +}
 +async fn keys(test: &SeriesTest, rows: RecordBatch) -> Vec<i64> {
@@ -1940,36 +2716,53 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +}
 +// Line 1 is a tent, given out of order; line 2 flat and high; line 3 a short
 +// flat piece ending on the brush; line 4 a single vertex.
-+const ROWS: [(i64, f64, f64); 8] = [(1, 4.0, 0.0), (1, 0.0, 0.0), (1, 2.0, 2.0), (2, 0.0, 5.0), (2, 4.0, 5.0), (3, 0.0, 1.0), (3, 1.0, 1.0), (4, 1.0, 1.0)];
++const ROWS: [(i64, f64, f64); 8] = [
++    (1, 4.0, 0.0),
++    (1, 0.0, 0.0),
++    (1, 2.0, 2.0),
++    (2, 0.0, 5.0),
++    (2, 4.0, 5.0),
++    (3, 0.0, 1.0),
++    (3, 1.0, 1.0),
++    (4, 1.0, 1.0),
++];
 +
 +#[tokio::test]
 +async fn a_line_brush_takes_the_series_that_cross_it() {
-+    let brush = SeriesTest::Crosses { from: [1.0, -1.0], to: [1.0, 3.0] };
++    let brush = SeriesTest::Crosses {
++        from: [1.0, -1.0],
++        to: [1.0, 3.0],
++    };
 +    // Ordered by x, line 1 crosses at t = 1; out of row order it would pair
 +    // (4, 0) with (0, 0) and miss nothing either, so a second brush checks
 +    // the order: it meets only the segment (0, 0)–(4, 0) that sorting removes.
 +    assert_eq!(keys(&brush, series(&ROWS)).await, vec![1, 3]);
-+    let low = SeriesTest::Crosses { from: [3.0, -0.5], to: [3.5, -0.1] };
++    let low = SeriesTest::Crosses {
++        from: [3.0, -0.5],
++        to: [3.5, -0.1],
++    };
 +    assert_eq!(keys(&low, series(&ROWS)).await, Vec::<i64>::new());
 +}
 +
 +#[tokio::test]
 +async fn a_timebox_takes_the_series_that_stay_inside_over_its_x_range() {
-+    let tb = SeriesTest::Within { x: (1.0, 3.0), y: (0.0, 3.0) };
++    let tb = SeriesTest::Within {
++        x: (1.0, 3.0),
++        y: (0.0, 3.0),
++    };
 +    // Line 2 has no vertex in the x-range, so it does not qualify.
 +    assert_eq!(keys(&tb, series(&ROWS)).await, vec![1, 3, 4]);
-+    let tight = SeriesTest::Within { x: (1.0, 3.0), y: (1.5, 3.0) };
++    let tight = SeriesTest::Within {
++        x: (1.0, 3.0),
++        y: (1.5, 3.0),
++    };
 +    assert_eq!(keys(&tight, series(&ROWS)).await, vec![1]);
 +}
 +
 +#[tokio::test]
 +async fn keys_select_rows_elsewhere_and_match_experiment_7() {
 +    // Random walks, tested here and by experiment 7's own loop.
-+    let mut s = 99_u64;
-+    let mut next = || {
-+        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-+        (s >> 11) as f64 / (1u64 << 53) as f64
-+    };
++    let mut next = uniform(99);
 +    let mut rows = Vec::new();
 +    for line in 0..300_i64 {
 +        let mut y = 50.0 + 30.0 * next();
@@ -1979,48 +2772,85 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +        }
 +    }
 +    let crossing = |p1: [f64; 2], p2: [f64; 2], q1: [f64; 2], q2: [f64; 2]| {
-+        let o = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
++        let o = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
++            (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
++        };
 +        o(q1, q2, p1) * o(q1, q2, p2) <= 0.0 && o(p1, p2, q1) * o(p1, p2, q2) <= 0.0
 +    };
 +    let by_line = |l: i64| {
-+        let mut pts: Vec<[f64; 2]> = rows.iter().filter(|r| r.0 == l).map(|r| [r.1, r.2]).collect();
++        let mut pts: Vec<[f64; 2]> = rows
++            .iter()
++            .filter(|r| r.0 == l)
++            .map(|r| [r.1, r.2])
++            .collect();
 +        pts.sort_by(|a, b| a[0].total_cmp(&b[0]));
 +        pts
 +    };
 +    let (a, b) = ([12.0, 90.0], [20.0, 40.0]);
-+    let want_seg: Vec<i64> = (0..300).filter(|l| by_line(*l).windows(2).any(|w| crossing(w[0], w[1], a, b))).collect();
++    let want_seg: Vec<i64> = (0..300)
++        .filter(|l| by_line(*l).windows(2).any(|w| crossing(w[0], w[1], a, b)))
++        .collect();
 +    let (x, y) = ((14.0, 18.0), (40.0, 75.0));
 +    let want_tb: Vec<i64> = (0..300)
 +        .filter(|l| {
-+            let within: Vec<[f64; 2]> = by_line(*l).into_iter().filter(|p| p[0] >= x.0 && p[0] <= x.1).collect();
++            let within: Vec<[f64; 2]> = by_line(*l)
++                .into_iter()
++                .filter(|p| p[0] >= x.0 && p[0] <= x.1)
++                .collect();
 +            !within.is_empty() && within.iter().all(|p| p[1] >= y.0 && p[1] <= y.1)
 +        })
 +        .collect();
 +    let seg = keys(&SeriesTest::Crosses { from: a, to: b }, series(&rows)).await;
 +    let tb = keys(&SeriesTest::Within { x, y }, series(&rows)).await;
-+    assert!(!want_seg.is_empty() && want_seg.len() < 300 && !want_tb.is_empty() && want_tb.len() < 300);
++    assert!(
++        !want_seg.is_empty() && want_seg.len() < 300 && !want_tb.is_empty() && want_tb.len() < 300
++    );
 +    assert_eq!(seg, want_seg);
 +    assert_eq!(tb, want_tb);
 +
 +    // The keys as a selection, applied to another relation that shares them.
 +    let key = ProjectionId::new("line").unwrap();
 +    let p = producer("brush", view("lines"), &["line"]);
-+    let st = state(Resolution::Intersect).set(&p, SeriesTest::Crosses { from: a, to: b }.value(&key, seg.iter().map(|k| ScalarValue::Int64(Some(*k))).collect())).unwrap();
++    let st = state(Resolution::Intersect)
++        .set(
++            &p,
++            SeriesTest::Crosses { from: a, to: b }.value(
++                &key,
++                seg.iter().map(|k| ScalarValue::Int64(Some(*k))).collect(),
++            ),
++        )
++        .unwrap();
 +    let raw = batch(vec![
 +        ("id", Arc::new(Int64Array::from_iter_values(0..300))),
 +        ("line", Arc::new(Int64Array::from_iter_values(0..300))),
 +    ]);
-+    assert_eq!(selected(raw, cross(view("points")).predicate(&st).unwrap()).await, seg);
++    assert_eq!(
++        selected(raw, cross(view("points")).predicate(&st).unwrap()).await,
++        seg
++    );
 +}
 +
 +#[tokio::test]
 +async fn soft_series_follow_experiment_7() {
 +    // Line 1 crosses the brush; line 2 passes 1 unit above its top end;
 +    // line 5 passes 3 units away; line 2's nearest vertex decides.
-+    let rows = [(1, 0.0, 0.0), (1, 2.0, 2.0), (2, 0.0, 4.0), (2, 2.0, 4.0), (5, 0.0, 6.0), (5, 2.0, 6.0)];
-+    let brush = SeriesTest::Crosses { from: [1.0, -1.0], to: [1.0, 3.0] };
++    let rows = [
++        (1, 0.0, 0.0),
++        (1, 2.0, 2.0),
++        (2, 0.0, 4.0),
++        (2, 2.0, 4.0),
++        (5, 0.0, 6.0),
++        (5, 2.0, 6.0),
++    ];
++    let brush = SeriesTest::Crosses {
++        from: [1.0, -1.0],
++        to: [1.0, 3.0],
++    };
 +    let df = SessionContext::new().read_batch(series(&rows)).unwrap();
-+    let d = brush.degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 2.0).await.unwrap();
++    let d = brush
++        .degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 2.0)
++        .await
++        .unwrap();
 +    // Line 2: nearest vertex (0, 4) or (2, 4) is sqrt(1 + 1) from (1, 3).
 +    let want = 1.0 - 2f64.sqrt() / 2.0;
 +    assert_eq!(d.len(), 2);
@@ -2028,13 +2858,31 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    assert_eq!(d[1].0, ScalarValue::Int64(Some(2)));
 +    assert!((d[1].1 - want).abs() < 1e-12);
 +    // A timebox gives the share inside.
-+    let tb = SeriesTest::Within { x: (0.0, 2.0), y: (0.0, 5.0) };
++    let tb = SeriesTest::Within {
++        x: (0.0, 2.0),
++        y: (0.0, 5.0),
++    };
 +    let df = SessionContext::new().read_batch(series(&rows)).unwrap();
-+    let d = tb.degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 1.0).await.unwrap();
-+    assert_eq!(d, vec![(ScalarValue::Int64(Some(1)), 1.0), (ScalarValue::Int64(Some(2)), 1.0)]);
-+    let tb = SeriesTest::Within { x: (0.0, 2.0), y: (0.0, 1.0) };
++    let d = tb
++        .degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 1.0)
++        .await
++        .unwrap();
++    assert_eq!(
++        d,
++        vec![
++            (ScalarValue::Int64(Some(1)), 1.0),
++            (ScalarValue::Int64(Some(2)), 1.0)
++        ]
++    );
++    let tb = SeriesTest::Within {
++        x: (0.0, 2.0),
++        y: (0.0, 1.0),
++    };
 +    let df = SessionContext::new().read_batch(series(&rows)).unwrap();
-+    let d = tb.degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 1.0).await.unwrap();
++    let d = tb
++        .degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 1.0)
++        .await
++        .unwrap();
 +    assert_eq!(d, vec![(ScalarValue::Int64(Some(1)), 0.5)]);
 +
 +    // As a value: the predicate takes line 1, the degree line 2 in part,
@@ -2042,17 +2890,90 @@ diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' 
 +    let key = ProjectionId::new("line").unwrap();
 +    let p = producer("brush", view("lines"), &["line"]);
 +    let df = SessionContext::new().read_batch(series(&rows)).unwrap();
-+    let d = brush.degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 2.0).await.unwrap();
-+    let st = state(Resolution::Intersect).set(&p, brush.soft_value(&key, d, [1.0, 1.0], 2.0)).unwrap();
-+    let raw = batch(vec![("id", Arc::new(Int64Array::from(vec![0_i64, 1, 2]))), ("line", Arc::new(Int64Array::from(vec![1_i64, 2, 5])))]);
++    let d = brush
++        .degrees(df, col("line"), col("t"), col("n"), [1.0, 1.0], 2.0)
++        .await
++        .unwrap();
++    let st = state(Resolution::Intersect)
++        .set(&p, brush.soft_value(&key, d, [1.0, 1.0], 2.0))
++        .unwrap();
++    let raw = batch(vec![
++        ("id", Arc::new(Int64Array::from(vec![0_i64, 1, 2]))),
++        ("line", Arc::new(Int64Array::from(vec![1_i64, 2, 5]))),
++    ]);
 +    let f = cross(view("points"));
-+    let out = SessionContext::new().read_batch(raw.clone()).unwrap()
-+        .select(vec![f.degree(&st, 1.0).unwrap().alias("d")]).unwrap().collect().await.unwrap();
-+    let got = out[0].column(0).as_any().downcast_ref::<Float64Array>().unwrap().values().to_vec();
++    let out = SessionContext::new()
++        .read_batch(raw.clone())
++        .unwrap()
++        .select(vec![f.degree(&st, 1.0).unwrap().alias("d")])
++        .unwrap()
++        .collect()
++        .await
++        .unwrap();
++    let got = out[0]
++        .column(0)
++        .as_any()
++        .downcast_ref::<Float64Array>()
++        .unwrap()
++        .values()
++        .to_vec();
 +    assert_eq!(got[0], 1.0);
 +    assert!((got[1] - want).abs() < 1e-12);
 +    assert_eq!(got[2], 0.0);
 +    assert_eq!(selected(raw, f.predicate(&st).unwrap()).await, vec![0]);
-+    let g = st.contributions(&id()).unwrap().next().unwrap().value().gesture().unwrap().clone();
-+    assert_eq!((g.param("soft"), SeriesTest::from_gesture(&g)), (Some(2.0), Some(brush)));
++    let g = st
++        .contributions(&id())
++        .unwrap()
++        .next()
++        .unwrap()
++        .value()
++        .gesture()
++        .unwrap()
++        .clone();
++    assert_eq!(
++        (g.param("soft"), SeriesTest::from_gesture(&g)),
++        (Some(2.0), Some(brush))
++    );
++}
+diff -ruN '--exclude=VENDORED.md' '--exclude=LICENSE' '--exclude=UPSTREAM.diff' avenger-selection/tests/support/mod.rs avenger-selection/tests/support/mod.rs
+--- avenger-selection/tests/support/mod.rs	1970-01-01 00:00:00.000000000 +0000
++++ avenger-selection/tests/support/mod.rs	2026-09-28 09:11:12.462302385 +0000
+@@ -0,0 +1,38 @@
++// Not upstream: helpers the tests of the additions share (VENDORED.md).
++#![allow(dead_code)]
++use avenger_scales_datafusion::BuiltinScale;
++use avenger_selection::{PixelGrid, ProjectionId};
++use datafusion::arrow::array::{ArrayRef, Float64Array};
++use std::{collections::HashMap, sync::Arc};
++
++pub fn numbers(values: &[f64]) -> ArrayRef {
++    Arc::new(Float64Array::from(values.to_vec()))
++}
++pub fn pid(name: &str) -> ProjectionId {
++    ProjectionId::new(name).unwrap()
++}
++pub fn linear(domain: [f64; 2], range: [f64; 2], size: f64) -> PixelGrid {
++    PixelGrid::new(
++        BuiltinScale::Linear,
++        numbers(&domain),
++        numbers(&range),
++        HashMap::new(),
++        0.0,
++        size,
++    )
++    .unwrap()
++}
++/// Data 0..100 on 0..100 px: a data unit is a pixel.
++pub fn grid(size: f64) -> PixelGrid {
++    linear([0.0, 100.0], [0.0, 100.0], size)
++}
++/// A seeded generator of numbers in [0, 1), the same on every run.
++pub fn uniform(seed: u64) -> impl FnMut() -> f64 {
++    let mut s = seed;
++    move || {
++        s = s
++            .wrapping_mul(6364136223846793005)
++            .wrapping_add(1442695040888963407);
++        (s >> 11) as f64 / (1u64 << 53) as f64
++    }
 +}

@@ -297,7 +297,7 @@ fn tilted(win: [f64; 4], hz: (f64, f64), yaw: f64, elevation: f64) -> View {
     let x = [-win[0] / w - 0.5, 1.0 / w, 0.0, 0.0];
     let y = [-win[2] / h - 0.5, 0.0, 1.0 / h, 0.0];
     let z = [-0.35 * hz.0 / dz, 0.0, 0.0, 0.35 / dz];
-    let mut a = [0.0; 4].map(|_| 0.0);
+    let mut a = [0.0; 4];
     let mut b = a;
     for i in 0..4 {
         a[i] = s * (x[i] * cy - y[i] * sy);
@@ -348,6 +348,53 @@ async fn lasso(view: &View, points: &[RecordBatch], sum: &mut Summary) -> DFResu
             let within = worst <= size * std::f64::consts::SQRT_2;
             sum.add("lasso", format!("{} points, {}", rows(points), view.name), rust, t, format!("{} (±1 cell at the edge)", yes(within)));
         }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// 1b. Where a lasso's time goes
+
+/// The flat lasso's cost in pieces, on one core and on four: DataFusion's
+/// scan alone, then the screen coordinates, then the two pixel-cell
+/// functions, then the whole predicate; and the Rust loop, on one thread
+/// and on four.
+async fn pieces(view: &View, points: &[RecordBatch]) -> DFResult<()> {
+    use datafusion::prelude::SessionConfig;
+    println!("\n## where the flat lasso's time goes ({} points)", rows(points));
+    let ring = view.ring();
+    let p = view.lasso("lasso", 1.0);
+    let pred = members("lasso").predicate(&set(&p, SelectionValue::polygon(&p, &pid("u"), &pid("v"), &ring).unwrap())).unwrap();
+    let (gu, gv) = (screen(1.0), screen(1.0));
+    let steps: [(&str, Expr); 4] = [
+        ("scan, one comparison", col("x").gt(lit(-1e18))),
+        ("+ u and v arithmetic", (view.u() + view.v()).gt(lit(-1e18))),
+        ("+ the two pixel-cell functions", (gu.cell_expr(view.u()) + gv.cell_expr(view.v())).gt(lit(i64::MIN / 2))),
+        ("the whole predicate", pred),
+    ];
+    for cores in [1, 4] {
+        let ctx = SessionContext::new_with_config(SessionConfig::new().with_target_partitions(cores));
+        ctx.register_table("pts", Arc::new(MemTable::try_new(points[0].schema(), vec![points.to_vec()])?))?;
+        let mut line = format!("DataFusion, {cores} core(s):");
+        for (label, e) in &steps {
+            let (t, _) = best(3, || count_where(&ctx, "pts", e.clone())).await?;
+            line += &format!(" {label} {t:.0} ms ·");
+        }
+        println!("{}", line.trim_end_matches(" ·"));
+    }
+    // Rust over the same batches, split among threads.
+    for threads in [1, 4] {
+        let t0 = Instant::now();
+        let chunks: Vec<&[RecordBatch]> = points.chunks(points.len().div_ceil(threads)).collect();
+        let n: usize = std::thread::scope(|sc| {
+            let hs: Vec<_> = chunks.iter().map(|c| sc.spawn(|| {
+                let mut n = 0;
+                view.each(c, |q, _| n += in_ring(q, &ring) as usize);
+                n
+            })).collect();
+            hs.into_iter().map(|h| h.join().unwrap()).sum()
+        });
+        println!("Rust, {threads} thread(s): {:.0} ms ({n} points)", ms(t0));
     }
     Ok(())
 }
@@ -620,26 +667,26 @@ async fn series(ctx: &SessionContext, tile: &str, sum: &mut Summary) -> DFResult
     let scale = [1.0 / tmax.ceil(), 1.0 / ((nmax / step).ceil() * step)];
     let brush = SeriesTest::Crosses { from: [18.9, 185000.0], to: [21.6, 145000.0] };
     let tests = [
-        ("line brush", brush.clone(), None),
+        ("line brush", brush.clone(), None, true),
         // Experiment 7's timebox, which takes no line of this tile, then one that takes two of four.
-        ("timebox", SeriesTest::Within { x: (14.0, 18.0), y: (120000.0, 200000.0) }, None),
-        ("timebox", SeriesTest::Within { x: (14.0, 18.0), y: (80000.0, 130000.0) }, None),
-        ("soft line brush", brush, Some(0.2)),
-        ("soft timebox", SeriesTest::Within { x: (14.0, 18.0), y: (120000.0, 200000.0) }, Some(0.1)),
+        ("timebox", SeriesTest::Within { x: (14.0, 18.0), y: (120000.0, 200000.0) }, None, true),
+        ("timebox", SeriesTest::Within { x: (14.0, 18.0), y: (80000.0, 130000.0) }, None, false),
+        ("soft line brush", brush, Some(0.2), true),
+        ("soft timebox", SeriesTest::Within { x: (14.0, 18.0), y: (120000.0, 200000.0) }, Some(0.1), true),
     ];
     let key = pid("line");
     let p = ProducerDefinition::new(sid("series"), ProducerId::new("brush").unwrap(), ViewId::new("lines").unwrap(),
         [Projection::new(key.clone(), col("point_source_id")).unwrap()]).unwrap();
     let mut updates = Vec::new();
-    for (label, test, soft) in &tests {
+    for (label, test, soft, in_summary) in &tests {
         let t0 = Instant::now();
         let want: Vec<(i64, f64)> = lines.iter().map(|(l, pts)| (*l, e7_series(test, pts, soft.map(|w| (w, scale))))).filter(|x| x.1 > 0.0).collect();
         let rust = ms(t0);
-        let rows_ = || fm.table("flight");
+        let lines_table = || fm.table("flight");
         let (t, value) = match soft {
-            None => best(3, || async { Ok(test.value(&key, test.keys(rows_().await?, col("line"), col("t"), col("n")).await.unwrap())) }).await?,
+            None => best(3, || async { Ok(test.value(&key, test.keys(lines_table().await?, col("line"), col("t"), col("n")).await.unwrap())) }).await?,
             Some(w) => best(3, || async {
-                let d = test.degrees(rows_().await?, col("line"), col("t"), col("n"), scale, *w).await.unwrap();
+                let d = test.degrees(lines_table().await?, col("line"), col("t"), col("n"), scale, *w).await.unwrap();
                 Ok(test.soft_value(&key, d, scale, *w))
             }).await?,
         };
@@ -660,7 +707,7 @@ async fn series(ctx: &SessionContext, tile: &str, sum: &mut Summary) -> DFResult
                  serde_json::to_string(&test.gesture().points()).unwrap(),
                  got.iter().map(|(l, d)| if *d == 1.0 { format!("{l}") } else { format!("{l}: {d:.3}") }).collect::<Vec<_>>().join(", "),
                  rust * 1e3, yes(agree));
-        if !(label.starts_with("timebox") && updates.len() == 2) {
+        if *in_summary {
             sum.add(label, format!("{} lines, {} rows", lines.len(), rows(&flight)), rust, t, yes(agree));
         }
         updates.push(SelectionUpdate::set(&p, value));
@@ -676,7 +723,7 @@ async fn series(ctx: &SessionContext, tile: &str, sum: &mut Summary) -> DFResult
         let f2 = table("flight", &fl)?;
         let t0 = Instant::now();
         let mut k = Vec::new();
-        for (_, test, _) in &tests[..3] {
+        for (_, test, _, _) in &tests[..3] {
             k.push(test.keys(f2.table("flight").await?, col("line"), col("t"), col("n")).await.unwrap().len());
         }
         println!("first {:>3.0} % of the points: lines {t_lines:.0} ms, the three key sets {:.1} ms ({k:?} lines)", q * 100.0, ms(t0));
@@ -697,7 +744,7 @@ async fn log(cloud: &Cloud, defs: &[ProducerDefinition], mut updates: Vec<Select
     updates.push(SelectionUpdate::toggle(&defs[2], SelectionValue::tuple([(pid("line"), ValueTest::equal(33_i64))])));
     let lines: Vec<String> = updates.iter().map(|u| serde_json::to_string(&u.to_json().unwrap()).unwrap()).collect();
     std::fs::create_dir_all("out").ok();
-    std::fs::write("out/selection_log.jsonl", lines.join("\n") + "\n").ok();
+    std::fs::write("out/selection_log.jsonl", lines.join("\n") + "\n").expect("write out/selection_log.jsonl");
     let producers = Producers::new(defs.iter().cloned());
     let start = SelectionSet::new([(sid("cloud"), Resolution::Intersect), (sid("series"), Resolution::Intersect)]).unwrap();
     let (mut a, mut b, mut same, mut drawn) = (start.clone(), start, true, 0);
@@ -709,13 +756,13 @@ async fn log(cloud: &Cloud, defs: &[ProducerDefinition], mut updates: Vec<Select
             LogEntry::Drawn(d) => {
                 drawn += 1;
                 let key = pid("line");
-                let rows_ = flight.table("flight").await?;
+                let flight_rows = flight.table("flight").await?;
                 let value = match (d.gesture.kind(), SeriesTest::from_gesture(&d.gesture), d.gesture.param("soft")) {
                     ("cloudlasso", _, _) => cloud.voxels(&b).await?.0,
-                    (_, Some(test), None) => test.value(&key, test.keys(rows_, col("line"), col("t"), col("n")).await.unwrap()),
+                    (_, Some(test), None) => test.value(&key, test.keys(flight_rows.clone(), col("line"), col("t"), col("n")).await.unwrap()),
                     (_, Some(test), Some(w)) => {
                         let s = [d.gesture.param("sx").unwrap(), d.gesture.param("sy").unwrap()];
-                        test.soft_value(&key, test.degrees(rows_, col("line"), col("t"), col("n"), s, w).await.unwrap(), s, w)
+                        test.soft_value(&key, test.degrees(flight_rows, col("line"), col("t"), col("n"), s, w).await.unwrap(), s, w)
                     }
                     (other, _, _) => panic!("no redraw for {other}"),
                 };
@@ -786,6 +833,7 @@ async fn main() -> DFResult<()> {
     let all = ctx.sql(&pts("")).await?.collect().await?;
     let map = flat(ext);
     lasso(&map, &all, &mut sum).await?;
+    pieces(&map, &all).await?;
     brushes(&map, &all, &mut sum).await?;
 
     let win = [657500.0, 658000.0, 6867250.0, 6867750.0];

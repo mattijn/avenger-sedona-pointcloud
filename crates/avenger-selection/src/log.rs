@@ -29,10 +29,8 @@ use datafusion::{
 use serde_json::{json, Map, Value};
 
 use crate::{
-    identity::ProducerAddress,
-    state::Update,
-    Error, Gesture, ProducerDefinition, ProducerId, ProjectionId, Result, SelectionId, SelectionUpdate,
-    SelectionValue, ValueTest, ViewId,
+    identity::ProducerAddress, state::Update, Error, Gesture, ProducerDefinition, ProducerId,
+    ProjectionId, Result, SelectionId, SelectionUpdate, SelectionValue, ValueTest, ViewId,
 };
 
 /// The chart's producer definitions, by address, for reading a log back.
@@ -40,12 +38,17 @@ use crate::{
 pub struct Producers(BTreeMap<ProducerAddress, ProducerDefinition>);
 impl Producers {
     pub fn new(definitions: impl IntoIterator<Item = ProducerDefinition>) -> Self {
-        Self(definitions.into_iter().map(|d| (d.address().clone(), d)).collect())
+        Self(
+            definitions
+                .into_iter()
+                .map(|d| (d.address().clone(), d))
+                .collect(),
+        )
     }
     fn get(&self, address: &ProducerAddress) -> Result<&ProducerDefinition> {
         self.0.get(address).ok_or_else(|| {
-            Error::InvalidUpdate(format!(
-                "the log names producer {} of view {} in selection {}, which the chart does not define",
+            bad(format!(
+                "it names producer {} of view {} in selection {}, which the chart does not define",
                 address.producer, address.origin, address.selection
             ))
         })
@@ -55,23 +58,21 @@ impl Producers {
 impl SelectionUpdate {
     /// This update as one JSON object, for one line of a log.
     pub fn to_json(&self) -> Result<Value> {
-        let address = |a: &ProducerAddress| {
-            json!({"selection": a.selection.as_str(), "producer": a.producer.as_str(), "view": a.origin.as_str()})
+        let address = |a: &ProducerAddress| json!({"selection": a.selection.as_str(), "producer": a.producer.as_str(), "view": a.origin.as_str()});
+        let (op, at, value) = match &self.0 {
+            Update::Set(p, v) => ("set", p.address(), Some(v)),
+            Update::Toggle(p, v) => ("toggle", p.address(), Some(v)),
+            Update::Clear(a) => ("clear", a, None),
+            Update::ClearAll(id) => {
+                return Ok(json!({"op": "clear_all", "selection": id.as_str()}))
+            }
         };
-        Ok(match &self.0 {
-            Update::Set(p, v) | Update::Toggle(p, v) => {
-                let mut o = address(p.address());
-                o["op"] = json!(if matches!(self.0, Update::Set(..)) { "set" } else { "toggle" });
-                o["value"] = value_json(v)?;
-                o
-            }
-            Update::Clear(a) => {
-                let mut o = address(a);
-                o["op"] = json!("clear");
-                o
-            }
-            Update::ClearAll(id) => json!({"op": "clear_all", "selection": id.as_str()}),
-        })
+        let mut o = address(at);
+        o["op"] = json!(op);
+        if let Some(v) = value {
+            o["value"] = value_json(v)?;
+        }
+        Ok(o)
     }
 
     /// Read one logged update back against the chart's definitions, drawing
@@ -107,15 +108,22 @@ pub struct Drawn {
 impl Drawn {
     /// The update, from the value the chart drew; the gesture goes with it.
     pub fn redraw(self, value: SelectionValue) -> SelectionUpdate {
-        let value = value.with_gesture(self.gesture);
-        if self.toggle { SelectionUpdate::toggle(&self.producer, value) } else { SelectionUpdate::set(&self.producer, value) }
+        update(
+            self.toggle,
+            &self.producer,
+            value.with_gesture(self.gesture),
+        )
     }
 }
 
 impl LogEntry {
     /// Read one line of a log against the chart's definitions.
     pub fn from_json(v: &Value, producers: &Producers) -> Result<Self> {
-        let s = |k: &str| v.get(k).and_then(Value::as_str).ok_or_else(|| bad(format!("an update needs a string {k}")));
+        let s = |k: &str| {
+            v.get(k)
+                .and_then(Value::as_str)
+                .ok_or_else(|| bad(format!("an update needs a string {k}")))
+        };
         let address = || -> Result<ProducerAddress> {
             Ok(ProducerAddress {
                 selection: SelectionId::new(s("selection")?)?,
@@ -127,23 +135,41 @@ impl LogEntry {
             op @ ("set" | "toggle") => {
                 let producer = producers.get(&address()?)?;
                 let toggle = op == "toggle";
-                let value = v.get("value").ok_or_else(|| bad("a set or toggle needs a value"))?;
+                let value = v
+                    .get("value")
+                    .ok_or_else(|| bad("a set or toggle needs a value"))?;
                 let value = match value.get("drawn") {
                     None => value_from(value)?,
                     Some(g) => {
                         let gesture = gesture_from(g)?;
                         match SelectionValue::from_gesture(producer, &gesture) {
                             Some(value) => value?,
-                            None => return Ok(LogEntry::Drawn(Drawn { toggle, producer: producer.clone(), gesture })),
+                            None => {
+                                return Ok(LogEntry::Drawn(Drawn {
+                                    toggle,
+                                    producer: producer.clone(),
+                                    gesture,
+                                }))
+                            }
                         }
                     }
                 };
-                LogEntry::Update(if toggle { SelectionUpdate::toggle(producer, value) } else { SelectionUpdate::set(producer, value) })
+                LogEntry::Update(update(toggle, producer, value))
             }
             "clear" => LogEntry::Update(SelectionUpdate::clear(producers.get(&address()?)?)),
-            "clear_all" => LogEntry::Update(SelectionUpdate::clear_all(&SelectionId::new(s("selection")?)?)),
+            "clear_all" => LogEntry::Update(SelectionUpdate::clear_all(&SelectionId::new(s(
+                "selection",
+            )?)?)),
             other => return Err(bad(format!("unknown operation {other}"))),
         })
+    }
+}
+
+fn update(toggle: bool, producer: &ProducerDefinition, value: SelectionValue) -> SelectionUpdate {
+    if toggle {
+        SelectionUpdate::toggle(producer, value)
+    } else {
+        SelectionUpdate::set(producer, value)
     }
 }
 
@@ -156,12 +182,18 @@ fn value_json(v: &SelectionValue) -> Result<Value> {
         return Ok(json!({"drawn": gesture_json(g)?}));
     }
     if v.partial().is_some() {
-        return Err(bad("partial degrees are redrawn from their gesture, and this value has none"));
+        return Err(bad(
+            "partial degrees are redrawn from their gesture, and this value has none",
+        ));
     }
     let tuples = v
         .as_tuples()
         .iter()
-        .map(|t| t.iter().map(|(id, test)| term_json(id, test)).collect::<Result<Vec<_>>>())
+        .map(|t| {
+            t.iter()
+                .map(|(id, test)| term_json(id, test))
+                .collect::<Result<Vec<_>>>()
+        })
         .collect::<Result<Vec<_>>>()?;
     Ok(json!({"tuples": tuples}))
 }
@@ -171,7 +203,13 @@ fn value_from(v: &Value) -> Result<SelectionValue> {
         .and_then(Value::as_array)
         .ok_or_else(|| bad("a value needs tuples"))?
         .iter()
-        .map(|t| t.as_array().ok_or_else(|| bad("a tuple is a list of terms"))?.iter().map(term_from).collect::<Result<Vec<_>>>())
+        .map(|t| {
+            t.as_array()
+                .ok_or_else(|| bad("a tuple is a list of terms"))?
+                .iter()
+                .map(term_from)
+                .collect::<Result<Vec<_>>>()
+        })
         .collect::<Result<Vec<_>>>()?;
     Ok(SelectionValue::tuples(tuples))
 }
@@ -185,7 +223,9 @@ fn term_json(id: &ProjectionId, test: &ValueTest) -> Result<Value> {
         })
     };
     Ok(match test {
-        ValueTest::Equal(v) => json!({"projection": id.as_str(), "test": "equal", "value": scalar_json(v)?}),
+        ValueTest::Equal(v) => {
+            json!({"projection": id.as_str(), "test": "equal", "value": scalar_json(v)?})
+        }
         ValueTest::OneOf(vs) => json!({"projection": id.as_str(), "test": "one_of",
             "values": vs.iter().map(scalar_json).collect::<Result<Vec<_>>>()?}),
         ValueTest::Range { lower, upper } => json!({"projection": id.as_str(), "test": "range",
@@ -193,7 +233,11 @@ fn term_json(id: &ProjectionId, test: &ValueTest) -> Result<Value> {
     })
 }
 fn term_from(v: &Value) -> Result<(ProjectionId, ValueTest)> {
-    let id = ProjectionId::new(v.get("projection").and_then(Value::as_str).ok_or_else(|| bad("a term needs a projection"))?)?;
+    let id = ProjectionId::new(
+        v.get("projection")
+            .and_then(Value::as_str)
+            .ok_or_else(|| bad("a term needs a projection"))?,
+    )?;
     let bound = |b: Option<&Value>| -> Result<Bound<ScalarValue>> {
         match b {
             None | Some(Value::Null) => Ok(Bound::Unbounded),
@@ -205,11 +249,21 @@ fn term_from(v: &Value) -> Result<(ProjectionId, ValueTest)> {
         }
     };
     let test = match v.get("test").and_then(Value::as_str) {
-        Some("equal") => ValueTest::Equal(scalar_from(v.get("value").ok_or_else(|| bad("equal needs a value"))?)?),
+        Some("equal") => ValueTest::Equal(scalar_from(
+            v.get("value").ok_or_else(|| bad("equal needs a value"))?,
+        )?),
         Some("one_of") => ValueTest::OneOf(
-            v.get("values").and_then(Value::as_array).ok_or_else(|| bad("one_of needs values"))?.iter().map(scalar_from).collect::<Result<_>>()?,
+            v.get("values")
+                .and_then(Value::as_array)
+                .ok_or_else(|| bad("one_of needs values"))?
+                .iter()
+                .map(scalar_from)
+                .collect::<Result<_>>()?,
         ),
-        Some("range") => ValueTest::Range { lower: bound(v.get("lower"))?, upper: bound(v.get("upper"))? },
+        Some("range") => ValueTest::Range {
+            lower: bound(v.get("lower"))?,
+            upper: bound(v.get("upper"))?,
+        },
         other => return Err(bad(format!("unknown test {other:?}"))),
     };
     Ok((id, test))
@@ -217,19 +271,31 @@ fn term_from(v: &Value) -> Result<(ProjectionId, ValueTest)> {
 
 fn scalar_json(v: &ScalarValue) -> Result<Value> {
     let t = v.data_type();
-    if matches!(t, DataType::Binary | DataType::LargeBinary | DataType::BinaryView | DataType::FixedSizeBinary(_)) {
-        return Err(bad(format!("{t} values are not written to the log yet")));
+    if matches!(
+        t,
+        DataType::Binary
+            | DataType::LargeBinary
+            | DataType::BinaryView
+            | DataType::FixedSizeBinary(_)
+    ) {
+        return Err(bad(format!(
+            "{t} values do not cast to a string, so the log refuses them"
+        )));
     }
     let value = if v.is_null() {
         Value::Null
     } else {
-        let s = cast(&v.to_array()?, &DataType::Utf8).map_err(datafusion::common::DataFusionError::from)?;
+        let s = cast(&v.to_array()?, &DataType::Utf8)
+            .map_err(datafusion::common::DataFusionError::from)?;
         Value::String(ScalarValue::try_from_array(&s, 0)?.to_string())
     };
     Ok(json!({"type": t.to_string(), "value": value}))
 }
 fn scalar_from(v: &Value) -> Result<ScalarValue> {
-    let t = v.get("type").and_then(Value::as_str).ok_or_else(|| bad("a scalar needs a type"))?;
+    let t = v
+        .get("type")
+        .and_then(Value::as_str)
+        .ok_or_else(|| bad("a scalar needs a type"))?;
     let t = DataType::from_str(t).map_err(|e| bad(format!("type {t}: {e}")))?;
     Ok(match v.get("value") {
         None | Some(Value::Null) => ScalarValue::try_from(&t)?,
@@ -245,17 +311,32 @@ fn scalar_from(v: &Value) -> Result<ScalarValue> {
 }
 
 fn gesture_json(g: &Gesture) -> Result<Value> {
-    let finite = g.points().iter().flatten().chain(g.params().iter().map(|(_, v)| v)).all(|v| v.is_finite());
+    let finite = g
+        .points()
+        .iter()
+        .flatten()
+        .chain(g.params().iter().map(|(_, v)| v))
+        .all(|v| v.is_finite());
     if !finite {
         return Err(bad("a gesture's numbers must be finite"));
     }
-    let params: Map<String, Value> = g.params().iter().map(|(n, v)| (n.clone(), json!(v))).collect();
+    let params: Map<String, Value> = g
+        .params()
+        .iter()
+        .map(|(n, v)| (n.clone(), json!(v)))
+        .collect();
     let on: Vec<&str> = g.projections().iter().map(|p| p.as_str()).collect();
     Ok(json!({"kind": g.kind(), "points": g.points(), "params": params, "on": on}))
 }
 fn gesture_from(v: &Value) -> Result<Gesture> {
-    let kind = v.get("kind").and_then(Value::as_str).ok_or_else(|| bad("a gesture needs a kind"))?;
-    let num = |x: &Value| x.as_f64().ok_or_else(|| bad("a gesture's numbers are numbers"));
+    let kind = v
+        .get("kind")
+        .and_then(Value::as_str)
+        .ok_or_else(|| bad("a gesture needs a kind"))?;
+    let num = |x: &Value| {
+        x.as_f64()
+            .ok_or_else(|| bad("a gesture's numbers are numbers"))
+    };
     let points = v
         .get("points")
         .and_then(Value::as_array)
@@ -270,7 +351,12 @@ fn gesture_from(v: &Value) -> Result<Gesture> {
         None => Vec::new(),
         Some(a) => a
             .iter()
-            .map(|p| ProjectionId::new(p.as_str().ok_or_else(|| bad("a gesture's projections are names"))?))
+            .map(|p| {
+                ProjectionId::new(
+                    p.as_str()
+                        .ok_or_else(|| bad("a gesture's projections are names"))?,
+                )
+            })
             .collect::<Result<Vec<_>>>()?,
     };
     let mut g = Gesture::new(kind, points).on(on);

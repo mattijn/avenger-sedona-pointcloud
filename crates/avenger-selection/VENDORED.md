@@ -57,7 +57,9 @@ The additions so far:
   producer's degree over given keys, such as stored preaggregation states,
   for a fading chart (FINDINGS.md 31).
 
-Edge cases in `tests/adversarial.rs` (FINDINGS.md 33).
+Edge cases in `tests/adversarial.rs` (FINDINGS.md 33); helpers the new
+tests share in `tests/support/`, and the new functions' argument helper in
+`src/udf.rs`.
 
 Measured by `cargo run --release -p lidar-probes --bin probe_selection -- <tile>`.
 

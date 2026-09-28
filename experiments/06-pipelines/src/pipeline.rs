@@ -67,9 +67,11 @@ impl Call {
     }
 }
 
-fn quote(s: &str) -> String {
-    if s.contains([' ', '"', '!']) || s.is_empty() {
-        format!("\"{}\"", s.replace('"', "\\\""))
+/// A word as the parser reads it back: quoted when it holds a space, a
+/// quote, a backslash or a `!`, with backslashes and double quotes escaped.
+pub fn quote(s: &str) -> String {
+    if s.contains([' ', '"', '\'', '\\', '!']) || s.is_empty() {
+        format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
     } else {
         s.to_string()
     }
@@ -283,5 +285,18 @@ impl Pipeline {
             optimized.display_indent(),
             displayable(physical.as_ref()).indent(true)
         ))
+    }
+}
+
+#[cfg(test)]
+mod quoting {
+    use super::{parse_pipeline, quote};
+
+    #[test]
+    fn a_quoted_word_reads_back_as_itself() {
+        for word in ["plain", "two words", r#"a "quote""#, r"back\slash", r#"{"k":"a\"b\\n"}"#, "it's", "a!b", ""] {
+            let calls = parse_pipeline(&format!("select {}", quote(word))).unwrap();
+            assert_eq!(calls[0].args, vec![word.to_string()], "{word}");
+        }
     }
 }
