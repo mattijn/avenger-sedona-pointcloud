@@ -29,6 +29,7 @@ without conversion is that both sides agree on Arrow 58.3 and DataFusion 54.
 | 7 | [charts driven by decisions](experiments/07-chart-decisions/) | Can a fast typed classifier (Jev) or an LLM drive a chart through the task vocabulary, from typed text and data changes, under a policy? |
 | 8 | [validating a pipeline](experiments/08-pipeline-validation/) | Can the step vocabulary be written once and validated from Rust, Python and elsewhere, how do GDAL and PDAL do it, and how fast is each layer? Grew [`avenger-validate`](crates/avenger-validate/), a pipeline validator for Rust, Python and wasm with its rules exported as CEL. |
 | 9 | [Altair on Avenger](experiments/09-altair-on-avenger/) | Can Avenger be Altair's engine, validating and drawing its charts in-process, with Altair's API generated from Avenger's own Vega-Lite types? A design and a spike, [`avenger-altair`](crates/avenger-altair/). |
+| 10 | [Mosaic flights](experiments/10-mosaic-flights/) | The selections added to [`avenger-selection`](crates/avenger-selection/) (lasso, soft brush, the split) on the 10M flights of Jon's `winit-mosaic-flights`, drawn headlessly with Avenger. |
 
 ![the class map](experiments/01-charts/images/top_class.png)
 
@@ -70,6 +71,7 @@ experiments/06-pipelines/       Vega expressions, SQL and chained pipelines
 experiments/07-chart-decisions/ charts driven by a decider (Jev, an LLM, rules)
 experiments/08-pipeline-validation/ how to validate a pipeline, and how fast
 experiments/09-altair-on-avenger/   Avenger as Altair's engine: the design
+experiments/10-mosaic-flights/      the selections on Mosaic's 10M flights
 crates/avenger-validate/        from experiment 8: the pipeline validator (Rust, Python, wasm, CEL)
 crates/avenger-altair/          from experiment 9: a spike of Avenger as Altair's engine
 crates/avenger-vegalite-spec/   from experiment 9: Jon's Vega-Lite types, carried with a JSON Schema export

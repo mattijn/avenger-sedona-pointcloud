@@ -13,6 +13,7 @@ members = [
     "experiments/05-coordinate-systems",
     "experiments/06-pipelines",
     "experiments/07-chart-decisions",
+    "experiments/10-mosaic-flights",
     "probes",
 ]
 

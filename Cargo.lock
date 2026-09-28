@@ -4568,6 +4568,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "lidar-flights"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "avenger-color",
+ "avenger-common",
+ "avenger-datafusion-preaggregate",
+ "avenger-guides",
+ "avenger-scales",
+ "avenger-scales-datafusion",
+ "avenger-scenegraph",
+ "avenger-selection",
+ "avenger-wgpu",
+ "datafusion",
+ "lidar-common",
+ "tokio",
+]
+
+[[package]]
 name = "lidar-lang"
 version = "0.1.0"
 dependencies = [
