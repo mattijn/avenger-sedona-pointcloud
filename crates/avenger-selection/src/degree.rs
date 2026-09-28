@@ -133,18 +133,21 @@ fn resolved(filter: &ResolvedFilter, width: f64) -> Result<Expr> {
 
 /// The least (fuzzy AND) or greatest (fuzzy OR) of the degrees; with none,
 /// 1 or 0, as `predicate::combine` gives true or false.
-fn fold(exprs: Vec<Expr>, least: bool) -> Expr {
-    exprs
-        .into_iter()
-        .reduce(|a, b| {
-            let pick_a = if least {
-                a.clone().lt_eq(b.clone())
-            } else {
-                a.clone().gt_eq(b.clone())
-            };
-            when(pick_a, a).otherwise(b).expect("a CASE with an ELSE")
-        })
-        .unwrap_or_else(|| lit(if least { 1.0 } else { 0.0 }))
+///
+/// One `least(…)` or `greatest(…)` over all of them, not nested
+/// `CASE WHEN a <= b THEN a ELSE b`: the CASE repeats each inner degree, so its
+/// size doubled with every contribution, and DataFusion's common subexpression
+/// elimination then refused the plan (the extracted CASE nullable in the
+/// physical plan and not in the logical one; experiment 10's window, with two
+/// brushes and a line brush). Degrees are never null, so both give the same.
+fn fold(mut exprs: Vec<Expr>, least: bool) -> Expr {
+    use datafusion::functions::core::expr_fn;
+    match exprs.len() {
+        0 => lit(if least { 1.0 } else { 0.0 }),
+        1 => exprs.remove(0),
+        _ if least => expr_fn::least(exprs),
+        _ => expr_fn::greatest(exprs),
+    }
 }
 
 fn contribution(c: &ResolvedContribution, width: f64) -> Result<Expr> {
@@ -184,6 +187,7 @@ fn contribution(c: &ResolvedContribution, width: f64) -> Result<Expr> {
         sizes,
         width: width.to_bits(),
         signature,
+        table: Default::default(),
     })
     .call(c.projections.clone()))
 }
@@ -215,14 +219,133 @@ fn key_degrees(c: &ResolvedContribution, k: &KeyDegrees) -> Result<Expr> {
         .otherwise(lit(0.0))?)
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
 struct CellDegree {
     boxes: Vec<Vec<(i64, i64)>>,
     /// Pixels per cell, per projection, as bits.
     sizes: Vec<u64>,
     width: u64,
     signature: Signature,
+    /// Each cell's degree near the boxes, built on first use (see `Table`).
+    table: std::sync::OnceLock<Option<Table>>,
 }
+impl std::fmt::Debug for CellDegree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CellDegree").field("boxes", &self.boxes.len()).field("sizes", &self.sizes).field("width", &self.width).finish()
+    }
+}
+// The table follows from the boxes, sizes and width, so it takes no part.
+impl PartialEq for CellDegree {
+    fn eq(&self, other: &Self) -> bool {
+        (&self.boxes, &self.sizes, self.width, &self.signature) == (&other.boxes, &other.sizes, other.width, &other.signature)
+    }
+}
+impl Eq for CellDegree {}
+impl std::hash::Hash for CellDegree {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        (&self.boxes, &self.sizes, self.width, &self.signature).hash(h);
+    }
+}
+
+/// The degree of every cell within the width of the boxes' bounding box,
+/// computed once, so a row costs a lookup instead of a distance to every box.
+/// A lasso is some two hundred boxes (runs of cells), and measuring each row
+/// against all of them took 450 ms over 10M rows where the predicate took 35.
+/// Built box by box: each box updates only the cells within the width of it.
+/// The distances are the same arithmetic as the loop, so the degrees are too.
+struct Table {
+    lo: Vec<i64>,
+    dims: Vec<usize>,
+    degrees: Vec<f64>,
+}
+/// Above this many cells the table is not built and each row is measured.
+const TABLE_CELLS: usize = 1 << 21;
+
+impl CellDegree {
+    fn sizes(&self) -> Vec<f64> {
+        self.sizes.iter().map(|s| f64::from_bits(*s)).collect()
+    }
+    /// The boxes' bounding box.
+    fn hull(&self) -> Vec<(i64, i64)> {
+        match self.boxes.first() {
+            None => Vec::new(),
+            Some(first) => (0..first.len())
+                .map(|d| {
+                    self.boxes.iter().fold((i64::MAX, i64::MIN), |(lo, hi), b| {
+                        (lo.min(b[d].0), hi.max(b[d].1))
+                    })
+                })
+                .collect(),
+        }
+    }
+    /// Squared distance in pixels from a row's cells to a box.
+    fn dist2(b: &[(i64, i64)], cells: impl Iterator<Item = i64>, sizes: &[f64]) -> f64 {
+        b.iter()
+            .zip(cells)
+            .zip(sizes)
+            .map(|((&(lo, hi), v), s)| {
+                (lo.saturating_sub(v).max(v.saturating_sub(hi)).max(0) as f64 * s).powi(2)
+            })
+            .sum()
+    }
+    fn degree_at(d2: f64, width: f64) -> f64 {
+        let d = d2.sqrt();
+        if d == 0.0 {
+            1.0
+        } else if width == 0.0 {
+            0.0
+        } else {
+            (1.0 - d / width).max(0.0)
+        }
+    }
+    fn table(&self) -> Option<&Table> {
+        self.table.get_or_init(|| self.build()).as_ref()
+    }
+    fn build(&self) -> Option<Table> {
+        let (sizes, width, hull) = (self.sizes(), f64::from_bits(self.width), self.hull());
+        if hull.is_empty() || sizes.iter().any(|s| !(*s > 0.0)) {
+            return None;
+        }
+        // Cells within the width of a box, per projection.
+        let reach: Vec<i64> = sizes.iter().map(|s| (width / s).ceil() as i64).collect();
+        let lo: Vec<i64> = hull.iter().zip(&reach).map(|(h, r)| h.0.checked_sub(*r)).collect::<Option<_>>()?;
+        let dims: Vec<usize> = hull.iter().zip(&reach).zip(&lo)
+            .map(|((h, r), l)| h.1.checked_add(*r).and_then(|hi| hi.checked_sub(*l)).and_then(|n| usize::try_from(n + 1).ok()))
+            .collect::<Option<_>>()?;
+        let cells = dims.iter().try_fold(1usize, |n, d| n.checked_mul(*d))?;
+        if cells > TABLE_CELLS {
+            return None;
+        }
+        let mut d2 = vec![f64::INFINITY; cells];
+        let mut at = vec![0i64; dims.len()];
+        for b in &self.boxes {
+            let from: Vec<i64> = b.iter().zip(&reach).zip(&lo).map(|((b, r), l)| (b.0 - r).max(*l)).collect();
+            let to: Vec<i64> = b.iter().zip(&reach).zip(lo.iter().zip(&dims)).map(|((b, r), (l, n))| (b.1 + r).min(l + *n as i64 - 1)).collect();
+            if from.iter().zip(&to).any(|(f, t)| f > t) {
+                continue;
+            }
+            at.copy_from_slice(&from);
+            'cells: loop {
+                let index = at.iter().zip(&lo).zip(&dims).fold(0usize, |i, ((a, l), n)| i * n + (a - l) as usize);
+                let d = Self::dist2(b, at.iter().copied(), &sizes);
+                if d < d2[index] {
+                    d2[index] = d;
+                }
+                // The next cell of the box's reach, the last projection fastest.
+                for k in (0..at.len()).rev() {
+                    if at[k] < to[k] {
+                        at[k] += 1;
+                        continue 'cells;
+                    }
+                    at[k] = from[k];
+                }
+                break;
+            }
+        }
+        let degrees = d2.into_iter().map(|d| if d.is_finite() { Self::degree_at(d, width) } else { 0.0 }).collect();
+        Some(Table { lo, dims, degrees })
+    }
+}
+
 impl ScalarUDFImpl for CellDegree {
     fn name(&self) -> &str {
         "avenger_selection_cell_degree"
@@ -235,56 +358,121 @@ impl ScalarUDFImpl for CellDegree {
     }
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
         let cols = columns::<Int64Type>(&args)?;
-        let sizes: Vec<f64> = self.sizes.iter().map(|s| f64::from_bits(*s)).collect();
-        let width = f64::from_bits(self.width);
-        // The boxes' bounding box: a row beyond the width from it is at 0.
-        let hull: Vec<(i64, i64)> = match self.boxes.first() {
-            None => Vec::new(),
-            Some(first) => (0..first.len())
-                .map(|d| {
-                    self.boxes.iter().fold((i64::MAX, i64::MIN), |(lo, hi), b| {
-                        (lo.min(b[d].0), hi.max(b[d].1))
-                    })
-                })
-                .collect(),
-        };
-        // Squared distance in pixels from row i's cells to a box.
-        let dist2 = |b: &[(i64, i64)], i: usize| -> f64 {
-            b.iter()
-                .zip(&cols)
-                .zip(&sizes)
-                .map(|((&(lo, hi), c), s)| {
-                    let v = c.value(i);
-                    (lo.saturating_sub(v).max(v.saturating_sub(hi)).max(0) as f64 * s).powi(2)
-                })
-                .sum()
-        };
-        let degree = |i: usize| -> f64 {
-            if hull.is_empty() || cols.iter().any(|c| c.is_null(i)) {
-                return 0.0;
-            }
-            let near = dist2(&hull, i);
-            if near > 0.0 && near >= width * width {
-                return 0.0;
-            }
-            let mut d2 = f64::INFINITY;
-            for b in &self.boxes {
-                d2 = d2.min(dist2(b, i));
-                if d2 == 0.0 {
-                    break;
+        let table = self.table();
+        let (sizes, width, hull) = (self.sizes(), f64::from_bits(self.width), self.hull());
+        let mut cells = vec![0i64; cols.len()];
+        let out: Float64Array = (0..args.number_rows)
+            .map(|i| {
+                if hull.is_empty() || cols.iter().any(|c| c.is_null(i)) {
+                    return Some(0.0);
                 }
-            }
-            let d = d2.sqrt();
-            if d == 0.0 {
-                1.0
-            } else if width == 0.0 {
-                0.0
-            } else {
-                (1.0 - d / width).max(0.0)
-            }
-        };
-        let out: Float64Array = (0..args.number_rows).map(|i| Some(degree(i))).collect();
+                cells.iter_mut().zip(&cols).for_each(|(v, c)| *v = c.value(i));
+                Some(match table {
+                    Some(t) => t.degree(&cells),
+                    None => self.measured(&cells, &sizes, width, &hull),
+                })
+            })
+            .collect();
         Ok(ColumnarValue::Array(Arc::new(out)))
+    }
+}
+
+impl CellDegree {
+    /// A row's degree measured against every box, without the table.
+    fn measured(&self, cells: &[i64], sizes: &[f64], width: f64, hull: &[(i64, i64)]) -> f64 {
+        // The boxes' bounding box: a row beyond the width from it is at 0.
+        let near = Self::dist2(hull, cells.iter().copied(), sizes);
+        if near > 0.0 && near >= width * width {
+            return 0.0;
+        }
+        let mut d2 = f64::INFINITY;
+        for b in &self.boxes {
+            d2 = d2.min(Self::dist2(b, cells.iter().copied(), sizes));
+            if d2 == 0.0 {
+                break;
+            }
+        }
+        Self::degree_at(d2, width)
+    }
+}
+impl Table {
+    /// A row's degree from the table: 0 outside it, beyond every box's reach.
+    fn degree(&self, cells: &[i64]) -> f64 {
+        let mut index = 0usize;
+        for ((c, l), n) in cells.iter().zip(&self.lo).zip(&self.dims) {
+            let k = c.saturating_sub(*l);
+            if k < 0 || k >= *n as i64 {
+                return 0.0;
+            }
+            index = index * n + k as usize;
+        }
+        self.degrees[index]
+    }
+}
+
+#[cfg(test)]
+mod table_tests {
+    use super::*;
+
+    /// The table gives, bit for bit, the degree the loop measures, on every
+    /// cell around random boxes (2D runs like a lasso's, and 3D voxels), with
+    /// uneven cell sizes and widths, including a width of 0.
+    #[test]
+    fn the_table_agrees_with_measuring_every_box() {
+        let mut s = 11u64;
+        let mut next = move |n: i64| {
+            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((s >> 33) % n as u64) as i64
+        };
+        for case in 0..40 {
+            let dims = if case % 2 == 0 { 2 } else { 3 };
+            let boxes: Vec<Vec<(i64, i64)>> = (0..1 + next(60))
+                .map(|_| (0..dims).map(|_| { let a = next(80) - 20; (a, a + next(12)) }).collect())
+                .collect();
+            // In 3D a small reach, so the table stays within `TABLE_CELLS`.
+            let sizes: Vec<f64> = (0..dims).map(|_| if dims == 2 { [1.0, 0.5, 2.5, 4.0][next(4) as usize] } else { [1.0, 2.5, 4.0][next(3) as usize] }).collect();
+            let width = if dims == 2 { [0.0f64, 3.0, 10.0, 60.0][next(4) as usize] } else { [0.0f64, 3.0, 10.0][next(3) as usize] };
+            let udf = CellDegree {
+                boxes,
+                sizes: sizes.iter().map(|s| s.to_bits()).collect(),
+                width: width.to_bits(),
+                signature: Signature::uniform(dims, vec![DataType::Int64], Volatility::Immutable),
+                table: Default::default(),
+            };
+            let t = udf.table().expect("a table for a small reach");
+            let hull = udf.hull();
+            // Every cell of the table and two beyond it on each side.
+            let (from, to): (Vec<i64>, Vec<i64>) = t.lo.iter().zip(&t.dims).map(|(l, n)| (l - 2, l + *n as i64 + 1)).unzip();
+            let mut at = from.clone();
+            'cells: loop {
+                let (a, b) = (t.degree(&at), udf.measured(&at, &sizes, width, &hull));
+                assert_eq!(a.to_bits(), b.to_bits(), "case {case}, cell {at:?}: table {a}, measured {b}");
+                for k in (0..dims).rev() {
+                    if at[k] < to[k] {
+                        at[k] += 1;
+                        continue 'cells;
+                    }
+                    at[k] = from[k];
+                }
+                break;
+            }
+        }
+    }
+
+    /// Beyond `TABLE_CELLS` there is no table, and each row is measured.
+    #[test]
+    fn a_reach_too_large_for_a_table_measures_each_row() {
+        let udf = CellDegree {
+            boxes: vec![vec![(0, 10), (0, 10), (0, 10)]],
+            sizes: vec![0.5f64.to_bits(); 3],
+            width: 60.0f64.to_bits(),
+            signature: Signature::uniform(3, vec![DataType::Int64], Volatility::Immutable),
+            table: Default::default(),
+        };
+        assert!(udf.table().is_none());
+        let (sizes, hull) = (udf.sizes(), udf.hull());
+        assert_eq!(udf.measured(&[5, 5, 5], &sizes, 60.0, &hull), 1.0);
+        assert_eq!(udf.measured(&[10 + 60, 5, 5], &sizes, 60.0, &hull), 1.0 - 30.0 / 60.0);
     }
 }
 

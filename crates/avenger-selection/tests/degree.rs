@@ -187,3 +187,63 @@ fn refuses_ranges_without_a_grid_and_bad_widths() {
         format!("{}", datafusion::logical_expr::lit(1.0))
     );
 }
+
+/// Experiment 10's window: its three panels' brushes (two set) and keys on
+/// a band of the third column, cross-filtered, the degree summed per display
+/// bin of that column. DataFusion refused this plan while degrees were combined
+/// as nested `CASE WHEN a <= b THEN a ELSE b`, which repeats each inner degree:
+/// common subexpression elimination gave `__common_expr_1` a different
+/// nullability in the physical plan than in the logical one.
+#[tokio::test]
+async fn a_summed_degree_of_two_brushes_and_keys_plans() {
+    use datafusion::{
+        arrow::datatypes::DataType,
+        datasource::MemTable,
+        functions::math::expr_fn::floor,
+        functions_aggregate::expr_fn::sum,
+        logical_expr::{cast, col, lit},
+    };
+    let brush = SelectionId::new("brush").unwrap();
+    let panel = |name: &str, domain: [f64; 2]| {
+        ProducerDefinition::new(brush.clone(), ProducerId::new(name).unwrap(), view(name),
+            [Projection::new(pid("value"), col(name)).unwrap()]).unwrap()
+            .with_pixel_grids([(pid("value"), linear(domain, [0.0, 600.0], 1.0))]).unwrap()
+    };
+    let (delay, time) = (panel("delay", [-60.0, 190.0]), panel("time", [0.0, 24.0]));
+    let band = || cast(floor(col("distance") / lit(200.0)), DataType::Int64);
+    let bands = ProducerDefinition::new(brush.clone(), ProducerId::new("series").unwrap(), view("series"),
+        [Projection::new(pid("band"), band()).unwrap()]).unwrap();
+    let s = SelectionSet::new([(brush.clone(), Resolution::Intersect)])
+        .unwrap()
+        .set(&delay, SelectionValue::tuple([(pid("value"), ValueTest::range(-18.0..44.0))]))
+        .unwrap()
+        .set(&time, SelectionValue::tuple([(pid("value"), ValueTest::range(8.0..16.0))]))
+        .unwrap()
+        .set(&bands, SelectionValue::tuple([(pid("band"), ValueTest::one_of([3_i64]))]))
+        .unwrap();
+    let cross = ConsumerFilter::new(view("distance"), SelectionFilter::cross_filter([&brush]));
+    let mut next = uniform(7);
+    let mut column = |lo: f64, hi: f64| numbers(&(0..2000).map(|_| lo + next() * (hi - lo)).collect::<Vec<_>>());
+    let rows = batch(vec![("delay", column(-60.0, 180.0)), ("time", column(0.0, 24.0)), ("distance", column(0.0, 5000.0))]);
+    let ctx = SessionContext::new();
+    ctx.register_table("flights", Arc::new(MemTable::try_new(rows.schema(), vec![vec![rows]]).unwrap())).unwrap();
+    let bin = cast(floor((col("distance") - lit(0.0)) / lit(200.0)), DataType::Int64);
+    let degree = cross.degree(&s, 60.0).unwrap();
+    let summed = ctx.table("flights").await.unwrap()
+        .filter(lit(true)).unwrap()
+        .aggregate(vec![bin.alias("bin")], vec![sum(degree.clone()).alias("v")])
+        .unwrap()
+        .collect()
+        .await
+        .expect("the plan runs");
+    // The same degrees, read row by row, add up to the same total.
+    let rows = ctx.table("flights").await.unwrap().select(vec![degree.alias("d")]).unwrap().collect().await.unwrap();
+    let total = |bs: &[RecordBatch], c: usize| -> f64 {
+        bs.iter().map(|b| {
+            let v = b.column(c).as_any().downcast_ref::<Float64Array>().unwrap();
+            (0..b.num_rows()).map(|i| v.value(i)).sum::<f64>()
+        }).sum()
+    };
+    let (a, b) = (total(&summed, 1), total(&rows, 0));
+    assert!(b > 0.0 && (a - b).abs() < 1e-9, "{a} summed against {b} row by row");
+}

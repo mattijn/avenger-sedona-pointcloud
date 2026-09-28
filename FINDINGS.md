@@ -809,6 +809,42 @@ from experiment 7's Rust (the Float32 voxel edges of finding 28), in 133 ms.
 **Measure:** `cargo run --release -p lidar-flights --bin flights -- data/flights-10m.parquet`
 and `cargo run --release -p lidar-cloudlasso --bin cloudlasso -- $T`.
 
+### 36. The soft brush in a window: two bugs, both fixed
+
+Experiment 10's window (`flights_live`) puts every selection under the mouse
+at once, which the figures never did, and the soft brush broke twice there.
+
+**Beside a line brush or timebox, the plan was refused.** With two brushes
+and the bands of a series test set, DataFusion stopped the degree query with
+an internal error: "Physical input schema should be the same as the one
+converted from logical input schema", `__common_expr_1` nullable in the
+physical plan and not in the logical one. `degree()` combined contributions as
+nested `CASE WHEN a <= b THEN a ELSE b`, which repeats each inner degree, so
+the expression doubled with every contribution; common subexpression
+elimination extracted a CASE whose nullability the logical and the physical
+planner then judged differently. Two range degrees and a key test were the
+least that failed; any two of them planned. It is now one `least(…)` or
+`greatest(…)` over all contributions, the same values since degrees are never
+null. The inconsistency itself is DataFusion's and is not reported upstream.
+
+**Beside a lasso, an update took 1.5 s.** Measured apart, the lasso's
+predicate took 35 ms a histogram and its degree 456 ms: for each row near the
+lasso, the degree measured the distance to each of its 190 runs of cells. It
+now builds, on first use, a table of every cell's degree within the width of
+the runs' bounding box, each run updating only the cells within its reach, so
+a row costs a lookup; beyond 2M cells it measures each row as before. The
+table's degrees are the loop's bit for bit (tested over random 2D and 3D
+boxes). The lasso's degree went from 456 to 62–64 ms a histogram (81 ms
+beside a brush), `probe_selection`'s soft lasso on the tile from 114 to 65 ms,
+and the split's fade over the points from 122 to 74 ms. Every count and check
+the probe prints is unchanged, and experiment 10's figures are byte-identical.
+
+**Measure:** `cargo test --release -p avenger-selection` (the regression test
+`a_summed_degree_of_two_brushes_and_keys_plans` fails on the old `fold`; the
+table tests are in `degree.rs`), `cargo run --release -p lidar-probes --bin probe_selection`
+("soft lasso"), and `cargo run --release -p lidar-flights --bin flights_live -- data/flights-10m.parquet --snapshots out/flights_live`
+(step 7, every selection at once with the soft brush).
+
 ## What worked well
 
 Worth saying, because it is the part that does not generate issues:

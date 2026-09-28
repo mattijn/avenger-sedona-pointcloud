@@ -32,7 +32,9 @@ The additions so far:
   Float64 degree of interest in [0, 1] beside the predicate, for soft
   selection. 1 exactly where the predicate holds, falling linearly to 0 at a
   width in logical pixels, measured from the row's cell on gridded
-  projections (FINDINGS.md 26).
+  projections (FINDINGS.md 26). Contributions combine through one `least` or
+  `greatest`, and a range degree looks each row up in a table of its cells'
+  degrees, built on first use (FINDINGS.md 36).
 
 - **`SeriesTest`** (`src/series.rs`, `tests/series.rs`): a line brush
   (`Crosses`) and a timebox (`Within`) over a whole series, run as one query
