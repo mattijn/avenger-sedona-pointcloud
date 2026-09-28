@@ -9,11 +9,17 @@ publish.workspace = true
 name = "cloudlasso"
 path = "src/main.rs"
 
+[[bin]]
+name = "cloudlasso_live"
+path = "src/bin/cloudlasso_live.rs"
+
 [dependencies]
 lidar-common.workspace = true
 arrow.workspace = true
 datafusion.workspace = true
 tokio.workspace = true
+async-trait.workspace = true
+winit.workspace = true
 avenger-color.workspace = true
 avenger-common.workspace = true
 avenger-guides.workspace = true
@@ -22,3 +28,7 @@ avenger-scales-datafusion.workspace = true
 avenger-scenegraph.workspace = true
 avenger-selection.workspace = true
 avenger-wgpu.workspace = true
+avenger-app.workspace = true
+avenger-eventstream.workspace = true
+avenger-geometry.workspace = true
+avenger-winit-wgpu.workspace = true

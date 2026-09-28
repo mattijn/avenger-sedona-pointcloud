@@ -90,3 +90,53 @@ tested, as a line across the gap.
 
 CloudLasso needs three dimensions, and the flights have two that suit it at
 most; it is drawn on the LiDAR tile in [experiment 11](../11-cloudlasso/).
+
+## The window
+
+`flights_live` puts every selection above under the mouse, on the same 10M
+flights: the density panel and the lines on the left, the three histograms
+on the right. Each histogram shows the flights the other panels' selections
+leave, queried again through `avenger-selection` while you drag.
+
+```sh
+./scripts/live_10_11.sh 10          # or:
+cargo run --release -p lidar-flights --bin flights_live -- data/flights-10m.parquet
+```
+
+| Gesture | Selects |
+|---|---|
+| drag a histogram | a brush on that column; the panel itself tints its bars by the brush instead of filtering them |
+| draw on the density | a lasso (`SelectionValue::polygon`) |
+| drag across the lines | a line brush: the bands whose line crosses the segment |
+| T, then drag the lines (or Shift-drag) | a timebox: the bands whose line stays inside it |
+| S | the soft brush on or off: light blue counts every flight by its degree, over 60 px |
+| click or right-click a panel | clears that panel's selection; Esc clears all |
+
+[![The window, recorded headlessly](images/flights_live.png)](video/flights_live.mp4)
+
+[video/flights_live.mp4](video/flights_live.mp4) (37 s) goes through each of
+them: two brushes, a right click, the soft brush, the lasso, a line brush, and a
+timebox together with a brush. It is recorded headlessly with `--tour`, which
+moves a drawn pointer through the window's own press, motion and release at 30
+frames a second and queries every third frame while dragging, about as often
+as the window's queries return. `--snapshots` checks the same gestures as seven
+PNGs; neither involves capturing a window.
+
+```sh
+cargo run --release -p lidar-flights --bin flights_live -- data/flights-10m.parquet --snapshots out/flights_live
+cargo run --release -p lidar-flights --bin flights_live -- data/flights-10m.parquet --tour out/flights_tour
+ffmpeg -framerate 30 -i out/flights_tour/frame_%05d.png -vf scale=1440:-2 -c:v libx264 -preset slow -crf 28 \
+  -pix_fmt yuv420p -movflags +faststart experiments/10-mosaic-flights/video/flights_live.mp4
+```
+
+Measured with `--snapshots` on an Apple Silicon laptop, 28 Sep 2026: the
+flights load in 0.2 s; one update, all three histograms queried side by side,
+takes 34–111 ms (a brush 59 ms, the lasso 87 ms, the soft brush 92 ms, the
+timebox with a brush 111 ms), and 324 ms with the lasso, a brush and a line
+brush set and the soft brush on.
+
+The window found two bugs in the soft brush, both fixed in
+`avenger-selection` ([FINDINGS.md](../../FINDINGS.md) 36): beside a line brush
+or timebox, DataFusion refused the degree query with an internal error, and
+beside the lasso an update took 1.5 s. Step 7 of `--snapshots` sets every
+kind of selection at once with the soft brush on, and checks both.

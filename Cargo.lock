@@ -4507,17 +4507,23 @@ name = "lidar-cloudlasso"
 version = "0.1.0"
 dependencies = [
  "arrow",
+ "async-trait",
+ "avenger-app",
  "avenger-color",
  "avenger-common",
+ "avenger-eventstream",
+ "avenger-geometry",
  "avenger-guides",
  "avenger-scales",
  "avenger-scales-datafusion",
  "avenger-scenegraph",
  "avenger-selection",
  "avenger-wgpu",
+ "avenger-winit-wgpu",
  "datafusion",
  "lidar-common",
  "tokio",
+ "winit",
 ]
 
 [[package]]
@@ -4590,18 +4596,24 @@ name = "lidar-flights"
 version = "0.1.0"
 dependencies = [
  "arrow",
+ "async-trait",
+ "avenger-app",
  "avenger-color",
  "avenger-common",
  "avenger-datafusion-preaggregate",
+ "avenger-eventstream",
+ "avenger-geometry",
  "avenger-guides",
  "avenger-scales",
  "avenger-scales-datafusion",
  "avenger-scenegraph",
  "avenger-selection",
  "avenger-wgpu",
+ "avenger-winit-wgpu",
  "datafusion",
  "lidar-common",
  "tokio",
+ "winit",
 ]
 
 [[package]]
