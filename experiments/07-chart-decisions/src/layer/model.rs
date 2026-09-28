@@ -278,11 +278,21 @@ pub fn lasso_take(f: &Frame, poly: &[[f64; 2]], tilt: Option<(f64, f64)>, struct
     (keys, n_in, regions)
 }
 
-/// Whether segments p1-p2 and q1-q2 cross (or touch).
+/// Whether segments p1-p2 and q1-q2 cross (or touch). Collinear segments,
+/// and a segment that is a point, meet only where a point lies within the
+/// other's extent; the orientation signs alone would take any two on one
+/// line to meet.
 pub fn crosses(p1: [f64; 2], p2: [f64; 2], q1: [f64; 2], q2: [f64; 2]) -> bool {
     let o = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    let within = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
+        c[0] >= a[0].min(b[0]) && c[0] <= a[0].max(b[0]) && c[1] >= a[1].min(b[1]) && c[1] <= a[1].max(b[1])
+    };
     let (d1, d2, d3, d4) = (o(q1, q2, p1), o(q1, q2, p2), o(p1, p2, q1), o(p1, p2, q2));
-    (d1 * d2 <= 0.0) && (d3 * d4 <= 0.0)
+    (d1 * d2 < 0.0 && d3 * d4 < 0.0)
+        || (d1 == 0.0 && within(q1, q2, p1))
+        || (d2 == 0.0 && within(q1, q2, p2))
+        || (d3 == 0.0 && within(p1, p2, q1))
+        || (d4 == 0.0 && within(p1, p2, q2))
 }
 
 /// Whether a series (its vertices in data units) meets a series predicate.

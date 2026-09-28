@@ -459,10 +459,36 @@ the source rows, with cross-filtering and a split for preaggregation. It
 speaks equality, sets and ranges, optionally on a pixel grid, so keys and
 interval brushes fit it as it is; the other five do not. This repo carries a
 copy (`crates/avenger-selection`, [VENDORED.md](crates/avenger-selection/VENDORED.md))
-to extend it towards them, one kind at a time, starting with the lasso.
+extended until it expresses all of them (findings 25–33).
 Measured in this cloud container (4 cores, Linux), which decodes LAZ about
 five times slower than the Mac above (`bench_window`: full scan 5.4 s against
 1.1 s), so compare the rows with each other rather than with other tables.
+
+Where it stands, from the table `probe_selection` ends with: experiment 7's
+algorithm as plain Rust over the same rows, against the crate through
+DataFusion. Single runs; they move by 10–30 % between runs.
+
+| Selection | Data | Rust | avenger-selection | Agree |
+|---|---|---|---|---|
+| lasso | 17.3M points, flat map | 196 ms | 208 ms | yes, ±1 cell at the edge |
+| brush | 17.3M points | 130 ms | 194 ms | yes, 670,619 points each |
+| soft brush | 17.3M points | 170 ms | 177 ms | yes, within a cell (≤ 0.070) |
+| soft lasso | 17.3M points | 917 ms | 275 ms | not compared here; tests: degree 1 = predicate |
+| lasso | 4.2M points, tilted view | 46 ms | 57 ms | yes, ±1 cell at the edge |
+| CloudLasso | 4.2M points, tilted view | 148 ms | 302 ms | 0.09 % apart (Float32 voxel edges) |
+| line brush, timebox, soft ones | 4 lines, 207 rows | 2–8 µs | 1.8–2.3 ms | yes |
+| redraw with the split: lasso | 17.3M points | — | 5.3 ms (direct 299 ms) | yes |
+| redraw with the split: fade | 17.3M points | — | 8.6 ms (direct 354 ms) | yes |
+| redraw with the split: CloudLasso | 4.2M points | — | 2.8 ms (direct 140 ms) | yes |
+| lasso from the file, with its bounding box | 105 MB tile | — | 635 ms (lasso alone 3.3 s) | yes |
+
+Read it this way. On rows already in memory, the crate costs about what a
+Rust loop costs (0.9–1.5×; faster for the soft lasso, whose Rust version
+measures the distance to the outline point by point). On the small series
+table a query's fixed cost dominates. What the crate adds that the loops do
+not have: the same selection as a predicate over any relation that shares
+the columns, cross-filtering, a log, and the split, which makes a redraw
+about 50 times cheaper than the direct query.
 
 ### 25. A lasso fits the crate as tuples, but its predicate repeated the cell expression
 
@@ -703,6 +729,25 @@ compared as sets, since the crate keeps a set in its own order. The log lines
 are 2,411 bytes against 638 for the `select` lines, most of it JSON quoting.
 Experiment 6's generic pipeline has no selection of its own, so nothing was
 wired there. **Measure:** `cargo run --release -p lidar-decide --bin layer_roundtrip`.
+
+### 33. An adversarial pass: five edge cases, all broken, all fixed
+
+Tests written to break the additions (`tests/adversarial.rs`) failed, all
+five:
+
+| Case | Was | Now |
+|---|---|---|
+| a line brush collinear with a series, but apart from it | taken as crossing | not crossing; overlapping or touching still crosses |
+| a line brush of zero length (a point) | took every series whose line, extended, passed through it | only the series through the point |
+| a lasso partly outside a clamped plot | refused (a cell beyond the plot "did not survive the kernel") | cells beyond the plot are left out; data there is clamped into the edge cells, which count as usual |
+| a lasso a billion pixels tall | built a billion rows of cells (over 60 s, then killed) | refused over a million rows, at once |
+| partial degrees on a value without a gesture | dropped by the log without a word | refused: they are redrawn from a gesture |
+
+The first two were in experiment 7's own `crosses` as well
+(`layer/model.rs`), which the crate had copied: the orientation test alone
+takes any two segments on one line to meet. Both now check that a collinear
+point lies within the other segment. **Measure:**
+`cargo test --release -p avenger-selection --test adversarial`.
 
 
 ## What worked well

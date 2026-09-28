@@ -256,9 +256,10 @@ impl Validator {
                     None => issues.push(issue(1, Some(a.name.clone()), None, format!("`{}` needs its {} ({})", c.name, a.name, a.ty.name()))),
                 }
             }
-            for (k, _) in c.args.iter().enumerate().skip(step.positional.len()) {
-                issues.push(issue(1, None, c.arg_spans.get(k).copied(), format!("`{}` takes {} positional argument(s), not {}", c.name, step.positional.len(), c.args.len())));
-                break;
+            // One issue for all the extra arguments, at the first of them.
+            let k = step.positional.len();
+            if c.args.len() > k {
+                issues.push(issue(1, None, c.arg_spans.get(k).copied(), format!("`{}` takes {} positional argument(s), not {}", c.name, k, c.args.len())));
             }
             for (k, v) in &c.flags {
                 match step.flags.get(k) {

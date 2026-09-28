@@ -155,6 +155,9 @@ fn value_json(v: &SelectionValue) -> Result<Value> {
     if let Some(g) = v.gesture() {
         return Ok(json!({"drawn": gesture_json(g)?}));
     }
+    if v.partial().is_some() {
+        return Err(bad("partial degrees are redrawn from their gesture, and this value has none"));
+    }
     let tuples = v
         .as_tuples()
         .iter()

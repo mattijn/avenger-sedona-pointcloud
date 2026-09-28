@@ -15,7 +15,7 @@ use datafusion::{
     arrow::{
         array::{Array, BooleanArray, Float64Array},
         compute::cast,
-        datatypes::DataType,
+        datatypes::{DataType, Float64Type},
     },
     common::{Result as DFResult, ScalarValue},
     functions_aggregate::expr_fn::sum,
@@ -107,7 +107,9 @@ impl SeriesTest {
         }
         let f64 = |e: Expr| datafusion::logical_expr::cast(e, DataType::Float64);
         let rows = rows.select(vec![key.alias("k"), f64(x).alias("x"), f64(y).alias("y")])?;
-        let (agg, degree): (DataFrame, Box<dyn Fn(&[f64]) -> f64>) = match self {
+        // Per series: a = crossed (line brush) or vertices in the window
+        // (timebox); b = nearest vertex's distance, or those also in the box.
+        let agg = match self {
             SeriesTest::Crosses { from, to } => {
                 let prev = |c: &str| {
                     lag(col(c), Some(1), None).partition_by(vec![col("k")]).order_by(vec![col("x").sort(true, false)]).build()
@@ -117,7 +119,7 @@ impl SeriesTest {
                     scale: scale.map(f64::to_bits),
                     signature: Signature::uniform(2, vec![DataType::Float64], Volatility::Immutable),
                 });
-                let agg = rows
+                rows
                     .window(vec![prev("x")?.alias("px"), prev("y")?.alias("py")])?
                     .aggregate(
                         vec![col("k")],
@@ -125,15 +127,13 @@ impl SeriesTest {
                             bool_or(crosses(*from, *to).call(vec![col("px"), col("py"), col("x"), col("y")])).alias("a"),
                             min(near.call(vec![col("x"), col("y")])).alias("b"),
                         ],
-                    )?;
-                (agg, Box::new(move |v: &[f64]| if v[0] > 0.0 { 1.0 } else { (1.0 - v[1] / width).max(0.0) }))
+                    )?
             }
             SeriesTest::Within { x, y } => {
                 let in_x = col("x").between(lit(x.0), lit(x.1));
                 let in_y = col("y").between(lit(y.0), lit(y.1));
                 let one = |c: Expr| when(c, lit(1.0)).otherwise(lit(0.0));
-                let agg = rows.aggregate(vec![col("k")], vec![sum(one(in_x.clone())?).alias("a"), sum(one(in_x.and(in_y))?).alias("b")])?;
-                (agg, Box::new(|v: &[f64]| if v[0] > 0.0 { v[1] / v[0] } else { 0.0 }))
+                rows.aggregate(vec![col("k")], vec![sum(one(in_x.clone())?).alias("a"), sum(one(in_x.and(in_y))?).alias("b")])?
             }
         };
         let mut out = Vec::new();
@@ -145,7 +145,13 @@ impl SeriesTest {
             let (a, bb) = (num("a")?, num("b")?);
             let k = b.column_by_name("k").unwrap();
             for i in 0..b.num_rows() {
-                let d = degree(&[if a.is_null(i) { 0.0 } else { a.value(i) }, if bb.is_null(i) { f64::INFINITY } else { bb.value(i) }]);
+                let (a, b) = (if a.is_null(i) { 0.0 } else { a.value(i) }, if bb.is_null(i) { f64::INFINITY } else { bb.value(i) });
+                let d = match self {
+                    SeriesTest::Crosses { .. } if a > 0.0 => 1.0,
+                    SeriesTest::Crosses { .. } => (1.0 - b / width).max(0.0),
+                    SeriesTest::Within { .. } if a > 0.0 => b / a,
+                    SeriesTest::Within { .. } => 0.0,
+                };
                 if d > 0.0 {
                     out.push((ScalarValue::try_from_array(k, i)?, d));
                 }
@@ -213,14 +219,8 @@ impl ScalarUDFImpl for Crosses {
     }
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
         let rows = args.number_rows;
-        let cols = args
-            .args
-            .iter()
-            .map(|a| Ok(cast(&a.clone().into_array(rows)?, &DataType::Float64)?))
-            .collect::<DFResult<Vec<_>>>()?;
-        let c: Vec<&Float64Array> = cols.iter().map(|a| a.as_any().downcast_ref::<Float64Array>().unwrap()).collect();
+        let c = crate::cell_boxes::columns::<Float64Type>(&args)?;
         let [q1x, q1y, q2x, q2y] = self.segment.map(f64::from_bits);
-        let o = |a: [f64; 2], b: [f64; 2], p: [f64; 2]| (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
         let (q1, q2) = ([q1x, q1y], [q2x, q2y]);
         let out: BooleanArray = (0..rows)
             .map(|i| {
@@ -228,7 +228,7 @@ impl ScalarUDFImpl for Crosses {
                     return Some(false);
                 }
                 let (p1, p2) = ([c[0].value(i), c[1].value(i)], [c[2].value(i), c[3].value(i)]);
-                Some(o(q1, q2, p1) * o(q1, q2, p2) <= 0.0 && o(p1, p2, q1) * o(p1, p2, q2) <= 0.0)
+                Some(segments_meet(p1, p2, q1, q2))
             })
             .collect();
         Ok(ColumnarValue::Array(Arc::new(out)))
@@ -254,8 +254,8 @@ impl ScalarUDFImpl for Distance {
     }
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
         let rows = args.number_rows;
-        let cols = args.args.iter().map(|a| Ok(cast(&a.clone().into_array(rows)?, &DataType::Float64)?)).collect::<DFResult<Vec<_>>>()?;
-        let (x, y) = (cols[0].as_any().downcast_ref::<Float64Array>().unwrap(), cols[1].as_any().downcast_ref::<Float64Array>().unwrap());
+        let cols = crate::cell_boxes::columns::<Float64Type>(&args)?;
+        let (x, y) = (&cols[0], &cols[1]);
         let [ax, ay, bx, by] = self.segment.map(f64::from_bits);
         let [sx, sy] = self.scale.map(f64::from_bits);
         let (ax, ay, bx, by) = (ax * sx, ay * sy, bx * sx, by * sy);
@@ -272,4 +272,23 @@ impl ScalarUDFImpl for Distance {
             .collect();
         Ok(ColumnarValue::Array(Arc::new(out)))
     }
+}
+
+/// Whether segments p1–p2 and q1–q2 share a point, touching included. The
+/// orientation test alone takes collinear segments to meet wherever they
+/// lie on the same line; those, and a segment that is a point, meet only
+/// where a point lies within the other segment's extent.
+pub(crate) fn segments_meet(p1: [f64; 2], p2: [f64; 2], q1: [f64; 2], q2: [f64; 2]) -> bool {
+    let o = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    let within = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| {
+        c[0] >= a[0].min(b[0]) && c[0] <= a[0].max(b[0]) && c[1] >= a[1].min(b[1]) && c[1] <= a[1].max(b[1])
+    };
+    let (d1, d2, d3, d4) = (o(q1, q2, p1), o(q1, q2, p2), o(p1, p2, q1), o(p1, p2, q2));
+    if d1 * d2 < 0.0 && d3 * d4 < 0.0 {
+        return true;
+    }
+    (d1 == 0.0 && within(q1, q2, p1))
+        || (d2 == 0.0 && within(q1, q2, p2))
+        || (d3 == 0.0 && within(p1, p2, q1))
+        || (d4 == 0.0 && within(p1, p2, q2))
 }

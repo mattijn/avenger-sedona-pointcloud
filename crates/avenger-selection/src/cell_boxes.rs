@@ -4,18 +4,18 @@
 //! tuples, each a range of Int64 cells on every projection — what a lasso
 //! becomes through `SelectionValue::polygon` — compiles by default to an OR
 //! of ANDs in which every term repeats its projection's cell expression.
-//! DataFusion does not share those across the branches of an OR, so a
-//! lasso of 80 rows of cells evaluated 480 pixel-cell calls per row.
-//! Here each projection is evaluated once, and the row is looked up in the
-//! boxes. Membership is the same: a null cell matches no box.
+//! DataFusion does not share those across the branches of an OR, so the cell
+//! function would run six times per tuple and row (FINDINGS.md 25). Here
+//! each projection is evaluated once, and the row is looked up in the boxes.
+//! Membership is the same: a null cell matches no box.
 
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use datafusion::{
     arrow::{
-        array::{Array, BooleanArray, Int64Array},
+        array::{Array, BooleanArray},
         compute::cast,
-        datatypes::DataType,
+        datatypes::{DataType, Int64Type},
     },
     common::{Result as DFResult, ScalarValue},
     logical_expr::{ColumnarValue, Expr, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature, Volatility},
@@ -50,6 +50,17 @@ pub(crate) fn boxes(tuples: &[Tuple]) -> Option<Vec<Vec<(i64, i64)>>> {
         .collect()
 }
 
+/// A UDF's arguments cast to one primitive type, one array per argument.
+pub(crate) fn columns<T: datafusion::arrow::datatypes::ArrowPrimitiveType>(
+    args: &ScalarFunctionArgs,
+) -> datafusion::common::Result<Vec<datafusion::arrow::array::PrimitiveArray<T>>> {
+    use datafusion::arrow::array::AsArray;
+    args.args
+        .iter()
+        .map(|a| Ok(cast(&a.clone().into_array(args.number_rows)?, &T::DATA_TYPE)?.as_primitive::<T>().clone()))
+        .collect()
+}
+
 pub(crate) fn predicate(boxes: Vec<Vec<(i64, i64)>>, projections: &[Expr]) -> Expr {
     let n = projections.len();
     // Index on a dimension where every box is one cell wide, if there is one.
@@ -80,12 +91,7 @@ impl ScalarUDFImpl for CellBoxes {
     }
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
         let rows = args.number_rows;
-        let cols = args
-            .args
-            .iter()
-            .map(|a| Ok(cast(&a.clone().into_array(rows)?, &DataType::Int64)?))
-            .collect::<DFResult<Vec<_>>>()?;
-        let cols: Vec<&Int64Array> = cols.iter().map(|c| c.as_any().downcast_ref::<Int64Array>().unwrap()).collect();
+        let cols = columns::<Int64Type>(&args)?;
         let inside = |b: &Vec<(i64, i64)>, i: usize| b.iter().zip(&cols).all(|((lo, hi), c)| (*lo..=*hi).contains(&c.value(i)));
         let index: Option<HashMap<i64, Vec<usize>>> = self.key.map(|d| {
             let mut m: HashMap<i64, Vec<usize>> = HashMap::new();

@@ -57,6 +57,8 @@ The additions so far:
   producer's degree over given keys, such as stored preaggregation states,
   for a fading chart (FINDINGS.md 31).
 
+Edge cases in `tests/adversarial.rs` (FINDINGS.md 33).
+
 Measured by `cargo run --release -p lidar-probes --bin probe_selection -- <tile>`.
 
 Regenerate the diff against a checkout of upstream at the pin:

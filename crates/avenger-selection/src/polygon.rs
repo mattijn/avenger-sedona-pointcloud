@@ -20,7 +20,10 @@ impl SelectionValue {
     /// options beyond `clamp` and `round: false`.
     ///
     /// One tuple per run of cells, so the size of the predicate grows with
-    /// the polygon's height in cells and with its concavity.
+    /// the polygon's height in cells and with its concavity; a polygon over
+    /// more than a million rows of cells is refused. On a clamped grid, where
+    /// data beyond the plot lands in its edge cells, only the cells data can
+    /// reach are listed.
     pub fn polygon(producer: &ProducerDefinition, u: &ProjectionId, v: &ProjectionId, ring: &[[f64; 2]]) -> Result<Self> {
         let (u, v) = ((u, grid_of(producer, u)?), (v, grid_of(producer, v)?));
         if ring.len() < 3 || ring.iter().flatten().any(|c| !c.is_finite()) {
@@ -31,8 +34,12 @@ impl SelectionValue {
         let (gu, gv) = (Inverse::new(u.1)?, Inverse::new(v.1)?);
         let lo = ring.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
         let hi = ring.iter().map(|p| p[1]).fold(f64::NEG_INFINITY, f64::max);
+        let (first, last) = (gv.first_centre(lo), gv.last_centre(hi));
+        if last.saturating_sub(first) >= MAX_ROWS {
+            return Err(Error::InvalidValue(format!("a polygon over {} rows of cells; at most {MAX_ROWS}", last.saturating_sub(first) + 1)));
+        }
         let mut tuples = Vec::new();
-        for row in gv.first_centre(lo)..=gv.last_centre(hi) {
+        for row in first..=last {
             let y = gv.centre(row);
             let mut xs: Vec<f64> = Vec::new();
             for i in 0..ring.len() {
@@ -105,6 +112,8 @@ fn grid_of<'a>(producer: &'a ProducerDefinition, id: &ProjectionId) -> Result<&'
         .ok_or_else(|| Error::InvalidDefinition(format!("{id} needs a pixel grid in the producer's definition")))
 }
 
+const MAX_ROWS: i64 = 1 << 20;
+
 // Decreasing scales map the first cell to the larger value.
 fn incl(a: &ScalarValue, b: &ScalarValue, lower: bool) -> std::ops::Bound<ScalarValue> {
     let a_first = a.partial_cmp(b).is_some_and(|o| o.is_le());
@@ -119,6 +128,8 @@ struct Inverse {
     origin: f64,
     size: f64,
     data_type: DataType,
+    /// On a clamped grid, the cells the data can reach.
+    clamp: Option<(i64, i64)>,
 }
 impl Inverse {
     fn new(grid: &PixelGrid) -> Result<Self> {
@@ -142,18 +153,33 @@ impl Inverse {
             };
             Ok((f(0)?, f(1)?))
         };
-        Ok(Self { d: pair(grid.domain())?, r: pair(grid.range())?, origin: grid.origin(), size: grid.size(), data_type })
+        let clamped = grid.options().get("clamp").is_some_and(|c| {
+            ScalarValue::try_from_array(&c.0, 0).is_ok_and(|v| v == ScalarValue::Boolean(Some(true)))
+        });
+        let clamp = if clamped {
+            let cell = |i| -> Result<i64> {
+                grid.cell(&ScalarValue::try_from_array(grid.domain(), i)?)?.ok_or_else(|| invalid("have a domain the kernel maps"))
+            };
+            let (a, b) = (cell(0)?, cell(1)?);
+            Some((a.min(b), a.max(b)))
+        } else {
+            None
+        };
+        Ok(Self { d: pair(grid.domain())?, r: pair(grid.range())?, origin: grid.origin(), size: grid.size(), data_type, clamp })
     }
     fn centre(&self, cell: i64) -> f64 {
         self.origin + (cell as f64 + 0.5) * self.size
     }
-    /// The first cell whose centre lies beyond a pixel coordinate.
+    /// The first cell whose centre lies beyond a pixel coordinate, within
+    /// the cells the data reaches.
     fn first_centre(&self, p: f64) -> i64 {
-        ((p - self.origin) / self.size - 0.5).floor() as i64 + 1
+        let c = ((p - self.origin) / self.size - 0.5).floor() as i64 + 1;
+        self.clamp.map_or(c, |(lo, _)| c.max(lo))
     }
     /// The last cell whose centre lies before it.
     fn last_centre(&self, p: f64) -> i64 {
-        ((p - self.origin) / self.size - 0.5).ceil() as i64 - 1
+        let c = ((p - self.origin) / self.size - 0.5).ceil() as i64 - 1;
+        self.clamp.map_or(c, |(_, hi)| c.min(hi))
     }
     /// A value at the cell's centre, checked against the grid's kernel.
     fn value(&self, cell: i64, grid: &PixelGrid) -> Result<ScalarValue> {

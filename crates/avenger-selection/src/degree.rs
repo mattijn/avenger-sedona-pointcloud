@@ -21,9 +21,8 @@ use std::sync::Arc;
 
 use datafusion::{
     arrow::{
-        array::{Array, Float64Array, Int64Array},
-        compute::cast,
-        datatypes::DataType,
+        array::{Array, Float64Array},
+        datatypes::{DataType, Int64Type},
     },
     common::Result as DFResult,
     logical_expr::{
@@ -174,12 +173,7 @@ impl ScalarUDFImpl for CellDegree {
     }
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DFResult<ColumnarValue> {
         let rows = args.number_rows;
-        let cols = args
-            .args
-            .iter()
-            .map(|a| Ok(cast(&a.clone().into_array(rows)?, &DataType::Int64)?))
-            .collect::<DFResult<Vec<_>>>()?;
-        let cols: Vec<&Int64Array> = cols.iter().map(|c| c.as_any().downcast_ref::<Int64Array>().unwrap()).collect();
+        let cols = crate::cell_boxes::columns::<Int64Type>(&args)?;
         let sizes: Vec<f64> = self.sizes.iter().map(|s| f64::from_bits(*s)).collect();
         let width = f64::from_bits(self.width);
         let hull: Vec<(i64, i64)> = match self.boxes.first() {
