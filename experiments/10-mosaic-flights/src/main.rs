@@ -1,7 +1,8 @@
 //! Mosaic's Cross-Filter Flights (10M), the dataset of Jon's
 //! `examples/winit-mosaic-flights`, drawn headlessly with Avenger, with the
 //! selections this repo added to `avenger-selection`: a brush, a lasso on a
-//! density panel, and a soft brush. Each figure's histograms come from the
+//! density panel, a soft brush, and a line brush and a timebox over series
+//! the figures aggregate. Each figure's histograms come from the
 //! crate's predicates over the 10M rows; the run ends with the time each
 //! redraw takes directly and through the preaggregation split.
 //!
@@ -21,14 +22,14 @@ use avenger_scenegraph::marks::{group::SceneGroup, line::SceneLineMark, mark::Sc
 use avenger_scenegraph::scene_graph::SceneGraph;
 use avenger_selection::{
     ConsumerFilter, EmptySelection, PixelGrid, ProducerDefinition, ProducerId, Projection, ProjectionId, Resolution, SelectionFilter,
-    SelectionId, SelectionSet, SelectionValue, ValueTest, ViewId,
+    SelectionId, SelectionSet, SelectionValue, SeriesTest, ValueTest, ViewId,
 };
 use avenger_wgpu::canvas::{Canvas, PngCanvas};
 use datafusion::common::Result as DFResult;
 use datafusion::datasource::MemTable;
-use datafusion::functions_aggregate::expr_fn::{count, sum};
+use datafusion::functions_aggregate::expr_fn::{avg, count, sum};
 use datafusion::logical_expr::{cast, col, ident, lit, Expr};
-use datafusion::prelude::{ParquetReadOptions, SessionContext};
+use datafusion::prelude::{DataFrame, ParquetReadOptions, SessionContext};
 
 type Error = Box<dyn std::error::Error>;
 
@@ -309,6 +310,94 @@ async fn soft(ctx: &SessionContext, all: &[Vec<(i64, f64)>], n: usize, out: &str
     render(marks, size(3.0), &format!("{out}/soft.png")).await
 }
 
+/// Figures 4 and 5's series. The flights have none, so the figures choose an
+/// aggregation: one line per 200-mile band of distance (Jon's display bins),
+/// the mean arrival delay per hour of departure, over hours with at least
+/// 1,000 flights.
+const BAND: f64 = 200.0;
+const SERIES_H: f32 = 300.0;
+const MEAN: [f64; 2] = [-10.0, 120.0];
+fn band() -> Expr {
+    cast(datafusion::functions::math::expr_fn::floor(col("distance") / lit(BAND)), DataType::Int64)
+}
+async fn series_rows(ctx: &SessionContext) -> DFResult<DataFrame> {
+    let hour = cast(datafusion::functions::math::expr_fn::floor(col("time")), DataType::Float64) + lit(0.5);
+    ctx.table("flights").await?
+        .aggregate(vec![band().alias("band"), hour.alias("x")], vec![avg(col("delay")).alias("y"), count(lit(1)).alias("n")])?
+        .filter(col("n").gt_eq(lit(1000)))
+}
+/// The series as vertices by band, in x order.
+async fn series_lines(ctx: &SessionContext) -> DFResult<std::collections::BTreeMap<i64, Vec<[f64; 2]>>> {
+    let mut lines = std::collections::BTreeMap::<i64, Vec<[f64; 2]>>::new();
+    for b in series_rows(ctx).await?.collect().await? {
+        let (k, x, y) = (i64s(&b, "band"), f64s(&b, "x"), f64s(&b, "y"));
+        for i in 0..b.num_rows() {
+            lines.entry(k.value(i)).or_default().push([x.value(i), y.value(i)]);
+        }
+    }
+    lines.values_mut().for_each(|l| l.sort_by(|a, b| a[0].total_cmp(&b[0])));
+    Ok(lines)
+}
+fn series_producer() -> ProducerDefinition {
+    ProducerDefinition::new(SelectionId::new("brush").unwrap(), ProducerId::new("series").unwrap(), ViewId::new("series").unwrap(),
+        [Projection::new(pid("band"), band()).unwrap()]).unwrap()
+}
+
+/// 4 and 5. A test over whole series (a line brush or a timebox) on the
+/// line chart, its keys as a selection that filters the three histograms.
+async fn series(ctx: &SessionContext, all: &[Vec<(i64, f64)>], n: usize, test: SeriesTest, file: &str, out: &str) -> Result<(), Error> {
+    let lines = series_lines(ctx).await?;
+    let t0 = Instant::now();
+    let keys = test.keys(series_rows(ctx).await?, col("band"), col("x"), col("y")).await?;
+    println!("  {} series of {}: {:.0} ms", keys.len(), lines.len(), ms(t0));
+    let chosen: std::collections::HashSet<i64> = keys.iter().map(|k| match k {
+        datafusion::common::ScalarValue::Int64(Some(v)) => *v,
+        other => panic!("a band: {other:?}"),
+    }).collect();
+    let state = empty().set(&series_producer(), test.value(&pid("band"), keys))?;
+    let (t, d) = (&PLOTS[1], Plot { name: "mean", title: "Mean Arrival Delay (min)", domain: MEAN, step: 1.0 });
+    let at = |p: [f64; 2]| [t.px(p[0], W), SERIES_H - d.px(p[1], SERIES_H)];
+    let (title, what) = match &test {
+        SeriesTest::Crosses { from, to } => ("A line brush on the delay by hour of each distance band",
+            format!("the bands whose line crosses the segment ({}, {}) to ({}, {})", from[0], from[1], to[0], to[1])),
+        SeriesTest::Within { x, y } => ("A timebox on the delay by hour of each distance band",
+            format!("the bands whose line stays between {} and {} min from {}:00 to {}:00", y.0, y.1, x.0, x.1)),
+    };
+    let mut marks = heading(title, &format!("{} flights · one line per {BAND}-mile band of distance, the mean arrival delay per hour of departure", thousands(n)));
+    marks.push(text(format!("{what} (SeriesTest): {} of {} bands · each histogram shows their flights", chosen.len(), lines.len()),
+        24.0, 65.0, 11.0, [0.42, 0.45, 0.49, 1.]));
+    let mut group = axes(t.domain, d.domain, t.title, d.title, [0.0, 0.0], W, SERIES_H)?;
+    let red = [0.85, 0.2, 0.15, 1.0];
+    if let SeriesTest::Within { x, y } = &test {
+        let (a, b) = (at([x.0, y.1]), at([x.1, y.0]));
+        group.push(rects(&[[a[0], a[1], b[0] - a[0], b[1] - a[1]]], vec![[0.85, 0.2, 0.15, 0.08]]));
+        group.push(outline(&[a, [b[0], a[1]], b, [a[0], b[1]], a], red, 1.5));
+    }
+    for selected in [false, true] {
+        for (k, l) in lines.iter().filter(|(k, _)| chosen.contains(k) == selected) {
+            let pts: Vec<[f32; 2]> = l.iter().map(|p| at(*p)).collect();
+            group.push(outline(&pts, if selected { BLUE } else { GREY }, if selected { 2.0 } else { 1.0 }));
+            if selected {
+                let end = pts.last().unwrap();
+                group.push(text(format!("{}–{} mi", k * BAND as i64, (k + 1) * BAND as i64), end[0] + 4.0, end[1] + 3.0, 9.0, BLUE));
+            }
+        }
+    }
+    if let SeriesTest::Crosses { from, to } = &test {
+        group.push(outline(&[at(*from), at(*to)], red, 2.5));
+    }
+    marks.push(SceneGroup { origin: [80.0, TOP], marks: group, ..Default::default() }.into());
+    let base = TOP + SERIES_H + 80.0;
+    for (i, p) in PLOTS.iter().enumerate() {
+        let t0 = Instant::now();
+        let bins = histogram(ctx, p, cross(i).predicate(&state)?, None).await?;
+        println!("  {}: {:.0} ms", p.name, ms(t0));
+        let max = all[i].iter().map(|x| x.1).fold(1.0, f64::max);
+        marks.push(panel(p, [80.0, base + i as f32 * ROW], &all[i], &[(&bins, vec![BLUE; bins.len()])], &[], max)?);
+    }
+    render(marks, [W + 160.0, base + 3.0 * ROW], &format!("{out}/{file}")).await
+}
+
 /// 4. Redraws of one histogram (arrival delay) as the lasso moves, directly
 /// and through the preaggregation split, checked against each other.
 async fn timings(ctx: &SessionContext) -> Result<(), Error> {
@@ -382,6 +471,10 @@ async fn main() -> Result<(), Error> {
     lasso(&ctx, &all, n, &out).await?;
     println!("figure 3, soft brush:");
     soft(&ctx, &all, n, &out).await?;
+    println!("figure 4, line brush:");
+    series(&ctx, &all, n, SeriesTest::Crosses { from: [21.6, 45.0], to: [22.6, 55.0] }, "linebrush.png", &out).await?;
+    println!("figure 5, timebox:");
+    series(&ctx, &all, n, SeriesTest::Within { x: (6.0, 12.0), y: (-5.0, 5.0) }, "timebox.png", &out).await?;
     println!("redraws of the arrival-delay histogram as the lasso moves:");
     timings(&ctx).await?;
     Ok(())

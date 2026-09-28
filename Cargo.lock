@@ -4503,6 +4503,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "lidar-cloudlasso"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "avenger-color",
+ "avenger-common",
+ "avenger-guides",
+ "avenger-scales",
+ "avenger-scales-datafusion",
+ "avenger-scenegraph",
+ "avenger-selection",
+ "avenger-wgpu",
+ "datafusion",
+ "lidar-common",
+ "tokio",
+]
+
+[[package]]
 name = "lidar-common"
 version = "0.1.0"
 dependencies = [

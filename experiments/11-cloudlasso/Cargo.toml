@@ -1,0 +1,24 @@
+[package]
+name = "lidar-cloudlasso"
+description = "Experiment 11: CloudLasso through avenger-selection on the tile, drawn in the tilted view, from above and from the side"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "cloudlasso"
+path = "src/main.rs"
+
+[dependencies]
+lidar-common.workspace = true
+arrow.workspace = true
+datafusion.workspace = true
+tokio.workspace = true
+avenger-color.workspace = true
+avenger-common.workspace = true
+avenger-guides.workspace = true
+avenger-scales.workspace = true
+avenger-scales-datafusion.workspace = true
+avenger-scenegraph.workspace = true
+avenger-selection.workspace = true
+avenger-wgpu.workspace = true

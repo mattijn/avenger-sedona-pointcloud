@@ -800,7 +800,14 @@ grids (experiment 10, with figures). They work on his data as on the tile.
 A lasso over departure time and arrival delay is 190 runs of cells; a
 histogram filtered by it takes 135–155 ms directly, and 3.1–3.5 ms per redraw
 through the split after a 246 ms warm-up, every rollup equal to the direct
-histogram. **Measure:** `cargo run --release -p lidar-flights --bin flights -- data/flights-10m.parquet`.
+histogram. The line brush and the timebox need series, which the flights
+lack; over one line per 200-mile band (mean delay per hour), their keys take
+90–110 ms and filter each histogram in 45–65 ms. CloudLasso is drawn on the
+tile instead (experiment 11): the crate's selection, through the chart's
+region search, takes 721,463 of the 1,097,131 points in the lasso, 0.09 %
+from experiment 7's Rust (the Float32 voxel edges of finding 28), in 133 ms.
+**Measure:** `cargo run --release -p lidar-flights --bin flights -- data/flights-10m.parquet`
+and `cargo run --release -p lidar-cloudlasso --bin cloudlasso -- $T`.
 
 ## What worked well
 

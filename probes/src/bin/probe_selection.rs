@@ -8,7 +8,7 @@
 //!
 //! Usage: cargo run --release -p lidar-probes --bin probe_selection -- <tile>
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -168,35 +168,6 @@ fn to_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
 fn to_ring(p: [f64; 2], ring: &[[f64; 2]]) -> f64 {
     (0..ring.len()).map(|i| to_segment(p, ring[i], ring[(i + 1) % ring.len()])).fold(f64::MAX, f64::min)
 }
-/// The regions of dense voxels, joined across faces, edges and corners, and
-/// the one with the most points (layer/model.rs `lasso_take`).
-fn largest_region(count: &HashMap<(i64, i64, i64), usize>, structure: f64) -> (HashSet<(i64, i64, i64)>, usize) {
-    let top = count.values().copied().max().unwrap_or(0);
-    let dense: HashSet<_> = count.iter().filter(|(_, c)| **c as f64 >= structure * top as f64).map(|(v, _)| *v).collect();
-    let (mut seen, mut best, mut best_n, mut regions) = (HashSet::new(), HashSet::new(), 0, 0);
-    for v in &dense {
-        if !seen.insert(*v) {
-            continue;
-        }
-        regions += 1;
-        let (mut stack, mut region, mut n) = (vec![*v], HashSet::new(), 0);
-        while let Some(c) = stack.pop() {
-            region.insert(c);
-            n += count[&c];
-            for d in 0..27 {
-                let q = (c.0 + d % 3 - 1, c.1 + d / 3 % 3 - 1, c.2 + d / 9 - 1);
-                if dense.contains(&q) && seen.insert(q) {
-                    stack.push(q);
-                }
-            }
-        }
-        if n > best_n {
-            (best, best_n) = (region, n);
-        }
-    }
-    (best, regions)
-}
-
 /// The exact test as a DataFusion function: is (u, v) inside the ring?
 #[derive(Debug, PartialEq, Eq, Hash)]
 struct InPolygon {
@@ -287,24 +258,9 @@ fn flat(ext: [f64; 4]) -> View {
         unit_ring: unit_ring("0.6,0.35;0.8,0.35;0.8,0.55;0.6,0.55"),
     }
 }
-/// Experiment 7's tilt (layer/draw.rs `tilt`) over a window, as coefficients.
+/// Experiment 7's tilted view of a window.
 fn tilted(win: [f64; 4], hz: (f64, f64), yaw: f64, elevation: f64) -> View {
-    let (sy, cy) = yaw.to_radians().sin_cos();
-    let (se, ce) = elevation.to_radians().sin_cos();
-    let s = P / std::f64::consts::SQRT_2 * 0.98;
-    let (w, h, dz) = (win[1] - win[0], win[3] - win[2], hz.1 - hz.0);
-    // Centred unit coordinates, and height at 0.35 of the plot.
-    let x = [-win[0] / w - 0.5, 1.0 / w, 0.0, 0.0];
-    let y = [-win[2] / h - 0.5, 0.0, 1.0 / h, 0.0];
-    let z = [-0.35 * hz.0 / dz, 0.0, 0.0, 0.35 / dz];
-    let mut a = [0.0; 4];
-    let mut b = a;
-    for i in 0..4 {
-        a[i] = s * (x[i] * cy - y[i] * sy);
-        b[i] = -s * ((x[i] * sy + y[i] * cy) * se + z[i] * ce);
-    }
-    a[0] += P / 2.0;
-    b[0] += P * 0.62;
+    let (a, b) = lidar_common::tilt(win, hz, yaw, elevation, P);
     View { name: "tilted view, 500 m window (yaw 30, elevation 35)", a, b, unit_ring: unit_ring("0.42,0.52;0.75,0.55;0.78,0.32;0.45,0.28") }
 }
 
@@ -481,7 +437,7 @@ impl Cloud {
                 count.insert((i.value(r), j.value(r), k.value(r)), n.value(r) as usize);
             }
         }
-        let (best, regions) = largest_region(&count, self.structure);
+        let (best, regions) = lidar_common::largest_region(&count, self.structure);
         let cells = best.iter().map(|c| vec![c.0, c.1, c.2]);
         let gesture = Gesture::new("cloudlasso", self.ring.iter().copied()).on([pid("u"), pid("v")]).with_param("structure", self.structure);
         Ok((SelectionValue::cells(&self.voxels, &[&pid("vx"), &pid("vy"), &pid("vz")], cells).unwrap().with_gesture(gesture), regions))
@@ -519,7 +475,7 @@ async fn cloud_lasso(view: &View, win: [f64; 4], hz: (f64, f64), points: &[Recor
             inside.push(k);
         }
     });
-    let (rbest, rregions) = largest_region(&rc, structure);
+    let (rbest, rregions) = lidar_common::largest_region(&rc, structure);
     let rn = inside.iter().filter(|k| rbest.contains(k)).count();
     let rust = ms(t0);
     println!("avenger-selection and the chart: {regions} dense regions, the largest {n_vox} voxels, {n} points, {t:.0} ms");

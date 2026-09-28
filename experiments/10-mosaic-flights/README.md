@@ -6,8 +6,8 @@ in a native window: three histograms, a brush on each, each histogram
 filtered by the other two, through `avenger-selection` with 1 px cells and
 preaggregation. This experiment draws the same dataset and panels headlessly,
 and adds the selections this repo added to the crate (FINDINGS.md 25–34): a
-lasso on a density panel, and a soft brush. It asks whether they work on
-someone else's data as they did on the LiDAR tile.
+lasso on a density panel, a soft brush, a line brush and a timebox. It asks
+whether they work on someone else's data as they did on the LiDAR tile.
 
 The panels follow Jon's example: 600 × 200 px, the same domains and display
 bins (10 minutes of arrival delay, one hour of departure, 200 miles), arrival
@@ -61,6 +61,8 @@ about 0.4 s):
 | one histogram, filtered by a brush | 45–100 ms |
 | one histogram, filtered by the lasso | 135–155 ms |
 | one histogram, soft brush (hard and degree-weighted) | 100–210 ms |
+| the keys of a line brush or timebox over the 15 bands | 90–110 ms |
+| one histogram, filtered by those keys | 45–65 ms |
 | the arrival-delay histogram as the lasso moves, direct | 134–163 ms per redraw |
 | the same through the preaggregation split | 3.1–3.5 ms per redraw, same histogram |
 | warm-up for the split (112,722 stored rows) | 246 ms, once |
@@ -70,6 +72,21 @@ checked against the direct query. Jon's example measures its own footer time
 in the window, with his dataflow caching; the numbers here are plain queries,
 so they compare with each other, not with his.
 
-**Not done:** the line brush and timebox, which need series (flights have
-none in this dataset without choosing an aggregation), and CloudLasso, which
-is for three dimensions.
+**A line brush** ([linebrush.png](images/linebrush.png)) and **a timebox**
+([timebox.png](images/timebox.png)) test whole series, and the flights have
+none, so these figures choose an aggregation: one line per 200-mile band of
+distance (Jon's display bins), the mean arrival delay per hour of departure,
+over hours with at least 1,000 flights. `SeriesTest::keys` measures every line
+in one query (about 100 ms, most of it the aggregation over 10M rows), and its
+keys become a `one_of` on the band, which the histograms apply to the raw
+flights. The line brush crosses the evening rise and takes the 600–1,200 mile
+bands; the timebox keeps the bands that stay within 5 minutes of on time from
+6:00 to 12:00, five of fifteen. A band with a gap in its hours is drawn, and
+tested, as a line across the gap.
+
+![Line brush](images/linebrush.png)
+
+![Timebox](images/timebox.png)
+
+CloudLasso needs three dimensions, and the flights have two that suit it at
+most; it is drawn on the LiDAR tile in [experiment 11](../11-cloudlasso/).
