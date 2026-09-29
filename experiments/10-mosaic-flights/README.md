@@ -88,6 +88,66 @@ tested, as a line across the gap.
 
 ![Timebox](images/timebox.png)
 
+## A brush through a bar-to-donut morph
+
+Does a brush move along when its bar chart turns into a donut? `flights_morph`
+brushes the arrival-delay histogram from 45 to 125 minutes, a range held in
+`avenger-selection` as the other figures hold theirs, and morphs the panel
+into a donut: first the bars stack into one bar whose widths are their
+shares of the flights, then the plane bends. Nothing in it is new code for
+the morph. The keyed transition and the two layouts come from
+[`avenger-transition`](../../crates/avenger-transition/) (experiment 7's), and
+the bend from [`avenger-coords`](../../crates/avenger-coords/) (experiment
+5's), fitted to the panel in every frame.
+
+The brush is one more keyed item in both layouts. Its edges sit at the same
+fraction of their bins in the bars and in the stacked bar, and the
+transition moves both ends of every rect linearly, so an edge stays where
+it was within its bar through the whole morph; the bend then carries the
+brush and the bars through the same transform. Neither end of the brush is
+a bin edge, so it cuts two bars, which is the harder case.
+
+```sh
+cargo run --release -p lidar-flights --bin flights_morph -- data/flights-10m.parquet experiments/10-mosaic-flights/images --frames out/morph_frames
+ffmpeg -framerate 30 -i out/morph_frames/frame_%05d.png -vf scale=576:-2 -c:v libx264 -preset slow -crf 26 \
+  -pix_fmt yuv420p -movflags +faststart experiments/10-mosaic-flights/video/morph_brush.mp4
+```
+
+![A brush through a bar-to-donut morph](images/morph_brush.png)
+
+[video/morph_brush.mp4](video/morph_brush.mp4) (7 s) goes there and back.
+
+Measured on an Apple Silicon laptop, 29 Sep 2026, printed by the run:
+
+| | Brush bent with the bars | Brush left as a rectangle in pixels |
+|---|---|---|
+| points of the bars where "inside the drawn brush" and "selected by the brush" disagree, worst of 21 frames | **0 of 2,500** | 1,613 of 2,500 (the donut) |
+
+Each frame samples every bar at 20 × 5 points and compares the two;
+points within 2 % of a bin's width of a brush edge are left out, since the
+outline is sampled at 0.25 px. The pixel rectangle is right only at t = 0,
+which is what experiment 7's window does while a brush is dragged, and what
+any brush drawn in screen space would do.
+
+**Back from the donut.** Pressing and releasing at the brush's two ends on
+the donut and reading them back (`Fitted::invert`, then
+`Bins::value_at`) gives 45.000000000 to 125.000000000 minutes, and through
+`avenger-selection` that range selects 747,033 flights, the same as the
+brush drawn on the bars. This was computed from pixel positions, not
+dragged with a mouse; the window does not have the morph yet.
+
+**Cross-filtered.** A second brush, on distance from 0 to 800 miles,
+leaves 6,605,981 flights in the delay panel. Its bins change, the donut's
+slices with them, and the brush's arc from 27.2° to 27.4°; the sampled
+check is 0 wrong on that donut too. The arc changes little because short
+flights are late about as often as all flights (the cross-filter figure
+shows the same).
+
+**The arc is a share of bins, not of flights.** A cut bin's slice is split
+evenly across its values, so the arc stands for 7.56 % of the flights while
+the brush selects 7.47 % (747,033 of 10M). With 10-minute bins that is the
+resolution of the chart, not of the selection.
+
 CloudLasso needs three dimensions, and the flights have two that suit it at
 most; it is drawn on the LiDAR tile in [experiment 11](../11-cloudlasso/).
 

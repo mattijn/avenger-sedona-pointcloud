@@ -35,7 +35,8 @@ let p = cs.project(&[0.25, 0.5]);                          // unit x, y → pixe
 `invert` takes plot pixels back to unit x and y, for picking and brushing
 through the system; `Cartesian`, `Polar` and `Bend` have it, at every t, and
 the tests check the round trip. `fisheye` is the lens as a plain function in
-unit space, for composing with another system.
+unit space, for composing with another system. `Fitted` wraps any system and
+shrinks and centres it so the unit square fits the panel, never enlarging.
 
 Every channel is in unit space except lon/lat, which are degrees. `draw` holds
 `points`, `rects`, `rings`, `shape`, `polylines`, `grid` and `title`: each
@@ -54,7 +55,8 @@ These were listed as open in experiment 5 and are still open:
 
 - an inverse for only three systems (`Cartesian`, `Polar`, `Bend`); the
   others return `None`.
-- no clipping to the plot: `Bend`'s middle frames spill past their panel.
+- no clipping to the plot. `Fitted` shrinks a system until the unit
+  square's image fits its panel, which keeps `Bend`'s middle frames inside.
 - no local scale (Jacobian), so symbol sizes do not follow a lens.
 - no scales: channels are expected in unit space already.
 
@@ -65,3 +67,5 @@ These were listed as open in experiment 5 and are still open:
 - [experiment 7](../../experiments/07-chart-decisions/): `layer/draw.rs`
   draws through `Bend` and `fisheye` (its `tilt` is still its own variant of
   `Cartesian3d`, with other constants)
+- [experiment 10](../../experiments/10-mosaic-flights/): `flights_morph`
+  draws through a `Fitted` `Bend` and reads a brush back with `invert`

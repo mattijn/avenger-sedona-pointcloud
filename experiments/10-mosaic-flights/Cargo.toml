@@ -13,8 +13,14 @@ path = "src/main.rs"
 name = "flights_live"
 path = "src/bin/flights_live.rs"
 
+[[bin]]
+name = "flights_morph"
+path = "src/bin/flights_morph.rs"
+
 [dependencies]
 lidar-common.workspace = true
+avenger-coords.workspace = true
+avenger-transition.workspace = true
 arrow.workspace = true
 datafusion.workspace = true
 tokio.workspace = true

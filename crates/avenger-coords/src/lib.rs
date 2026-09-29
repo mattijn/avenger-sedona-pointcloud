@@ -545,6 +545,68 @@ impl CoordinateSystem for Bend {
     }
 }
 
+/// Another system shrunk and centred so the unit square's image fits in
+/// `width` × `height`. It never enlarges, so a system that already fits (the
+/// ends of `Bend`) is unchanged, and the middle frames of a bend stay in
+/// their panel instead of spilling past it.
+pub struct Fitted<'a> {
+    pub inner: &'a dyn CoordinateSystem,
+    pub width: f64,
+    pub height: f64,
+    scale: f64,
+    shift: [f64; 2],
+}
+
+impl<'a> Fitted<'a> {
+    pub fn new(inner: &'a dyn CoordinateSystem, width: f64, height: f64) -> Self {
+        // The image of the square's boundary bounds the image of the square.
+        let n = 64;
+        let edge = |k: usize| k as f64 / n as f64;
+        let boundary: Vec<[f64; 2]> = (0..n)
+            .flat_map(|k| [[edge(k), 0.0], [1.0, edge(k)], [1.0 - edge(k), 1.0], [0.0, 1.0 - edge(k)]])
+            .collect();
+        let (mut lo, mut hi) = ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]);
+        for u in &boundary {
+            let mut p = vec![u[0], u[1]];
+            p.extend(inner.channels().iter().skip(2).map(|c| c.default.unwrap_or(0.0)));
+            if let Some(s) = inner.project(&p) {
+                for i in 0..2 {
+                    lo[i] = lo[i].min(s[i]);
+                    hi[i] = hi[i].max(s[i]);
+                }
+            }
+        }
+        let scale = (width / (hi[0] - lo[0])).min(height / (hi[1] - lo[1])).min(1.0);
+        let shift = [
+            (width - scale * (hi[0] - lo[0])) / 2.0 - scale * lo[0],
+            (height - scale * (hi[1] - lo[1])) / 2.0 - scale * lo[1],
+        ];
+        Self { inner, width, height, scale, shift }
+    }
+}
+
+impl CoordinateSystem for Fitted<'_> {
+    fn name(&self) -> String {
+        format!("fitted({})", self.inner.name())
+    }
+    fn channels(&self) -> Vec<Channel> {
+        self.inner.channels()
+    }
+    fn project(&self, p: &[f64]) -> Option<Screen> {
+        let s = self.inner.project(p)?;
+        Some([self.shift[0] + self.scale * s[0], self.shift[1] + self.scale * s[1]])
+    }
+    fn invert(&self, s: Screen) -> Option<[f64; 2]> {
+        self.inner.invert([(s[0] - self.shift[0]) / self.scale, (s[1] - self.shift[1]) / self.scale])
+    }
+    fn is_rectilinear(&self) -> bool {
+        self.inner.is_rectilinear()
+    }
+    fn label_side(&self, i: usize) -> (f64, f64) {
+        self.inner.label_side(i)
+    }
+}
+
 /// A transition between systems that read *different* inputs, such as
 /// `cartesian` (unit metres) and `spatial` (lon/lat). Each position carries
 /// both encodings, `a`'s first `split` values and then `b`'s, so the data
@@ -761,6 +823,28 @@ mod tests {
         round_trip(&Polar { width: 300.0, height: 300.0, inner: 0.4 }, "donut");
         for t in [0.0, 1e-4, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0] {
             round_trip(&Bend { width: 400.0, height: 300.0, t }, &format!("bend {t}"));
+            let b = Bend { width: 300.0, height: 300.0, t };
+            round_trip(&Fitted::new(&b, 300.0, 300.0), &format!("fitted bend {t}"));
+        }
+    }
+
+    /// Every frame of a fitted bend stays in its panel; the ends are unchanged.
+    #[test]
+    fn fitted_bend_stays_in_its_panel() {
+        for k in 0..=20 {
+            let b = Bend { width: 240.0, height: 240.0, t: k as f64 / 20.0 };
+            let f = Fitted::new(&b, 240.0, 240.0);
+            for i in 0..=10 {
+                for j in 0..=10 {
+                    let s = f.project(&[i as f64 / 10.0, j as f64 / 10.0]).unwrap();
+                    assert!(s.iter().all(|v| (-1e-6..=240.0 + 1e-6).contains(v)), "t {}: {s:?}", b.t);
+                }
+            }
+        }
+        for t in [0.0, 1.0] {
+            let b = Bend { width: 240.0, height: 240.0, t };
+            let (s, q) = (b.project(&[0.3, 0.7]).unwrap(), Fitted::new(&b, 240.0, 240.0).project(&[0.3, 0.7]).unwrap());
+            assert!((s[0] - q[0]).abs() < 1e-6 && (s[1] - q[1]).abs() < 1e-6, "t {t}: {s:?} vs {q:?}");
         }
     }
 

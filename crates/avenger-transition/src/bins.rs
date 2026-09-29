@@ -111,6 +111,27 @@ impl Bins {
     pub fn interval(&self, range: [f64; 2], layout: Layout, y: [f64; 2]) -> [f64; 4] {
         [self.position(range[0], layout), self.position(range[1], layout), y[0], y[1]]
     }
+
+    /// The part of bin `i` whose values lie in `range`, as a unit rect with
+    /// the bin's own height; `None` when they do not meet.
+    pub fn clip(&self, i: usize, range: [f64; 2], layout: Layout) -> Option<[f64; 4]> {
+        let (lo, hi) = (range[0].max(self.edges[i]), range[1].min(self.edges[i + 1]));
+        if lo >= hi {
+            return None;
+        }
+        let r = self.rect(i, layout);
+        Some([self.position(lo, layout), self.position(hi, layout), r[2], r[3]])
+    }
+
+    /// Every bin's part in `range` as an item keyed `{prefix}{i}`.
+    pub fn clipped(&self, prefix: &str, range: [f64; 2], layout: Layout, fill: [f32; 4]) -> Vec<Item> {
+        (0..self.counts.len())
+            .filter_map(|i| {
+                let r = self.clip(i, range, layout)?;
+                Some(Item { key: format!("{prefix}{i}"), parent: None, geo: Geo::Rect(r), fill, size: 0.0, h: 0.0 })
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -153,5 +174,14 @@ mod tests {
             let x = b.position(24.0, l);
             assert!(((x - r[0]) / (r[1] - r[0]) - 0.4).abs() < 1e-12, "{l:?}");
         }
+    }
+
+    #[test]
+    fn clip_takes_the_part_of_a_bin_in_range() {
+        let b = bins();
+        let l = Layout::Bars { max: 20.0 };
+        assert_eq!(b.clip(2, [24.0, 100.0], l), Some([0.6, 0.75, 0.0, 0.75]));
+        assert_eq!(b.clip(0, [24.0, 100.0], l), None);
+        assert_eq!(b.clipped("s", [5.0, 25.0], l, [0.0; 4]).len(), 3);
     }
 }

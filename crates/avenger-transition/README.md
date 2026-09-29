@@ -52,3 +52,5 @@ first part.
 
 - [experiment 7](../../experiments/07-chart-decisions/): `layer/anim.rs`
   (the 45 frames of `layer_demo` are byte-identical to before the move)
+- [experiment 10](../../experiments/10-mosaic-flights/): `flights_morph`, a
+  brush through a bar-to-donut morph (0 of 2,500 sample points wrong in any frame)
