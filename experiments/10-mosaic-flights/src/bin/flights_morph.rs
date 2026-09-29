@@ -13,14 +13,18 @@
 //! 2. a brush read back from the donut (`Bend::invert`, `Bins::value_at`)
 //!    is the same range, and selects the same flights through the crate;
 //! 3. with a second brush on distance, the delay counts change, and the
-//!    brush's arc on the donut with them.
+//!    brush's arc on the donut with them;
+//! 4. a brush adjusted on the donut, by dragging its ends along the ring
+//!    and reading each pointer position back, selects its flights through
+//!    the crate and follows the donut back into bars.
 //!
 //! Usage: cargo run --release -p lidar-flights --bin flights_morph -- <flights-10m.parquet> [out-dir] [--frames dir]
 
 use std::time::Instant;
 
 use avenger_coords::{draw, Bend, CoordinateSystem, Fitted, Screen};
-use avenger_scenegraph::marks::{group::SceneGroup, mark::SceneMark};
+use avenger_color::ColorOrGradient;
+use avenger_scenegraph::marks::{group::SceneGroup, mark::SceneMark, symbol::SceneSymbolMark};
 use avenger_selection::{SelectionSet, SelectionValue, ValueTest};
 use avenger_transition::bins::{Bins, Layout};
 use avenger_transition::{ease, join, phases, Geo, Item, Plane, Timing, Tweened};
@@ -32,6 +36,8 @@ const P: f64 = 240.0;
 /// The brush on arrival delay, in minutes. Neither end is a bin edge, so the
 /// brush cuts two bars.
 const BRUSH: [f64; 2] = [45.0, 125.0];
+/// Where part 4 drags the brush's ends to on the donut: around on time.
+const ADJUSTED: [f64; 2] = [-20.0, 15.0];
 /// The second brush, on distance, for part 3.
 const DISTANCE: [f64; 2] = [0.0, 800.0];
 /// The donut's ring and the brush's reach across it, in unit y.
@@ -122,13 +128,13 @@ fn inside(poly: &[Screen], p: Screen) -> bool {
 /// within 2 % of a bin's width of a brush edge are left out, as the outline
 /// is sampled at 0.25 px. Returns (points, disagreements), for the brush as
 /// drawn and for the brush left as its rectangle in pixels at t = 0.
-fn check(b: &Bins, t: f64) -> ((usize, usize), (usize, usize)) {
-    let (items, bend) = at(b, t, BRUSH);
+fn check(b: &Bins, t: f64, brush_range: [f64; 2]) -> ((usize, usize), (usize, usize)) {
+    let (items, bend) = at(b, t, brush_range);
     let bent = Bend { width: P, height: P, t: bend };
     let cs = Fitted::new(&bent, P, P);
     let find = |k: &str| items.iter().find(|i| i.key == k).map(rect_of);
     let brush = outline_of(&cs, find("brush").unwrap());
-    let flat = outline_of(&Bend { width: P, height: P, t: 0.0 }, rect_of(&at(b, 0.0, BRUSH).0.into_iter().find(|i| i.key == "brush").unwrap()));
+    let flat = outline_of(&Bend { width: P, height: P, t: 0.0 }, rect_of(&at(b, 0.0, brush_range).0.into_iter().find(|i| i.key == "brush").unwrap()));
     let (mut n, mut wrong_bent, mut wrong_flat) = (0, 0, 0);
     for i in 0..b.counts.len() {
         let Some(r) = find(&format!("bar{i}")) else { continue };
@@ -139,10 +145,10 @@ fn check(b: &Bins, t: f64) -> ((usize, usize), (usize, usize)) {
         for sx in 0..20 {
             let f = (sx as f64 + 0.5) / 20.0;
             let v = b.edges[i] + f * w;
-            if (v - BRUSH[0]).abs() < 0.02 * w || (v - BRUSH[1]).abs() < 0.02 * w {
+            if (v - brush_range[0]).abs() < 0.02 * w || (v - brush_range[1]).abs() < 0.02 * w {
                 continue;
             }
-            let selected = v > BRUSH[0] && v < BRUSH[1];
+            let selected = v > brush_range[0] && v < brush_range[1];
             for sy in 0..5 {
                 let u = [r[0] + f * (r[1] - r[0]), r[2] + (0.1 + 0.2 * sy as f64) * (r[3] - r[2])];
                 let s = cs.project(&u).unwrap();
@@ -155,6 +161,28 @@ fn check(b: &Bins, t: f64) -> ((usize, usize), (usize, usize)) {
     ((n, wrong_bent), (n, wrong_flat))
 }
 
+/// A drag on the donut: the pointer moves along the middle of the ring from
+/// the brush's edge `edge` (0 its start, 1 its end) at value `from` to the
+/// place of value `to`, and every position is read back into a value
+/// (`Fitted::invert`, then `Bins::value_at`). Returns, per frame, the
+/// brush and the pointer in panel pixels.
+fn drag(b: &Bins, brush: [f64; 2], edge: usize, to: f64, frames: usize) -> Vec<([f64; 2], Screen)> {
+    let bend1 = Bend { width: P, height: P, t: 1.0 };
+    let donut = Fitted::new(&bend1, P, P);
+    let stack = Layout::Stack { y: RING };
+    let mid = 0.5 * (RING[0] + RING[1]);
+    let (u0, u1) = (b.position(brush[edge], stack), b.position(to, stack));
+    (1..=frames)
+        .map(|k| {
+            let u = u0 + (u1 - u0) * ease(k as f64 / frames as f64);
+            let pointer = donut.project(&[u, mid]).unwrap();
+            let mut now = brush;
+            now[edge] = b.value_at(donut.invert(pointer).unwrap()[0], stack);
+            (now, pointer)
+        })
+        .collect()
+}
+
 /// The arc the brush spans on the donut, in degrees.
 fn arc(b: &Bins, brush: [f64; 2]) -> f64 {
     let r = b.interval(brush, Layout::Stack { y: RING }, BRUSH_Y_STACK);
@@ -162,7 +190,7 @@ fn arc(b: &Bins, brush: [f64; 2]) -> f64 {
 }
 
 /// Draw one frame as a panel at `origin`, with a caption.
-fn panel_at(b: &Bins, t: f64, brush: [f64; 2], origin: [f32; 2], caption: &str, pixel_brush: bool) -> SceneMark {
+fn panel_at(b: &Bins, t: f64, brush: [f64; 2], origin: [f32; 2], caption: &str, pixel_brush: bool, pointer: Option<Screen>) -> SceneMark {
     let (items, bend) = at(b, t, brush);
     let bent = Bend { width: P, height: P, t: bend };
     let cs = Fitted::new(&bent, P, P);
@@ -185,6 +213,11 @@ fn panel_at(b: &Bins, t: f64, brush: [f64; 2], origin: [f32; 2], caption: &str, 
     }
     marks.push(draw_rects(&|i| i.key.starts_with("bar"), [1.0, 1.0, 1.0, 1.0]));
     marks.push(draw_rects(&|i| i.key.starts_with("sel"), [0.0; 4]));
+    if let Some(p) = pointer {
+        marks.push(SceneSymbolMark { len: 1, x: vec![p[0] as f32].into(), y: vec![p[1] as f32].into(), size: 160.0.into(),
+            fill: ColorOrGradient::Color([0.85, 0.2, 0.15, 0.55]).into(), stroke: ColorOrGradient::Color([1.0; 4]).into(),
+            stroke_width: Some(2.0), interactive: false, ..Default::default() }.into());
+    }
     marks.push(text(caption, 0.0, P as f32 + 22.0, 11.0, INK));
     SceneGroup { origin, marks, ..Default::default() }.into()
 }
@@ -214,7 +247,7 @@ async fn main() -> Result<(), Error> {
     let (mut worst_bent, mut worst_flat) = (0, 0);
     for k in 0..=20 {
         let t = k as f64 / 20.0;
-        let ((n, wb), (_, wf)) = check(&b1, t);
+        let ((n, wb), (_, wf)) = check(&b1, t, BRUSH);
         let (bend, _) = phases(Plane::Cartesian, Plane::Polar, t);
         worst_bent = worst_bent.max(wb);
         worst_flat = worst_flat.max(wf);
@@ -257,8 +290,26 @@ async fn main() -> Result<(), Error> {
     let ((s_a, n_a), (s_b, n_b)) = (share(&b1), share(&b2));
     println!("   without it: the brush's arc is {:.1}°, {:.2} % of {} flights", arc(&b1, BRUSH), s_a * 100.0, thousands(n_a as usize));
     println!("   with it:    the brush's arc is {:.1}°, {:.2} % of {} flights", arc(&b2, BRUSH), s_b * 100.0, thousands(n_b as usize));
-    let ((_, wb), _) = check(&b2, 1.0);
+    let ((_, wb), _) = check(&b2, 1.0, BRUSH);
     println!("   points wrong on the cross-filtered donut: {wb}");
+
+    // 4. The brush adjusted on the donut, then back to bars.
+    println!("\n4. the brush adjusted on the donut: its start dragged to {} min, then its end to {} min", ADJUSTED[0], ADJUSTED[1]);
+    let start = drag(&b1, BRUSH, 0, ADJUSTED[0], 45);
+    let end = drag(&b1, start.last().unwrap().0, 1, ADJUSTED[1], 45);
+    let (adjusted, last_pointer) = *end.last().unwrap();
+    println!("   released at ({:.1}, {:.1}) px, read back as {:.9}..{:.9} min", last_pointer[0], last_pointer[1], adjusted[0], adjusted[1]);
+    let c2 = count(state(Some(adjusted), None)?).await?;
+    let clipped: f64 = (0..b1.counts.len()).filter_map(|i| {
+        let (lo, hi) = (adjusted[0].max(b1.edges[i]), adjusted[1].min(b1.edges[i + 1]));
+        (lo < hi).then(|| b1.counts[i] * (hi - lo) / (b1.edges[i + 1] - b1.edges[i]))
+    }).sum();
+    println!("   flights it selects through avenger-selection: {} ({:.2} %); its arc stands for {:.2} %", thousands(c2), c2 as f64 / n as f64 * 100.0, clipped / n as f64 * 100.0);
+    let mut worst = 0;
+    for k in 0..=20 {
+        worst = worst.max(check(&b1, k as f64 / 20.0, adjusted).0 .1);
+    }
+    println!("   back to bars: most points wrong in one of 21 frames: {worst} of 2,500");
 
     // The figure.
     let gap = 36.0;
@@ -269,28 +320,43 @@ async fn main() -> Result<(), Error> {
     let row1 = [(0.0, "bars"), (0.25, "stacking"), (0.5, "one stacked bar"), (0.625, "bending"), (0.75, "half bent"), (0.875, "bending"), (1.0, "donut")];
     for (k, (t, cap)) in row1.iter().enumerate() {
         let x = 24.0 + k as f32 * (P as f32 + gap);
-        marks.push(panel_at(&b1, *t, BRUSH, [x, 80.0], &format!("t = {t:.3} · {cap}"), false));
+        marks.push(panel_at(&b1, *t, BRUSH, [x, 80.0], &format!("t = {t:.3} · {cap}"), false, None));
     }
     let y2 = 80.0 + P as f32 + 60.0;
-    let row2: [(f64, &Bins, &str, bool); 4] = [
-        (0.75, &b1, "half bent, brush left in pixels", true),
-        (0.75, &b1, "half bent, brush bent with the bars", false),
-        (1.0, &b1, &format!("donut: brush arc {:.0}°", arc(&b1, BRUSH)), false),
-        (1.0, &b2, &format!("distance {}–{} mi brushed: arc {:.0}°", DISTANCE[0], DISTANCE[1], arc(&b2, BRUSH)), false),
+    let range = |r: [f64; 2]| format!("{:.0}–{:.0} min", r[0], r[1]);
+    let row2: [(f64, &Bins, [f64; 2], String, bool, Option<Screen>); 7] = [
+        (0.75, &b1, BRUSH, "half bent, brush left in pixels".into(), true, None),
+        (0.75, &b1, BRUSH, "half bent, brush bent with the bars".into(), false, None),
+        (1.0, &b2, BRUSH, format!("distance {}–{} mi brushed: arc {:.0}°", DISTANCE[0], DISTANCE[1], arc(&b2, BRUSH)), false, None),
+        (1.0, &b1, adjusted, format!("dragged on the donut: {}", range(adjusted)), false, Some(last_pointer)),
+        (0.75, &b1, adjusted, "back: unbending".into(), false, None),
+        (0.25, &b1, adjusted, "back: unstacking".into(), false, None),
+        (0.0, &b1, adjusted, format!("back to bars: {}", range(adjusted)), false, None),
     ];
-    for (k, (t, b, cap, px)) in row2.iter().enumerate() {
+    for (k, (t, b, r, cap, px, ptr)) in row2.iter().enumerate() {
         let x = 24.0 + k as f32 * (P as f32 + gap);
-        marks.push(panel_at(b, *t, BRUSH, [x, y2], cap, *px));
+        marks.push(panel_at(b, *t, *r, [x, y2], cap, *px, *ptr));
     }
     render(marks, size, &format!("{out}/morph_brush.png")).await?;
 
-    // Frames for a video: there and back, 3 s each way at 30 frames a second.
+    // Frames for a video at 30 a second: into the donut (3 s), the brush's
+    // two ends dragged along the ring (1.5 s each), and back into bars (3 s).
     if let Some(dir) = frames_dir {
         std::fs::create_dir_all(&dir)?;
         let size = [P as f32 + 48.0, P as f32 + 60.0];
-        let ts: Vec<f64> = (0..=90).map(|k| k as f64 / 90.0).chain(std::iter::repeat(1.0).take(20)).chain((0..=90).rev().map(|k| k as f64 / 90.0)).collect();
-        for (k, t) in ts.iter().enumerate() {
-            render(vec![panel_at(&b1, *t, BRUSH, [24.0, 20.0], &format!("t = {t:.2}"), false)], size, &format!("{dir}/frame_{k:05}.png")).await?;
+        let mut shots: Vec<(f64, [f64; 2], Option<Screen>, String)> = vec![];
+        let hold = |shots: &mut Vec<(f64, [f64; 2], Option<Screen>, String)>, n: usize| {
+            let last = shots.last().unwrap().clone();
+            shots.extend(std::iter::repeat(last).take(n));
+        };
+        shots.extend((0..=90).map(|k| (k as f64 / 90.0, BRUSH, None, format!("into a donut · brush {}", range(BRUSH)))));
+        hold(&mut shots, 15);
+        shots.extend(start.iter().chain(&end).map(|(r, p)| (1.0, *r, Some(*p), format!("dragging on the donut · brush {}", range(*r)))));
+        hold(&mut shots, 15);
+        shots.extend((0..=90).rev().map(|k| (k as f64 / 90.0, adjusted, None, format!("back to bars · brush {}", range(adjusted)))));
+        hold(&mut shots, 30);
+        for (k, (t, r, p, cap)) in shots.iter().enumerate() {
+            render(vec![panel_at(&b1, *t, *r, [24.0, 20.0], cap, false, *p)], size, &format!("{dir}/frame_{k:05}.png")).await?;
         }
     }
     Ok(())

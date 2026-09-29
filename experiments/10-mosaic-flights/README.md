@@ -115,7 +115,9 @@ ffmpeg -framerate 30 -i out/morph_frames/frame_%05d.png -vf scale=576:-2 -c:v li
 
 ![A brush through a bar-to-donut morph](images/morph_brush.png)
 
-[video/morph_brush.mp4](video/morph_brush.mp4) (7 s) goes there and back.
+[video/morph_brush.mp4](video/morph_brush.mp4) (11 s) goes into the donut,
+drags the brush's two ends along the ring, and goes back into bars with the
+brush as it was left on the donut.
 
 Measured on an Apple Silicon laptop, 29 Sep 2026, printed by the run:
 
@@ -135,6 +137,16 @@ the donut and reading them back (`Fitted::invert`, then
 `avenger-selection` that range selects 747,033 flights, the same as the
 brush drawn on the bars. This was computed from pixel positions, not
 dragged with a mouse; the window does not have the morph yet.
+
+**Adjusted on the donut, then back.** On the donut, a scripted pointer drags the
+brush's start along the middle of the ring to −20 minutes, then its end to
+15 minutes, 45 frames each. Every pointer position is read back into a value
+as above, so the brush on the donut is a brush in minutes at every frame.
+Released, it reads −20.000000000 to 15.000000000 minutes and
+selects 7,208,590 flights through `avenger-selection`; its arc stands for
+71.20 % of the flights, the flights it selects are 72.09 %. Morphed back
+into bars, it is 0 of 2,500 sample points wrong in each of 21 frames, the
+same check as on the way in.
 
 **Cross-filtered.** A second brush, on distance from 0 to 800 miles,
 leaves 6,605,981 flights in the delay panel. Its bins change, the donut's
