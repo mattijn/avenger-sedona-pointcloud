@@ -36,11 +36,11 @@ use avenger_text::TextEngine;
 use avenger_wgpu::canvas::{Canvas, CanvasConfig, PngCanvas};
 use avenger_widgets::prelude::*;
 use lidar_common::{las_context, INK, MUTED};
-use lidar_coords::coords::{
+use avenger_coords::{
     resolve, Bend, Blend, Cartesian, Cartesian3d, CoordinateSystem, Fisheye, Hyperbolic, Paired,
     Polar, Spatial, Twirl,
 };
-use lidar_coords::draw;
+use avenger_coords::draw;
 use lidar_coords::specs::{bars, load, map, stack, Classes, MapLayers, MapSetup};
 
 const WAKE: &str = "coords-live";

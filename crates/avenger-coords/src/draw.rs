@@ -14,7 +14,7 @@ use avenger_text::types::{FontWeight, FontWeightNameSpec, TextAlign, TextBaselin
 use lyon_path::math::point;
 use lyon_path::Path;
 
-use crate::coords::{CoordinateSystem, Screen};
+use crate::{CoordinateSystem, Screen};
 
 /// Complete a mark's inputs with the system's defaults for the channels it
 /// leaves out (z for a 2D mark in `cartesian3d`).

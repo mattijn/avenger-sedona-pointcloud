@@ -8,8 +8,8 @@ use avenger_scenegraph::marks::mark::SceneMark;
 use datafusion::prelude::SessionContext;
 use lidar_common::{CLASSES, INK, MUTED, OTHER};
 
-use crate::coords::CoordinateSystem;
-use crate::draw::{self, Cost, Tick};
+use avenger_coords::CoordinateSystem;
+use avenger_coords::draw::{self, Cost, Tick};
 use crate::lambert93_to_lonlat;
 
 pub const GRID: [f32; 4] = [0.82, 0.84, 0.87, 1.0];

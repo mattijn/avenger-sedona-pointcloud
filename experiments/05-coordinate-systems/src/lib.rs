@@ -1,7 +1,7 @@
-//! Experiment 5: one coordinate-system trait for charts and maps.
+//! Experiment 5: one coordinate-system trait for charts and maps. The trait,
+//! the systems and the drawing live in `avenger-coords`; this crate keeps the
+//! tile-specific parts: the queries and specifications, and Lambert-93.
 
-pub mod coords;
-pub mod draw;
 pub mod specs;
 
 /// Lambert-93 (EPSG:2154) metres to lon/lat degrees on GRS80, with the

@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "common",
     "crates/avenger-altair",
+    "crates/avenger-coords",
     "crates/avenger-selection",
     "crates/avenger-vegalite-py",
     "crates/avenger-vegalite-spec",
@@ -76,6 +77,7 @@ winit = "0.30.11"
 copc-rs = { git = "https://github.com/pka/copc-rs", rev = "7918657abc8ba767cdccf041b7b020c218029ace", features = ["laz-parallel"] }
 
 lidar-common = { path = "common" }
+avenger-coords = { path = "crates/avenger-coords" }
 avenger-selection = { path = "crates/avenger-selection" }
 
 # Avenger's Vega-Lite spec types, carried in this repo with additions that are

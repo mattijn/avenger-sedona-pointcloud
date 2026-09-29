@@ -24,8 +24,8 @@ use avenger_scenegraph::scene_graph::SceneGraph;
 use avenger_wgpu::canvas::{Canvas, PngCanvas};
 use datafusion::prelude::SessionContext;
 use lidar_common::{CLASSES, INK, MUTED, OTHER};
-use lidar_coords::coords::{Cartesian, CoordinateSystem, Nested, Spatial};
-use lidar_coords::draw::{self, Tick};
+use avenger_coords::{Cartesian, CoordinateSystem, Nested, Spatial};
+use avenger_coords::draw::{self, Tick};
 use lidar_coords::lambert93_to_lonlat;
 use lidar_coords::specs::{GRID, TILE_E, TILE_N};
 

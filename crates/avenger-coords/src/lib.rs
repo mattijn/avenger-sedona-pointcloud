@@ -1,6 +1,9 @@
-//! The prototype. A coordinate system is a list of channels, a point
-//! transform, a line transform and one flag; everything else (grids, labels,
-//! morphs, rect-to-polygon fallback) is derived from those in `draw.rs`.
+//! One coordinate-system trait for charts and maps, from experiment 5. A
+//! coordinate system is a list of channels, a point transform, a line
+//! transform and one flag; everything else (grids, labels, morphs,
+//! rect-to-polygon fallback) is derived from those in `draw`.
+
+pub mod draw;
 
 use avenger_geo::{MultiLine, PolylineSink, Projection, ProjectionKind, Projector};
 

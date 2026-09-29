@@ -88,6 +88,16 @@ Then update the README timings if they moved, and commit.
 
 ## How to be useful here
 
+- **Look for it before building it.** Eleven experiments in, most ideas have
+  been tried at least once. Before proposing a design, search the READMEs and
+  `crates/` for it (`grep -rniE 'morph|polar|bend' --include=README.md .`)
+  and say what exists. A morph from bars to a donut, for example, is
+  `Bend` in `crates/avenger-coords` (experiment 5), and experiment 7 carries
+  a copy of it for its stacked-bar-to-donut transition.
+- **Move reusable code to `crates/` when a second experiment needs it.** An
+  idea that lives only in one experiment's `src/` gets written again from
+  scratch by the next. The crate's README says what it holds, what is still
+  missing, and which experiments use it; the experiment's README points to it.
 - **Measure the pieces separately before blaming one.** This repo once reported
   that frame cost was rendering; timing `set_scene`, `render` and the geometry
   index apart showed rendering was 7% of it and the hit-test index was the rest.
@@ -117,8 +127,10 @@ Each experiment is a crate under `experiments/NN-name/` with its own README and
    it, what was measured.
 4. Add a row to the table in the root README.
 
-Shared code goes in `common/` only when a second crate needs it; a helper used
-once stays in its binary.
+Shared code moves out only when a second crate needs it; a helper used once
+stays in its binary. Code about the tile (the LAS session, the palette) goes in
+`common/`; code that would work on any data (coordinate systems, selections,
+validation) becomes a crate under `crates/`, named `avenger-<what>`.
 
 ## Gotchas learned the hard way
 

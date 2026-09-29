@@ -74,6 +74,8 @@ experiments/08-pipeline-validation/ how to validate a pipeline, and how fast
 experiments/09-altair-on-avenger/   Avenger as Altair's engine: the design
 experiments/10-mosaic-flights/      the selections on Mosaic's 10M flights
 experiments/11-cloudlasso/          CloudLasso through avenger-selection, on the tile
+crates/avenger-coords/          from experiment 5: coordinate systems (polar, spatial, 3D, the Bend morph) and marks drawn through them
+crates/avenger-selection/       vendored from Jon's avenger, with the selections this repo added (experiments 7, 10, 11)
 crates/avenger-validate/        from experiment 8: the pipeline validator (Rust, Python, wasm, CEL)
 crates/avenger-altair/          from experiment 9: a spike of Avenger as Altair's engine
 crates/avenger-vegalite-spec/   from experiment 9: Jon's Vega-Lite types, carried with a JSON Schema export

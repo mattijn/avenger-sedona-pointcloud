@@ -125,8 +125,7 @@ no window capture is involved.
 
 | File | What it holds |
 |---|---|
-| [coords.rs](src/coords.rs) | The trait, channel resolution, adaptive sampling, and every system |
-| [draw.rs](src/draw.rs) | Points, rects, geoshapes and the grid, drawn through any system |
+| [avenger-coords](../../crates/avenger-coords/) | The trait, channel resolution, adaptive sampling and every system (`lib.rs`), and points, rects, geoshapes and the grid drawn through any system (`draw.rs`). Moved out of this experiment on 29 Sep 2026 so later experiments can use it; the figures are byte-identical after the move. |
 | [specs.rs](src/specs.rs) | The queries and the three chart specifications (bars, share, map) |
 | [bin/coords.rs](src/bin/coords.rs) | The figures and measurements below |
 | [bin/coords_live.rs](src/bin/coords_live.rs) | The live viewer, snapshots, and the two recorded videos |
@@ -466,7 +465,7 @@ useful when coordinate systems land in the chart layer.
    polar glyph at every position of any outer system, and per-group
    normalisation is a SQL window function. Between them they give pies on a
    scatter plot and pies on a projected map. The system itself is about 30
-   lines (`Nested` in `coords.rs`); the figure is `bin/glyphs.rs`.
+   lines (`Nested` in `avenger-coords`); the figure is `bin/glyphs.rs`.
 8. **The pinned host's wake-ups and widgets were enough for an animated,
    interactive viewer.** Nothing extra was needed beyond `RequestWakeup` and
    `avenger-widgets`. One small thing we ran into: `SymbolShape` has only

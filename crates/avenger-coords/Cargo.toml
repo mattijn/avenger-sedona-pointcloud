@@ -1,0 +1,13 @@
+[package]
+name = "avenger-coords"
+description = "From experiment 5: one coordinate-system trait for charts and maps (Cartesian, polar, spatial, 3D, the Bend morph, lenses), and marks drawn through any system."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+avenger-color.workspace = true
+avenger-geo.workspace = true
+avenger-scenegraph.workspace = true
+avenger-text.workspace = true
+lyon_path.workspace = true

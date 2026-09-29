@@ -711,6 +711,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "avenger-coords"
+version = "0.1.0"
+dependencies = [
+ "avenger-color",
+ "avenger-geo",
+ "avenger-scenegraph",
+ "avenger-text",
+ "lyon_path",
+]
+
+[[package]]
 name = "avenger-datafusion-aggregate-state"
 version = "0.1.0"
 source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
@@ -4548,6 +4559,7 @@ dependencies = [
  "avenger-app",
  "avenger-color",
  "avenger-common",
+ "avenger-coords",
  "avenger-eventstream",
  "avenger-geo",
  "avenger-geometry",

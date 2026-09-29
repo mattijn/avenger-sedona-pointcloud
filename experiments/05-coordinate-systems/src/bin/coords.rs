@@ -12,10 +12,10 @@ use avenger_scenegraph::marks::mark::SceneMark;
 use avenger_scenegraph::scene_graph::SceneGraph;
 use avenger_wgpu::canvas::{Canvas, PngCanvas};
 use lidar_common::{las_context, INK, MUTED};
-use lidar_coords::coords::{
+use avenger_coords::{
     resolve, Bend, Blend, Cartesian, Cartesian3d, CoordinateSystem, Polar, Screen, Spatial,
 };
-use lidar_coords::draw::{self, Cost};
+use avenger_coords::draw::{self, Cost};
 use lidar_coords::specs::{bars, load, map, stack, MapSetup};
 
 const W: f64 = 300.0;
