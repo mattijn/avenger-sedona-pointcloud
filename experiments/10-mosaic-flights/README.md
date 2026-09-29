@@ -182,16 +182,20 @@ cargo run --release -p lidar-flights --bin flights_live -- data/flights-10m.parq
 | drag across the lines | a line brush: the bands whose line crosses the segment |
 | T, then drag the lines (or Shift-drag) | a timebox: the bands whose line stays inside it |
 | S | the soft brush on or off: light blue counts every flight by its degree, over 60 px |
+| D | the histogram under the pointer (arrival delay otherwise) morphs into a donut, or back into bars, in 2 s; its brush bends with it |
+| drag along a donut's ring | a brush on that column, read back into its units through the bend's inverse; the other panels follow as with a brush on bars |
 | click or right-click a panel | clears that panel's selection; Esc clears all |
 
 [![The window, recorded headlessly](images/flights_live.png)](video/flights_live.mp4)
 
-[video/flights_live.mp4](video/flights_live.mp4) (37 s) goes through each of
-them: two brushes, a right click, the soft brush, the lasso, a line brush, and a
-timebox together with a brush. It is recorded headlessly with `--tour`, which
+[video/flights_live.mp4](video/flights_live.mp4) (51 s) goes through each of
+them: two brushes, a right click, the soft brush, the lasso, a line brush, a
+timebox together with a brush, and last a brush on arrival delay that bends
+with its histogram into a donut, is dragged along the ring there, and comes
+back into bars. It is recorded headlessly with `--tour`, which
 moves a drawn pointer through the window's own press, motion and release at 30
 frames a second and queries every third frame while dragging, about as often
-as the window's queries return. `--snapshots` checks the same gestures as seven
+as the window's queries return. `--snapshots` checks the same gestures as twelve
 PNGs; neither involves capturing a window.
 
 ```sh
@@ -206,6 +210,19 @@ flights load in 0.2 s; one update, all three histograms queried side by side,
 takes 34–111 ms (a brush 59 ms, the lasso 87 ms, the soft brush 92 ms, the
 timebox with a brush 111 ms), and 324 ms with the lasso, a brush and a line
 brush set and the soft brush on.
+
+**The morph in the window** is `flights_morph`'s, through the same crates:
+while a panel morphs, each scene build moves it on by the time since the last
+and returns `RuntimeHostCommand::RequestWakeup` for 16 ms later, as
+experiment 5's viewer does. Steps 8 to 11 of `--snapshots` brush arrival
+delay from 45 to 125 minutes, press D, drag along the donut's ring from the
+place of −20 to that of 15 minutes, and press D again. The drag reads back as
+−20.0000085 to 14.999998 minutes (the pointer's positions are `f32` pixels);
+a press on the panel half way back is ignored, since a half-bent panel has
+no inverse to brush through, and the brush arrives in the bars as it was left
+on the donut. A drag on the donut that crosses 12 o'clock does not wrap: it
+stops at the ring's ends. The soft brush's tint is not drawn on a donut.
+None of this was tried with a real mouse; the window was not opened.
 
 The window found two bugs in the soft brush, both fixed in
 `avenger-selection` ([FINDINGS.md](../../FINDINGS.md) 36): beside a line brush

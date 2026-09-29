@@ -3,7 +3,9 @@
 //! departure time and arrival delay, drag a line brush or a timebox across the
 //! distance bands' lines; each histogram shows the flights the other panels
 //! leave, queried again through `avenger-selection` as you drag. S turns the
-//! soft brush on and off.
+//! soft brush on and off. D morphs the histogram under the pointer into a
+//! donut and back (`avenger-transition`, `avenger-coords`); on the donut a
+//! drag along the ring brushes it, read back into the same range brush.
 //!
 //! Usage: cargo run --release -p lidar-flights --bin flights_live -- <flights-10m.parquet>
 //!        cargo run --release -p lidar-flights --bin flights_live -- <flights-10m.parquet> --snapshots <out_dir>
@@ -13,9 +15,11 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
-use avenger_app::{app::{AvengerApp, SceneGraphBuilder}, error::AvengerAppError};
+use avenger_app::{app::{AvengerApp, SceneBuild, SceneGraphBuilder}, error::AvengerAppError};
+use avenger_coords::{draw, Bend, CoordinateSystem, Fitted};
 use avenger_eventstream::{
     manager::EventStreamHandler,
+    runtime::{RuntimeHostCommand, RuntimeWakeKey},
     scene::{SceneGraphEvent, SceneGraphEventType},
     stream::{EventStreamConfig, UpdateStatus},
     window::{Key, MouseButton, NamedKey},
@@ -24,6 +28,8 @@ use avenger_geometry::rtree::SceneGraphRTree;
 use avenger_scenegraph::marks::{group::SceneGroup, mark::SceneMark};
 use avenger_scenegraph::scene_graph::SceneGraph;
 use avenger_selection::{SelectionSet, SelectionValue, SeriesTest, ValueTest};
+use avenger_transition::bins::{self, Layout};
+use avenger_transition::{ease, join, phases, Geo, Item, Plane, Timing, Tweened};
 use avenger_winit_wgpu::{WinitWgpuAvengerApp, WinitWgpuAvengerAppOptions};
 use datafusion::common::ScalarValue;
 use datafusion::logical_expr::{col, lit};
@@ -46,6 +52,13 @@ const LIGHT: [f32; 4] = [0.6, 0.75, 0.88, 1.0];
 /// The bars outside a panel's own brush.
 const PALE: [f32; 4] = [0.78, 0.84, 0.9, 1.0];
 const MUTED: [f32; 4] = [0.42, 0.45, 0.49, 1.];
+/// The morph between bars and donut: how long it takes, the donut's ring and
+/// the brush's reach across it in unit y, and the brush's tint.
+const MORPH_SECS: f64 = 2.0;
+const RING: [f64; 2] = [0.5, 0.95];
+const BRUSH_Y_STACK: [f64; 2] = [0.42, 1.0];
+const BRUSH_FILL: [f32; 4] = [0.85, 0.2, 0.15, 0.08];
+const WAKE: &str = "flights-morph";
 
 type Bins = Vec<(i64, f64)>;
 
@@ -135,6 +148,13 @@ struct State {
     /// Only in `--tour`: the pointer drawn into the frame (pressed or not), and a caption.
     pointer: Option<([f32; 2], bool)>,
     caption: Option<String>,
+    /// Each histogram's place between bars (0) and donut (1), where it is
+    /// heading, and the pointer, for D to know which panel it means.
+    donut: [f64; 3],
+    goal: [f64; 3],
+    cursor: [f32; 2],
+    last_tick: Option<Instant>,
+    wake_generation: u64,
 }
 
 impl State {
@@ -149,6 +169,12 @@ impl State {
         }
         if button != MouseButton::Left {
             return false;
+        }
+        if let Target::Hist(i) = target {
+            // Half bent, a panel has no inverse to brush through.
+            if self.donut[i] > 0.0 && self.donut[i] < 1.0 {
+                return false;
+            }
         }
         self.drag = Some(Drag { target, start: q, shift });
         match target {
@@ -172,6 +198,12 @@ impl State {
         let (w, h) = match d.target { Target::Density => (W, DENSITY_H), Target::Series => (W, SERIES_H), Target::Hist(_) => (W, H) };
         let q = [(p[0] - o[0]).clamp(0.0, w), (p[1] - o[1]).clamp(0.0, h)];
         match d.target {
+            Target::Hist(i) if self.donut[i] >= 1.0 => {
+                // On the donut: each end read back through the bend's inverse
+                // and the stacked layout, into minutes, hours or miles.
+                let (a, b) = (self.donut_value(i, d.start), self.donut_value(i, q));
+                self.brushes[i] = Some([a.min(b), a.max(b)]);
+            }
             Target::Hist(i) => {
                 let v = |x: f32| { let pl = &PLOTS[i]; pl.domain[0] + x as f64 / W as f64 * (pl.domain[1] - pl.domain[0]) };
                 let (a, b) = (v(d.start[0].min(q[0])), v(d.start[0].max(q[0])));
@@ -201,7 +233,7 @@ impl State {
         let Some(d) = self.drag.take() else { return false };
         self.motion_of(&d, p);
         let tiny = match d.target {
-            Target::Hist(i) => self.brushes[i].map_or(true, |b| PLOTS[i].px(b[1], W) - PLOTS[i].px(b[0], W) < 3.0),
+            Target::Hist(i) => self.brushes[i].map_or(true, |b| self.brush_px(i, b) < 3.0),
             Target::Density => self.lasso.len() < 3,
             Target::Series => self.series.is_none(),
         };
@@ -223,6 +255,12 @@ impl State {
             Key::Named(NamedKey::Escape) => { self.clear_all(); true }
             Key::Character('s') | Key::Character('S') => { self.soft = !self.soft; true }
             Key::Character('t') | Key::Character('T') => { self.timebox = !self.timebox; false }
+            Key::Character('d') | Key::Character('D') => {
+                let i = match target_at(self.cursor) { Some((Target::Hist(i), _)) => i, _ => 0 };
+                self.goal[i] = 1.0 - self.goal[i];
+                println!("{} towards {}", PLOTS[i].name, if self.goal[i] > 0.5 { "donut" } else { "bars" });
+                false
+            }
             _ => false,
         }
     }
@@ -248,13 +286,96 @@ impl State {
         }
     }
 
+    /// Move every morph `dt` seconds on; true while one is still moving.
+    fn step(&mut self, dt: f64) -> bool {
+        for i in 0..3 {
+            let d = self.goal[i] - self.donut[i];
+            self.donut[i] += d.signum() * d.abs().min(dt / MORPH_SECS);
+        }
+        self.animating()
+    }
+    fn animating(&self) -> bool {
+        (0..3).any(|i| self.donut[i] != self.goal[i])
+    }
+    /// Panel `i`'s bins as the panel shows them, every display bin included.
+    fn bins(&self, i: usize, of: &[(i64, f64)]) -> bins::Bins {
+        let p = &PLOTS[i];
+        let n = ((p.domain[1] - p.domain[0]) / p.step).round() as usize;
+        let mut counts = vec![0.0; n];
+        for (b, v) in of {
+            if (0..n as i64).contains(b) {
+                counts[*b as usize] = *v;
+            }
+        }
+        bins::Bins::new((0..=n).map(|k| p.domain[0] + k as f64 * p.step).collect(), counts)
+    }
+    /// A pointer on panel `i`'s donut (panel pixels) as a value of its column.
+    fn donut_value(&self, i: usize, q: [f32; 2]) -> f64 {
+        let bend = Bend { width: W as f64, height: H as f64, t: 1.0 };
+        let cs = Fitted::new(&bend, W as f64, H as f64);
+        let u = cs.invert([q[0] as f64, q[1] as f64]).unwrap_or([0.0, 0.0]);
+        self.bins(i, &self.hard[i]).value_at(u[0], Layout::Stack { y: RING })
+    }
+    /// How long a brush is on screen: along the bars, or around the ring.
+    fn brush_px(&self, i: usize, b: [f64; 2]) -> f64 {
+        if self.donut[i] >= 1.0 {
+            let bins = self.bins(i, &self.hard[i]);
+            let stack = Layout::Stack { y: RING };
+            let mid = 0.5 * (RING[0] + RING[1]) * 0.5 * H as f64;
+            (bins.position(b[1], stack) - bins.position(b[0], stack)) * std::f64::consts::TAU * mid
+        } else {
+            (PLOTS[i].px(b[1], W) - PLOTS[i].px(b[0], W)) as f64
+        }
+    }
+    /// Histogram `i` between bars and donut: the bars stack, then bend. All
+    /// flights (grey) fade out, since a donut has no room for them; the
+    /// panel's own brush tints its bars, blue for the part it takes, and is
+    /// drawn as one more item, so it bends with them.
+    fn morph_panel(&self, i: usize) -> SceneMark {
+        let p = &PLOTS[i];
+        let t = self.donut[i];
+        let (shown, all) = (self.bins(i, &self.hard[i]), self.bins(i, &self.all[i]));
+        let max = all.counts.iter().cloned().fold(1.0, f64::max);
+        let brush = self.brushes[i];
+        let frame = |layout: Layout, context: bool| -> Vec<Item> {
+            let mut items = if context { all.items("all", layout, |_| GREY) } else { vec![] };
+            items.extend(shown.items("bar", layout, |_| if brush.is_some() { PALE } else { BLUE }));
+            if let Some(b) = brush {
+                items.extend(shown.clipped("sel", b, layout, BLUE));
+                let y = if matches!(layout, Layout::Bars { .. }) { [0.0, 1.0] } else { BRUSH_Y_STACK };
+                items.push(Item { key: "brush".into(), parent: None, geo: Geo::Rect(shown.interval(b, layout, y)), fill: BRUSH_FILL, size: 0.0, h: 0.0 });
+            }
+            items
+        };
+        let (bend, g) = phases(Plane::Cartesian, Plane::Polar, t);
+        let e = ease(t);
+        let items = join(&frame(Layout::Bars { max }, true), &frame(Layout::Stack { y: RING }, false), Timing { t, g, exit: 1.0 - e, enter: e });
+        let bent = Bend { width: W as f64, height: H as f64, t: bend };
+        let cs = Fitted::new(&bent, W as f64, H as f64);
+        let layer = |prefix: &str, stroke: [f32; 4]| -> SceneMark {
+            let chosen: Vec<&Tweened> = items.iter().filter(|it| it.key.starts_with(prefix)).collect();
+            let r = |it: &Tweened| match it.geo { Geo::Rect(r) => r, _ => [0.0; 4] };
+            let lo: Vec<[f64; 2]> = chosen.iter().map(|it| { let r = r(it); [r[0], r[2]] }).collect();
+            let hi: Vec<[f64; 2]> = chosen.iter().map(|it| { let r = r(it); [r[1], r[3]] }).collect();
+            let fill: Vec<[f32; 4]> = chosen.iter().map(|it| it.fill).collect();
+            draw::rects(&cs, &lo, &hi, &fill, stroke).0
+        };
+        let mut marks = vec![layer("brush", RED), layer("all", [0.0; 4]), layer("bar", [1.0; 4]), layer("sel", [0.0; 4])];
+        let what = match brush {
+            Some(b) => format!("{} · brush {:.0}–{:.0} · drag along the ring to brush · D: back to bars", p.title, b[0], b[1]),
+            None => format!("{} · drag along the ring to brush · D: back to bars", p.title),
+        };
+        marks.push(text(what, 0.0, H + 36.0, 11.0, INK));
+        SceneGroup { origin: hist_origin(i), marks, ..Default::default() }.into()
+    }
+
     fn scene(&self) -> Result<SceneGraph, Error> {
         let mut marks = vec![rects(&[[0.0, 0.0, self.size[0].max(SIZE[0]), self.size[1].max(SIZE[1])]], vec![[1.0; 4]])];
         let active = self.brushes.iter().filter(|b| b.is_some()).count() + (self.lasso.len() >= 3) as usize + self.series.is_some() as usize;
         marks.extend(heading("Cross-Filter Flights, with this repo's selections",
             &format!("{} flights · drag a histogram to brush it · draw a lasso on the density · drag across the lines for a line brush or a timebox",
                 thousands(self.n))));
-        marks.push(text(format!("T: the lines take a {} (Shift-drag: a {}) · S: soft brush {} · click or right-click a panel to clear it · Esc clears all · {} selection{} · last update {:.0} ms",
+        marks.push(text(format!("D: a histogram as a donut · T: the lines take a {} (Shift-drag: a {}) · S: soft brush {} · click or right-click a panel to clear it · Esc clears all · {} selection{} · last update {:.0} ms",
             if self.timebox { "timebox" } else { "line brush" }, if self.timebox { "line brush" } else { "timebox" },
             if !self.soft { "off" } else if self.soft_failed { "on, but its query failed (see the terminal)" } else { "on" }, active, if active == 1 { "" } else { "s" }, self.last_ms), 24.0, 66.0, 11.0, MUTED));
 
@@ -328,7 +449,11 @@ impl State {
                 }
             };
             layers.push((&self.hard[i], colours));
-            marks.push(panel(p, hist_origin(i), &self.all[i], &layers, &shades, max)?);
+            if self.donut[i] > 0.0 {
+                marks.push(self.morph_panel(i));
+            } else {
+                marks.push(panel(p, hist_origin(i), &self.all[i], &layers, &shades, max)?);
+            }
         }
         if let Some(c) = &self.caption {
             marks.push(text(c.clone(), 24.0, 88.0, 13.0, RED));
@@ -399,7 +524,26 @@ struct Builder;
 #[async_trait::async_trait]
 impl SceneGraphBuilder<State> for Builder {
     async fn build(&self, s: &mut State) -> Result<SceneGraph, AvengerAppError> {
-        s.scene().map_err(|e| AvengerAppError::InternalError(e.to_string()))
+        self.build_with_effects(s).await.map(|b| b.scene_graph)
+    }
+    /// While a panel morphs, each build moves it on by the time since the
+    /// last and asks the host to wake again in 16 ms.
+    async fn build_with_effects(&self, s: &mut State) -> Result<SceneBuild, AvengerAppError> {
+        let now = Instant::now();
+        let dt = s.last_tick.map_or(0.0, |l| now.duration_since(l).as_secs_f64()).min(0.1);
+        let animating = s.step(dt);
+        s.last_tick = animating.then_some(now);
+        let scene_graph = s.scene().map_err(|e| AvengerAppError::InternalError(e.to_string()))?;
+        let mut commands = vec![];
+        if animating {
+            s.wake_generation += 1;
+            commands.push(RuntimeHostCommand::RequestWakeup {
+                key: RuntimeWakeKey::new(WAKE, 0, "frame"),
+                deadline: avenger_common::time::Instant::now() + avenger_common::time::Duration::from_millis(16),
+                generation: s.wake_generation,
+            });
+        }
+        Ok(SceneBuild { scene_graph, commands, rebuild_geometry: false })
     }
 }
 
@@ -419,6 +563,7 @@ impl EventStreamHandler<State> for Input {
             SceneGraphEvent::MouseDown(e) => s.press(e.position, e.button, e.modifiers.shift),
             SceneGraphEvent::MouseUp(e) if e.button == MouseButton::Left => s.release(e.position),
             SceneGraphEvent::KeyPress(e) => s.key(&e.key),
+            SceneGraphEvent::RuntimeWake(w) if w.key.namespace == WAKE => return redraw(),
             SceneGraphEvent::WindowResize(e) => { s.size = e.size; return redraw() }
             _ => return nothing(),
         };
@@ -433,6 +578,9 @@ struct Move;
 #[async_trait::async_trait]
 impl EventStreamHandler<State> for Move {
     async fn handle(&self, event: &SceneGraphEvent, s: &mut State, _: &SceneGraphRTree) -> UpdateStatus {
+        if let Some(p) = event.position() {
+            s.cursor = p;
+        }
         match event.position() {
             Some(p) if s.motion(p) => redraw(),
             _ => nothing(),
@@ -469,6 +617,7 @@ fn main() -> Result<(), Error> {
     let state = State {
         ctx, rt: data_rt.handle().clone(), n, hard: all.clone(), faded: vec![None; 3], all, heat: Arc::new(heat), lines: Arc::new(lines),
         size: SIZE, brushes: [None; 3], lasso: Vec::new(), series: None, soft: false, timebox: false, drag: None, bands: None, soft_failed: false, last_ms: 0.0, pointer: None, caption: None,
+        donut: [0.0; 3], goal: [0.0; 3], cursor: [0.0; 2], last_tick: None, wake_generation: 0,
     };
 
     if let Some(i) = std::env::args().position(|a| a == "--snapshots") {
@@ -484,7 +633,8 @@ fn main() -> Result<(), Error> {
         (EventStreamConfig { types: vec![SceneGraphEventType::CursorMoved], ..Default::default() }, Arc::new(Move)),
         (EventStreamConfig { types: vec![SceneGraphEventType::CursorMoved], throttle: Some(60), ..Default::default() }, Arc::new(LiveQuery)),
         (EventStreamConfig {
-            types: vec![SceneGraphEventType::MouseDown, SceneGraphEventType::MouseUp, SceneGraphEventType::KeyPress, SceneGraphEventType::WindowResize],
+            types: vec![SceneGraphEventType::MouseDown, SceneGraphEventType::MouseUp, SceneGraphEventType::KeyPress, SceneGraphEventType::WindowResize,
+                SceneGraphEventType::RuntimeWake],
             ..Default::default()
         }, Arc::new(Input)),
     ];
@@ -560,6 +710,31 @@ async fn snapshots(mut s: State, out: &str) -> Result<(), Error> {
             drag(s, &[h(2, PLOTS[2].px(300.0, W)), h(2, PLOTS[2].px(1500.0, W))], false);
             drag(s, &[ser([15.0, 0.0]), ser([18.0, 30.0])], false);
         })),
+        // The morph: a brush on the bars, D, and the donut with the brush bent.
+        ("8-donut", Box::new(move |s| {
+            s.clear_all();
+            s.soft = false;
+            drag(s, &[h(0, PLOTS[0].px(45.0, W)), h(0, PLOTS[0].px(125.0, W))], false);
+            s.cursor = h(0, 300.0);
+            s.key(&Key::Character('d'));
+            while s.step(1.0 / 30.0) {}
+        })),
+        // A drag along the ring brushes the donut: read back into minutes.
+        ("9-donut-drag", Box::new(move |s| {
+            let path = ring_path(s, 0, -20.0, 15.0, 24);
+            drag(s, &path, false);
+        })),
+        // Half way back, the panel ignores a press: it has no inverse there.
+        ("10-half-way", Box::new(move |s| {
+            s.key(&Key::Character('d'));
+            s.step(MORPH_SECS * 0.25);
+            let before = s.brushes[0];
+            drag(s, &[h(0, 100.0), h(0, 400.0)], false);
+            assert_eq!(s.brushes[0], before, "a press half way changed the brush");
+        })),
+        ("11-back-to-bars", Box::new(move |s| {
+            while s.step(1.0 / 30.0) {}
+        })),
     ];
     for (name, step) in steps {
         step(&mut s);
@@ -570,8 +745,8 @@ async fn snapshots(mut s: State, out: &str) -> Result<(), Error> {
         let path = format!("{out}/flights_live-{name}.png");
         canvas.render().await?.save(&path)?;
         let flights: f64 = s.hard[0].iter().map(|x| x.1).sum();
-        println!("{name}: {:.0} ms, {} flights in the delay panel, brushes {:?}, lasso {} points, bands {:?}{} -> {path}",
-            s.last_ms, thousands(flights as usize), s.brushes, s.lasso.len(), s.bands.as_ref().map(|b| b.len()),
+        println!("{name}: {:.0} ms, {} flights in the delay panel, brushes {:?}, lasso {} points, bands {:?}, donut {:?}{} -> {path}",
+            s.last_ms, thousands(flights as usize), s.brushes, s.lasso.len(), s.bands.as_ref().map(|b| b.len()), s.donut,
             if s.soft_failed { ", THE SOFT LAYER FAILED" } else { "" });
     }
     Ok(())
@@ -583,6 +758,21 @@ fn pointer_mark(p: [f32; 2], pressed: bool) -> SceneMark {
     SceneSymbolMark { len: 1, x: vec![p[0]].into(), y: vec![p[1]].into(), size: (if pressed { 260.0 } else { 110.0 }).into(),
         fill: avenger_color::ColorOrGradient::Color(if pressed { [0.85, 0.2, 0.15, 0.55] } else { [0.15, 0.16, 0.18, 0.8] }).into(),
         stroke: avenger_color::ColorOrGradient::Color([1.0; 4]).into(), stroke_width: Some(2.0), interactive: false, ..Default::default() }.into()
+}
+
+/// A pointer path along the middle of panel `i`'s donut, from the place of
+/// value `from` to that of `to`, in window pixels.
+fn ring_path(s: &State, i: usize, from: f64, to: f64, n: usize) -> Vec<[f32; 2]> {
+    let bins = s.bins(i, &s.hard[i]);
+    let stack = Layout::Stack { y: RING };
+    let bend = Bend { width: W as f64, height: H as f64, t: 1.0 };
+    let cs = Fitted::new(&bend, W as f64, H as f64);
+    let (a, b) = (bins.position(from, stack), bins.position(to, stack));
+    let o = hist_origin(i);
+    (0..=n).map(|k| {
+        let q = cs.project(&[a + (b - a) * k as f64 / n as f64, 0.5 * (RING[0] + RING[1])]).unwrap();
+        [o[0] + q[0] as f32, o[1] + q[1] as f32]
+    }).collect()
 }
 
 /// The recorder of `--tour`: a pointer moved through the window's own press,
@@ -599,6 +789,7 @@ const FPS: f32 = 30.0;
 impl Recorder {
     async fn shot(&mut self, s: &mut State) -> Result<(), Error> {
         use avenger_wgpu::canvas::Canvas;
+        s.step(1.0 / FPS as f64);
         let scene = s.scene()?;
         self.canvas.set_scene(&scene)?;
         self.canvas.render().await?.save(format!("{}/frame_{:05}.png", self.dir, self.frame))?;
@@ -663,6 +854,7 @@ impl Recorder {
         Ok(())
     }
     async fn key(&mut self, s: &mut State, k: Key) {
+        s.cursor = self.at;
         if s.key(&k) {
             s.refresh().await;
         }
@@ -727,6 +919,22 @@ async fn tour(mut s: State, dir: &str) -> Result<(), Error> {
     r.say(&mut s, "Esc clears everything").await;
     r.key(&mut s, Key::Named(NamedKey::Escape)).await;
     r.hold(&mut s, 1.5).await?;
+
+    r.say(&mut s, "A brush on arrival delay, then D over the panel: the bars stack and bend into a donut, and the brush bends with them").await;
+    r.drag(&mut s, &[h(0, 45.0), h(0, 125.0)], 1.2, false).await?;
+    r.hold(&mut s, 0.8).await?;
+    r.key(&mut s, Key::Character('d')).await;
+    r.hold(&mut s, MORPH_SECS as f32 + 1.0).await?;
+    r.say(&mut s, "On the donut, drag along the ring to brush: read back into minutes, the other panels follow").await;
+    let path = ring_path(&s, 0, -20.0, 15.0, 40);
+    r.drag(&mut s, &path, 2.0, false).await?;
+    r.hold(&mut s, 1.5).await?;
+    r.say(&mut s, "D again: back into bars, with the brush drawn on the donut").await;
+    r.key(&mut s, Key::Character('d')).await;
+    r.hold(&mut s, MORPH_SECS as f32 + 1.2).await?;
+    r.say(&mut s, "Esc clears everything").await;
+    r.key(&mut s, Key::Named(NamedKey::Escape)).await;
+    r.hold(&mut s, 1.0).await?;
     println!("wrote {} frames ({:.1} s of video) to {dir} in {:.0} s", r.frame, r.frame as f32 / FPS, t0.elapsed().as_secs_f64());
     Ok(())
 }
