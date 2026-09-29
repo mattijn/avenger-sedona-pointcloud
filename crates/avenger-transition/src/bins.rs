@@ -123,6 +123,41 @@ impl Bins {
         Some([self.position(lo, layout), self.position(hi, layout), r[2], r[3]])
     }
 
+    /// Bin `i` drawn at `count`, a part of its own count: a filtered layer
+    /// inside these bins as its context. In bars it is `count` high on the
+    /// same scale; in the stack it keeps the bin's width and fills that share
+    /// of the ring's thickness from the inside, as a bar fills from its base.
+    /// So both layers morph together, and the stack's angles stay those of
+    /// the context, whatever filters the layer.
+    pub fn bar(&self, i: usize, layout: Layout, count: f64) -> [f64; 4] {
+        let r = self.rect(i, layout);
+        match layout {
+            Layout::Bars { max } => [r[0], r[1], 0.0, count / max.max(f64::MIN_POSITIVE)],
+            Layout::Stack { y } => {
+                let share = if self.counts[i] > 0.0 { (count / self.counts[i]).clamp(0.0, 1.0) } else { 0.0 };
+                [r[0], r[1], y[0], y[0] + share * (y[1] - y[0])]
+            }
+        }
+    }
+
+    /// A filtered layer (`counts`, one per bin) as items keyed `{prefix}{i}`.
+    pub fn layer(&self, prefix: &str, layout: Layout, counts: &[f64], fill: impl Fn(usize) -> [f32; 4]) -> Vec<Item> {
+        (0..self.counts.len())
+            .map(|i| Item { key: format!("{prefix}{i}"), parent: None, geo: Geo::Rect(self.bar(i, layout, counts[i])), fill: fill(i), size: 0.0, h: 0.0 })
+            .collect()
+    }
+
+    /// The part of a filtered layer whose values lie in `range`.
+    pub fn clipped_layer(&self, prefix: &str, range: [f64; 2], layout: Layout, counts: &[f64], fill: [f32; 4]) -> Vec<Item> {
+        (0..self.counts.len())
+            .filter_map(|i| {
+                let c = self.clip(i, range, layout)?;
+                let r = self.bar(i, layout, counts[i]);
+                Some(Item { key: format!("{prefix}{i}"), parent: None, geo: Geo::Rect([c[0], c[1], r[2], r[3]]), fill, size: 0.0, h: 0.0 })
+            })
+            .collect()
+    }
+
     /// Every bin's part in `range` as an item keyed `{prefix}{i}`.
     pub fn clipped(&self, prefix: &str, range: [f64; 2], layout: Layout, fill: [f32; 4]) -> Vec<Item> {
         (0..self.counts.len())
@@ -174,6 +209,24 @@ mod tests {
             let x = b.position(24.0, l);
             assert!(((x - r[0]) / (r[1] - r[0]) - 0.4).abs() < 1e-12, "{l:?}");
         }
+    }
+
+    /// A filtered layer sits inside its context in both layouts: as high as
+    /// its count in bars, as much of the ring as its share in the stack.
+    #[test]
+    fn a_layer_fills_its_context() {
+        let b = bins();
+        let shown = [2.5, 0.0, 15.0, 5.0];
+        let bars = Layout::Bars { max: 20.0 };
+        assert_eq!(b.bar(0, bars, shown[0]), [0.0, 0.25, 0.0, 0.125]);
+        let stack = Layout::Stack { y: [0.5, 1.0] };
+        for i in 0..4 {
+            let (c, l) = (b.rect(i, stack), b.bar(i, stack, shown[i]));
+            assert_eq!((l[0], l[1], l[2]), (c[0], c[1], c[2]), "bin {i} keeps its slice");
+        }
+        assert_eq!(b.bar(0, stack, 2.5)[3], 0.75);
+        assert_eq!(b.bar(3, stack, 5.0)[3], 0.625);
+        assert_eq!(b.clipped_layer("s", [24.0, 100.0], stack, &shown, [0.0; 4]).len(), 2);
     }
 
     #[test]

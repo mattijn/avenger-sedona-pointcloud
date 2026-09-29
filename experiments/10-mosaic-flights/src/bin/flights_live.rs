@@ -314,12 +314,12 @@ impl State {
         let bend = Bend { width: W as f64, height: H as f64, t: 1.0 };
         let cs = Fitted::new(&bend, W as f64, H as f64);
         let u = cs.invert([q[0] as f64, q[1] as f64]).unwrap_or([0.0, 0.0]);
-        self.bins(i, &self.hard[i]).value_at(u[0], Layout::Stack { y: RING })
+        self.bins(i, &self.all[i]).value_at(u[0], Layout::Stack { y: RING })
     }
     /// How long a brush is on screen: along the bars, or around the ring.
     fn brush_px(&self, i: usize, b: [f64; 2]) -> f64 {
         if self.donut[i] >= 1.0 {
-            let bins = self.bins(i, &self.hard[i]);
+            let bins = self.bins(i, &self.all[i]);
             let stack = Layout::Stack { y: RING };
             let mid = 0.5 * (RING[0] + RING[1]) * 0.5 * H as f64;
             (bins.position(b[1], stack) - bins.position(b[0], stack)) * std::f64::consts::TAU * mid
@@ -327,29 +327,32 @@ impl State {
             (PLOTS[i].px(b[1], W) - PLOTS[i].px(b[0], W)) as f64
         }
     }
-    /// Histogram `i` between bars and donut: the bars stack, then bend. All
-    /// flights (grey) fade out, since a donut has no room for them; the
-    /// panel's own brush tints its bars, blue for the part it takes, and is
-    /// drawn as one more item, so it bends with them.
+    /// Histogram `i` between bars and donut: the bars stack, then bend. The
+    /// donut is stacked by all flights (grey), as the bars stand on them, and
+    /// the flights the other panels leave fill each slice from the inside by
+    /// their share, as they fill each bar from its base; so the slices' angles
+    /// stay put while other panels filter. The panel's own brush tints its
+    /// bars, blue for the part it takes, and is drawn as one more item, so it
+    /// bends with them.
     fn morph_panel(&self, i: usize) -> SceneMark {
         let p = &PLOTS[i];
         let t = self.donut[i];
         let (shown, all) = (self.bins(i, &self.hard[i]), self.bins(i, &self.all[i]));
         let max = all.counts.iter().cloned().fold(1.0, f64::max);
         let brush = self.brushes[i];
-        let frame = |layout: Layout, context: bool| -> Vec<Item> {
-            let mut items = if context { all.items("all", layout, |_| GREY) } else { vec![] };
-            items.extend(shown.items("bar", layout, |_| if brush.is_some() { PALE } else { BLUE }));
+        let frame = |layout: Layout| -> Vec<Item> {
+            let mut items = all.items("all", layout, |_| GREY);
+            items.extend(all.layer("bar", layout, &shown.counts, |_| if brush.is_some() { PALE } else { BLUE }));
             if let Some(b) = brush {
-                items.extend(shown.clipped("sel", b, layout, BLUE));
+                items.extend(all.clipped_layer("sel", b, layout, &shown.counts, BLUE));
                 let y = if matches!(layout, Layout::Bars { .. }) { [0.0, 1.0] } else { BRUSH_Y_STACK };
-                items.push(Item { key: "brush".into(), parent: None, geo: Geo::Rect(shown.interval(b, layout, y)), fill: BRUSH_FILL, size: 0.0, h: 0.0 });
+                items.push(Item { key: "brush".into(), parent: None, geo: Geo::Rect(all.interval(b, layout, y)), fill: BRUSH_FILL, size: 0.0, h: 0.0 });
             }
             items
         };
         let (bend, g) = phases(Plane::Cartesian, Plane::Polar, t);
         let e = ease(t);
-        let items = join(&frame(Layout::Bars { max }, true), &frame(Layout::Stack { y: RING }, false), Timing { t, g, exit: 1.0 - e, enter: e });
+        let items = join(&frame(Layout::Bars { max }), &frame(Layout::Stack { y: RING }), Timing { t, g, exit: 1.0 - e, enter: e });
         let bent = Bend { width: W as f64, height: H as f64, t: bend };
         let cs = Fitted::new(&bent, W as f64, H as f64);
         let layer = |prefix: &str, stroke: [f32; 4]| -> SceneMark {
@@ -360,7 +363,7 @@ impl State {
             let fill: Vec<[f32; 4]> = chosen.iter().map(|it| it.fill).collect();
             draw::rects(&cs, &lo, &hi, &fill, stroke).0
         };
-        let mut marks = vec![layer("brush", RED), layer("all", [0.0; 4]), layer("bar", [1.0; 4]), layer("sel", [0.0; 4])];
+        let mut marks = vec![layer("brush", RED), layer("all", [1.0; 4]), layer("bar", [1.0; 4]), layer("sel", [0.0; 4])];
         let what = match brush {
             Some(b) => format!("{} · brush {:.0}–{:.0} · drag along the ring to brush · D: back to bars", p.title, b[0], b[1]),
             None => format!("{} · drag along the ring to brush · D: back to bars", p.title),
@@ -710,10 +713,13 @@ async fn snapshots(mut s: State, out: &str) -> Result<(), Error> {
             drag(s, &[h(2, PLOTS[2].px(300.0, W)), h(2, PLOTS[2].px(1500.0, W))], false);
             drag(s, &[ser([15.0, 0.0]), ser([18.0, 30.0])], false);
         })),
-        // The morph: a brush on the bars, D, and the donut with the brush bent.
+        // The morph: a brush on distance, so the delay panel shows fewer
+        // flights than all, a brush on the delay bars, D, and the donut with
+        // the brush bent and the flights left filling each slice.
         ("8-donut", Box::new(move |s| {
             s.clear_all();
             s.soft = false;
+            drag(s, &[h(2, PLOTS[2].px(1000.0, W)), h(2, PLOTS[2].px(2500.0, W))], false);
             drag(s, &[h(0, PLOTS[0].px(45.0, W)), h(0, PLOTS[0].px(125.0, W))], false);
             s.cursor = h(0, 300.0);
             s.key(&Key::Character('d'));
@@ -763,7 +769,7 @@ fn pointer_mark(p: [f32; 2], pressed: bool) -> SceneMark {
 /// A pointer path along the middle of panel `i`'s donut, from the place of
 /// value `from` to that of `to`, in window pixels.
 fn ring_path(s: &State, i: usize, from: f64, to: f64, n: usize) -> Vec<[f32; 2]> {
-    let bins = s.bins(i, &s.hard[i]);
+    let bins = s.bins(i, &s.all[i]);
     let stack = Layout::Stack { y: RING };
     let bend = Bend { width: W as f64, height: H as f64, t: 1.0 };
     let cs = Fitted::new(&bend, W as f64, H as f64);
@@ -920,8 +926,10 @@ async fn tour(mut s: State, dir: &str) -> Result<(), Error> {
     r.key(&mut s, Key::Named(NamedKey::Escape)).await;
     r.hold(&mut s, 1.5).await?;
 
-    r.say(&mut s, "A brush on arrival delay, then D over the panel: the bars stack and bend into a donut, and the brush bends with them").await;
+    r.say(&mut s, "A brush on distance, then one on arrival delay").await;
+    r.drag(&mut s, &[h(2, 1000.0), h(2, 2500.0)], 1.2, false).await?;
     r.drag(&mut s, &[h(0, 45.0), h(0, 125.0)], 1.2, false).await?;
+    r.say(&mut s, "D over the panel: the bars stack by all flights and bend into a donut; the flights left fill each slice, and the brush bends along").await;
     r.hold(&mut s, 0.8).await?;
     r.key(&mut s, Key::Character('d')).await;
     r.hold(&mut s, MORPH_SECS as f32 + 1.0).await?;

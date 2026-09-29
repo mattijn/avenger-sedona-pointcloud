@@ -33,7 +33,10 @@ let cs = Bend { width: 300.0, height: 300.0, t: bend };
   into a donut. `interval` puts a value range, such as a brush, into either
   layout as one rect. `position` and `value_at` convert between value and
   unit x in both directions, so a brush drawn on the donut becomes a value
-  range again.
+  range again. `layer` and `clipped_layer` draw a filtered layer inside the
+  bins as its context: as high as its count in bars, filling that share of
+  its slice in the stack, so a chart's grey context and its blue layer morph
+  together.
 
 **Why a brush moves along.** A brush edge at a value sits at the same
 fraction of its bin in both layouts, and `join` moves both ends of every
