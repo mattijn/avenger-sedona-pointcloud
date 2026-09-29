@@ -166,8 +166,8 @@ on every item**, so two frames can be joined item by item:
 | File | What it does |
 |---|---|
 | `model.rs` | The chart state and `resolve(state, data)`: a frame of keyed items |
-| `anim.rs` | `transition(a, b, t)` |
-| `draw.rs` | Frames to marks, through `Bend` |
+| `anim.rs` | `transition(a, b, t)`: this chart's axes, titles, legends and lenses; the items move through [`avenger-transition`](../../crates/avenger-transition/) |
+| `draw.rs` | Frames to marks, through `Bend` and `fisheye` from [`avenger-coords`](../../crates/avenger-coords/) |
 | `package.rs` | The `layer` pipeline package, decisions → pipeline lines, and the fold back to a state |
 | `pilot.rs` | Jev's observation and questions, and its answers applied to the state |
 | `writer.rs` | The extra questions, the writer's prompt, write → apply → retry |

@@ -1,0 +1,8 @@
+[package]
+name = "avenger-transition"
+description = "From experiment 7: transitions of keyed items in a plot's unit square (object constancy, split and collapse, layout then bend), and a histogram's bar and stacked layouts with a brush that moves along."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]

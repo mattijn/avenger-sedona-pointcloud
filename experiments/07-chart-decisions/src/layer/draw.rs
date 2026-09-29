@@ -16,6 +16,8 @@ use avenger_text::types::{FontWeight, FontWeightNameSpec, TextAlign, TextBaselin
 use lidar_common::{INK, MUTED};
 use lyon_path::math::point;
 
+use avenger_coords::{Bend, CoordinateSystem};
+
 use super::anim::{DAxis, Drawn, UGeo};
 use super::model::{nice, viridis, Axis, View};
 
@@ -57,27 +59,12 @@ fn fade(mut rgba: [f32; 4], a: f32) -> [f32; 4] {
     rgba
 }
 
-/// Unit square → plot pixels, through `Bend(t)`: t = 0 is Cartesian (y up),
-/// t = 1 is polar with θ from x (clockwise from 12 o'clock) and r from y.
-/// The same family as experiment 5, rotated about the strip's midpoint so
-/// the plot stays in place.
+/// Unit square → plot pixels, through `avenger_coords::Bend(t)`: t = 0 is
+/// Cartesian (y up), t = 1 is polar with θ from x (clockwise from 12 o'clock)
+/// and r from y. Below t = 1e-6 the plot is drawn flat.
 pub fn project(u: [f64; 2], t: f64) -> [f64; 2] {
-    let (w, h) = (P, P);
-    if t < 1e-6 {
-        return [u[0] * w, (1.0 - u[1]) * h];
-    }
-    let r1 = 0.5 * w.min(h);
-    let rm = 0.5 * r1;
-    let phi = t * std::f64::consts::TAU;
-    let s = w + (std::f64::consts::TAU * rm - w) * t;
-    let rho = s / phi;
-    let thick = h + (r1 - h) * t;
-    let pm = [w / 2.0, h / 2.0 + rm * t];
-    let theta = (u[0] - 0.5) * phi;
-    let r = rho + (u[1] - 0.5) * thick;
-    let v = [r * theta.sin(), rho - r * theta.cos()];
-    let (sa, ca) = (t * std::f64::consts::PI).sin_cos();
-    [pm[0] + v[0] * ca - v[1] * sa, pm[1] + v[0] * sa + v[1] * ca]
+    let t = if t < 1e-6 { 0.0 } else { t };
+    Bend { width: P, height: P, t }.project(&u).unwrap()
 }
 
 pub fn text(s: &str, x: f32, y: f32, size: f32, color: [f32; 4], align: TextAlign, baseline: TextBaseline, bold: bool, angle: f32) -> SceneMark {
@@ -250,23 +237,12 @@ fn polyline(pts: &[[f64; 2]], stroke: [f32; 4], width: f32) -> SceneMark {
 }
 
 // ---------------------------------------------------------------------------
-// Views: after the bend, a lens or a tilt, as in experiment 5's
-// coordinate systems (`Fisheye`, `Cartesian3d`). Each is a point transform,
-// and a change of view blends the two transforms' outputs.
+// Views: after the bend, a lens or a tilt, from `avenger-coords`
+// (`fisheye`) or modelled on it (`tilt`, a variant of `Cartesian3d`). Each
+// is a point transform, and a change of view blends the two transforms'
+// outputs.
 
-/// Sarkar–Brown fisheye in unit space: points within `radius` of `focus`
-/// move outward, everything else stays.
-pub fn fisheye(u: [f64; 2], focus: [f64; 2], radius: f64, distortion: f64) -> [f64; 2] {
-    let d = [u[0] - focus[0], u[1] - focus[1]];
-    let r = d[0].hypot(d[1]);
-    if r <= 0.0 || r >= radius {
-        return u;
-    }
-    let x = r / radius;
-    let g = (distortion + 1.0) * x / (distortion * x + 1.0);
-    let k = g * radius / r;
-    [focus[0] + d[0] * k, focus[1] + d[1] * k]
-}
+pub use avenger_coords::fisheye;
 
 /// Experiment 5's `Cartesian3d` over the plot square: x, y and height z,
 /// seen from `yaw` around and `elevation` above the horizon. Returns the

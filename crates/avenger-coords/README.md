@@ -32,6 +32,11 @@ let p = cs.project(&[0.25, 0.5]);                          // unit x, y → pixe
 | `Fisheye`, `Hyperbolic`, `Twirl` | x, y | no | lenses |
 | `Nested { outer, radius }` | outer's, then θ, r | no | a pie at every point (vega-lite#7848) |
 
+`invert` takes plot pixels back to unit x and y, for picking and brushing
+through the system; `Cartesian`, `Polar` and `Bend` have it, at every t, and
+the tests check the round trip. `fisheye` is the lens as a plain function in
+unit space, for composing with another system.
+
 Every channel is in unit space except lon/lat, which are degrees. `draw` holds
 `points`, `rects`, `rings`, `shape`, `polylines`, `grid` and `title`: each
 takes a `&dyn CoordinateSystem` and returns scenegraph marks, rect instances
@@ -47,8 +52,8 @@ stepping `t` from a `RequestWakeup` every 16 ms, as `coords_live` does.
 
 These were listed as open in experiment 5 and are still open:
 
-- **no inverse.** Nothing maps pixels back to input, so picking and brushing
-  through a non-Cartesian system (a brush on a donut) have to add it.
+- an inverse for only three systems (`Cartesian`, `Polar`, `Bend`); the
+  others return `None`.
 - no clipping to the plot: `Bend`'s middle frames spill past their panel.
 - no local scale (Jacobian), so symbol sizes do not follow a lens.
 - no scales: channels are expected in unit space already.
@@ -57,3 +62,6 @@ These were listed as open in experiment 5 and are still open:
 
 - [experiment 5](../../experiments/05-coordinate-systems/): `coords`,
   `coords_live`, `glyphs`
+- [experiment 7](../../experiments/07-chart-decisions/): `layer/draw.rs`
+  draws through `Bend` and `fisheye` (its `tilt` is still its own variant of
+  `Cartesian3d`, with other constants)

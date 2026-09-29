@@ -41,6 +41,13 @@ pub trait CoordinateSystem {
         sample_line(self, pts, closed)
     }
 
+    /// Plot pixels back to the first two channels: the inverse of `project`,
+    /// for picking and brushing through the system. `None` when the system
+    /// has no inverse here, or the pixel is outside what it draws.
+    fn invert(&self, _s: Screen) -> Option<[f64; 2]> {
+        None
+    }
+
     /// Painter's order: larger is further away. Only 3D systems need it.
     fn depth(&self, _p: &[f64]) -> f64 {
         0.0
@@ -187,6 +194,9 @@ impl CoordinateSystem for Cartesian {
     fn project(&self, p: &[f64]) -> Option<Screen> {
         Some([p[0] * self.width, (1.0 - p[1]) * self.height])
     }
+    fn invert(&self, s: Screen) -> Option<[f64; 2]> {
+        Some([s[0] / self.width, 1.0 - s[1] / self.height])
+    }
     fn is_rectilinear(&self) -> bool {
         true
     }
@@ -242,6 +252,14 @@ impl CoordinateSystem for Polar {
         let theta = p[0] * std::f64::consts::TAU;
         let r = r_out * (self.inner + (1.0 - self.inner) * p[1]);
         Some([c[0] + r * theta.sin(), c[1] - r * theta.cos()])
+    }
+    /// x in [0, 1), from 12 o'clock clockwise; y from the inner radius out.
+    fn invert(&self, s: Screen) -> Option<[f64; 2]> {
+        let (c, r_out) = self.centre_radius();
+        let (dx, dy) = (s[0] - c[0], s[1] - c[1]);
+        let x = dx.atan2(-dy).rem_euclid(std::f64::consts::TAU) / std::f64::consts::TAU;
+        let y = (dx.hypot(dy) / r_out - self.inner) / (1.0 - self.inner);
+        Some([x, y])
     }
     fn label_side(&self, i: usize) -> (f64, f64) {
         if i == 0 {
@@ -444,6 +462,21 @@ pub struct Bend {
     pub t: f64,
 }
 
+impl Bend {
+    /// The angle the x range spans, the midline radius, the radial extent of
+    /// the unit y range, and the strip's midpoint P. The strip is bent with P
+    /// on top of the circle and the picture then turned about P, so the frame
+    /// stays in place while x = 0 ends at 12 o'clock as in `Polar`.
+    fn shape(&self) -> (f64, f64, f64, [f64; 2]) {
+        let (w, h, t) = (self.width, self.height, self.t);
+        let r1 = 0.5 * w.min(h); // outer radius of the final polar system
+        let rm = 0.5 * r1; // its midline (y = 0.5) radius
+        let phi = t * std::f64::consts::TAU;
+        let s = w + (std::f64::consts::TAU * rm - w) * t; // midline length
+        (phi, s / phi, h + (r1 - h) * t, [w / 2.0, h / 2.0 + rm * t])
+    }
+}
+
 impl CoordinateSystem for Bend {
     fn name(&self) -> String {
         format!("bend(cartesian → polar, {:.2})", self.t)
@@ -471,21 +504,32 @@ impl CoordinateSystem for Bend {
             }
             .project(p);
         }
-        let r1 = 0.5 * w.min(h); // outer radius of the final polar system
-        let rm = 0.5 * r1; // its midline (y = 0.5) radius
-        let phi = t * std::f64::consts::TAU; // angle the x range spans
-        let s = w + (std::f64::consts::TAU * rm - w) * t; // midline length
-        let rho = s / phi; // midline radius
-        let thick = h + (r1 - h) * t; // radial extent of the unit y range
-                                      // Bend with the strip's midpoint P on top of the circle, then turn
-                                      // the whole picture about P, so the frame stays in place while x = 0
-                                      // ends at 12 o'clock as in `Polar`.
-        let pm = [w / 2.0, h / 2.0 + rm * t];
+        let (phi, rho, thick, pm) = self.shape();
         let theta = (p[0] - 0.5) * phi;
         let r = rho + (p[1] - 0.5) * thick;
         let v = [r * theta.sin(), rho - r * theta.cos()];
         let (sa, ca) = (t * std::f64::consts::PI).sin_cos();
         Some([pm[0] + v[0] * ca - v[1] * sa, pm[1] + v[0] * sa + v[1] * ca])
+    }
+    /// Turn back about the strip's midpoint, then read angle and radius off
+    /// the bend's circle. x is found within half a turn either side of the
+    /// strip's middle, which covers the whole strip at every t.
+    fn invert(&self, s: Screen) -> Option<[f64; 2]> {
+        let (w, h, t) = (self.width, self.height, self.t);
+        if t < 1e-9 {
+            return Cartesian {
+                width: w,
+                height: h,
+            }
+            .invert(s);
+        }
+        let (phi, rho, thick, pm) = self.shape();
+        let (sa, ca) = (t * std::f64::consts::PI).sin_cos();
+        let d = [s[0] - pm[0], s[1] - pm[1]];
+        let v = [d[0] * ca + d[1] * sa, -d[0] * sa + d[1] * ca];
+        let theta = v[0].atan2(rho - v[1]);
+        let r = v[0].hypot(rho - v[1]);
+        Some([theta / phi + 0.5, (r - rho) / thick + 0.5])
     }
     fn label_side(&self, i: usize) -> (f64, f64) {
         if self.t < 0.5 {
@@ -569,18 +613,24 @@ impl CoordinateSystem for Fisheye {
         .channels()
     }
     fn project(&self, p: &[f64]) -> Option<Screen> {
-        let d = [p[0] - self.focus[0], p[1] - self.focus[1]];
-        let r = d[0].hypot(d[1]);
-        let q = if r > 0.0 && r < self.radius {
-            let x = r / self.radius;
-            let g = (self.distortion + 1.0) * x / (self.distortion * x + 1.0);
-            let k = g * self.radius / r;
-            [self.focus[0] + d[0] * k, self.focus[1] + d[1] * k]
-        } else {
-            [p[0], p[1]]
-        };
+        let q = fisheye([p[0], p[1]], self.focus, self.radius, self.distortion);
         Some(unit_to_screen(q, self.width, self.height))
     }
+}
+
+/// The Sarkar–Brown lens in unit space, for composing with another system
+/// (a fisheye over a bent plot): points within `radius` of `focus` move
+/// outward, everything else stays.
+pub fn fisheye(u: [f64; 2], focus: [f64; 2], radius: f64, distortion: f64) -> [f64; 2] {
+    let d = [u[0] - focus[0], u[1] - focus[1]];
+    let r = d[0].hypot(d[1]);
+    if r <= 0.0 || r >= radius {
+        return u;
+    }
+    let x = r / radius;
+    let g = (distortion + 1.0) * x / (distortion * x + 1.0);
+    let k = g * radius / r;
+    [focus[0] + d[0] * k, focus[1] + d[1] * k]
 }
 
 /// A hyperbolic (Poincaré-disk-like) view: distance from `focus` is
@@ -685,5 +735,42 @@ impl CoordinateSystem for Nested<'_> {
         let theta = p[self.split] * std::f64::consts::TAU;
         let r = p[self.split + 1] * self.radius;
         Some([o[0] + r * theta.sin(), o[1] - r * theta.cos()])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// y = 0 is left out: in a pie it is the centre, where every x lands on
+    /// the same pixel and none can be recovered.
+    fn round_trip(cs: &dyn CoordinateSystem, label: &str) {
+        for i in 1..20 {
+            for j in 1..=10 {
+                let p = [i as f64 / 20.0, j as f64 / 10.0];
+                let q = cs.invert(cs.project(&p).unwrap()).unwrap();
+                assert!((q[0] - p[0]).abs() < 1e-9 && (q[1] - p[1]).abs() < 1e-9, "{label}: {p:?} came back as {q:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn invert_undoes_project() {
+        round_trip(&Cartesian { width: 400.0, height: 300.0 }, "cartesian");
+        round_trip(&Polar { width: 400.0, height: 300.0, inner: 0.0 }, "polar");
+        round_trip(&Polar { width: 300.0, height: 300.0, inner: 0.4 }, "donut");
+        for t in [0.0, 1e-4, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0] {
+            round_trip(&Bend { width: 400.0, height: 300.0, t }, &format!("bend {t}"));
+        }
+    }
+
+    /// At t = 1 the bend is the polar system, point for point.
+    #[test]
+    fn bend_ends_as_polar() {
+        let (b, p) = (Bend { width: 300.0, height: 300.0, t: 1.0 }, Polar { width: 300.0, height: 300.0, inner: 0.0 });
+        for u in [[0.1, 0.2], [0.5, 0.9], [0.8, 0.5]] {
+            let (s, q) = (b.project(&u).unwrap(), p.project(&u).unwrap());
+            assert!((s[0] - q[0]).abs() < 1e-9 && (s[1] - q[1]).abs() < 1e-9, "{u:?}: {s:?} vs {q:?}");
+        }
     }
 }

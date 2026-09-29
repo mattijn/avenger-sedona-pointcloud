@@ -1079,6 +1079,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "avenger-transition"
+version = "0.1.0"
+
+[[package]]
 name = "avenger-typst-label"
 version = "0.1.0"
 source = "git+https://github.com/jonmmease/avenger?rev=f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8#f4890be1ed73d5ea572fb40ce9ecf0ed6ed0e7e8"
@@ -4585,11 +4589,13 @@ dependencies = [
  "avenger-app",
  "avenger-color",
  "avenger-common",
+ "avenger-coords",
  "avenger-eventstream",
  "avenger-geometry",
  "avenger-scenegraph",
  "avenger-selection",
  "avenger-text",
+ "avenger-transition",
  "avenger-wgpu",
  "avenger-winit-wgpu",
  "datafusion",
