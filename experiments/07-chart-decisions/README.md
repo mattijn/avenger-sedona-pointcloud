@@ -173,6 +173,7 @@ on every item**, so two frames can be joined item by item:
 | `writer.rs` | The extra questions, the writer's prompt, write → apply → retry |
 | `editor.rs` | A pipeline text or query run on its own, drawn from its result |
 | `catalog.rs` | The named tables and the overview |
+| [`intents.md`](intents.md) | Is there a vocabulary for what a chart is for? The literature, its shared core, and a round trip of this layer's cases through it (l08 and l23 do not close) |
 
 ## Views: experiment 5's coordinate systems, and magnifying
 
