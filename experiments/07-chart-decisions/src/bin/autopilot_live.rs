@@ -2992,6 +2992,40 @@ fn tour_interactions() -> Vec<Act> {
     ]
 }
 
+/// The intent tour (`intents.md`): the questions asked of the round trip,
+/// typed in the window. Jev reads what is typed and decides the chart; the
+/// pipeline then says what the chart is for and what its rows show, and the
+/// block in Jev's column says whether the chart carries what was asked.
+fn tour_intent() -> Vec<Act> {
+    use Act::*;
+    let enter = || Key(NamedKey::Enter);
+    vec![
+        Caption("You type a question. Jev decides the chart."), Wait(0.8),
+        Type("which share does each class have?"), enter(), Settle(1.2),
+        Caption("The pipeline reads the chart: part-to-whole, and what its rows show. Asked and read agree."), Wait(3.5),
+        Caption("A ranking question, answered by selecting on the pie."),
+        Type("which class has the most points?"), enter(), Settle(1.2),
+        Caption("The pie still reads as part-to-whole: the chart does not carry the ranking."), Wait(3.5),
+        Caption("A question about spread."),
+        Type("how are the classes spread over height?"), enter(), Settle(1.2),
+        Caption("A heatmap reads as correlation, not distribution: the layer has no histogram."), Wait(3.5),
+        Caption("Where?"),
+        Type("where are the buildings?"), enter(), Settle(1.2),
+        Caption("Spatial, asked and read. Outliers: the tallest cells."), Wait(3.5),
+        Caption("Ask for bars sorted by size."),
+        Type("show the classes as bars sorted by size"), enter(), Settle(1.2),
+        Caption("Jev has no sort, so the bars arrive unordered: the reader sees magnitude, not ranking."), Wait(3.5),
+        Caption("Over time."),
+        Type("how many points did each flight line record over time?"), enter(), Settle(1.2),
+        Caption("Change over time: each line's peak, read from the rows."), Wait(3.5),
+        Caption("The fewest?"),
+        Type("which class has the fewest points?"), enter(), Settle(1.2), Wait(3.0),
+        Caption("Heights, compared between the classes."),
+        Type("how do building heights compare between the classes?"), enter(), Settle(1.2), Wait(3.0),
+        Caption("The creator types the intent · the reader has only the pipeline · the round trip compares them"), Wait(3.5),
+    ]
+}
+
 /// The height of the subtitle band under the window, in the tour.
 const BAND: f32 = 56.0;
 
@@ -3206,7 +3240,7 @@ async fn record_script(mut app: App, dir: &str, script: Vec<Act>, captions: bool
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    if matches!(args.get(1).map(String::as_str), Some("--record") | Some("--tour") | Some("--tour-interactions")) {
+    if matches!(args.get(1).map(String::as_str), Some("--record") | Some("--tour") | Some("--tour-interactions") | Some("--tour-intent")) {
         let _ = VIRTUAL.set(Mutex::new(Instant::now()));
     }
     // The calm theme, or with `--neutral` the look of the recordings.
@@ -3346,6 +3380,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             }
             record_script(app, &dir, tour_interactions(), true).await
+        });
+    }
+    if args.get(1).map(String::as_str) == Some("--tour-intent") {
+        let dir = args.get(2).cloned().unwrap_or("out/autopilot_live/tour_intent".into());
+        return runtime.block_on(async move {
+            while app.overview.lock().unwrap().is_none() {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            record_script(app, &dir, tour_intent(), true).await
         });
     }
     if args.get(1).map(String::as_str) == Some("--tour") {

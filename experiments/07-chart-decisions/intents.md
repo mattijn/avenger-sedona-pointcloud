@@ -292,6 +292,22 @@ before it), and the block says whether the chart carries it. Headless, with
 | where are the buildings? | spatial 0.98 | spatial | yes |
 | show the classes as bars sorted by size | ranking 0.58 | magnitude: bars, not ordered | no |
 
+[video/intent_tour.mp4](video/intent_tour.mp4) (80 s) types these five
+questions in the window, then "how many points did each flight line record
+over time?", "which class has the fewest points?" and "how do building
+heights compare between the classes?": each time Jev's decision, the chart
+changing, and the block with the pipeline's reading, its facts, what was
+asked and whether the two agree. It is recorded headlessly on the window's
+virtual clock, with the writer on (Haiku wrote the ranking question's
+change):
+
+```sh
+set -a; source <folder with your .env>/.env; set +a
+cargo run --release -p lidar-decide --bin autopilot_live -- --tour-intent out/autopilot_live/tour_intent
+ffmpeg -framerate 30 -i out/autopilot_live/tour_intent/f%05d.png -c:v libx264 -preset slow \
+    -pix_fmt yuv420p -crf 24 -movflags +faststart experiments/07-chart-decisions/video/intent_tour.mp4
+```
+
 The last row is the round trip doing its job. Jev's options have no sort,
 so its decision became `mark/bars`, and the sort the creator asked for was
 lost on the way into the pipeline. A reader of the pipeline sees unordered

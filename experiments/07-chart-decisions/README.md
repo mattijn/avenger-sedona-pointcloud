@@ -580,6 +580,7 @@ cargo run --release -p lidar-decide --bin intent_roundtrip -- --read  # the read
 cargo run --release -p lidar-decide --bin autopilot_live -- --snapshot <dir> "instruction" … | @file | @@session.txt
 cargo run --release -p lidar-decide --bin autopilot_live -- --tour out/autopilot_live/tour
 cargo run --release -p lidar-decide --bin autopilot_live -- --tour-interactions out/autopilot_live/tour   # then ffmpeg as below, to video/interactions_tour.mp4
+cargo run --release -p lidar-decide --bin autopilot_live -- --tour-intent out/autopilot_live/tour_intent   # the intent questions (intents.md), to video/intent_tour.mp4
 ffmpeg -framerate 30 -i out/autopilot_live/tour/f%05d.png -c:v libx264 -preset slow \
     -pix_fmt yuv420p -crf 24 -movflags +faststart experiments/07-chart-decisions/video/autopilot_tour.mp4
 cargo test --release -p lidar-decide --bin autopilot_live   # text editing
