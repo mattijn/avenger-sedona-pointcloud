@@ -247,6 +247,30 @@ with: class by height is a fair chart for that question.
 With `--ask`, a question Jev cannot be asked (no key) falls back to the
 keyword rules and the chart the vocabulary leads to, and says so.
 
+### In the window, after every change
+
+`autopilot_live` asks "what is the intent of the chart?" whenever the chart
+changes (`transition_to`): Jev is given the new chart's observation and the
+typed intent question, in the background, and the answer appears under
+*changes* in Jev's column, beside the messages the vocabulary gives the chart
+kind. When typed text caused the change, the text's intent is asked too
+(seen from the chart before it), and the block says whether the chart leads
+back to it. A change by a gesture has no text, so the block compares Jev's
+reading with the vocabulary instead. Headless, with
+`autopilot_live -- --snapshot <dir> "which share does each class have?" …`,
+each step waits for the answers and prints them, on 30 Sep 2026:
+
+| Typed | Chart after it | Jev on the chart | The text's intent | Closes |
+|---|---|---|---|---|
+| which share does each class have? | pie | part-to-whole 0.90 | part-to-whole 1.00 | yes |
+| which class has the most points? | pie, "Ground" selected (Haiku) | part-to-whole 0.90 | ranking 0.41 | no |
+| how are the classes spread over height? | heatmap | none 0.38 | distribution 0.87 | no |
+| where are the buildings? | map | spatial 0.64 | spatial 0.98 | yes |
+
+Jev cannot say what the heatmap is for (none, 0.38), which the vocabulary
+reads as correlation: the same gap as l08, seen from the chart's side. Not
+tried in the window with a real keyboard; only headless.
+
 ## What this suggests
 
 Three layers, each taken from the literature rather than invented:

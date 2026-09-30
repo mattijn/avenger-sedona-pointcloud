@@ -1,0 +1,38 @@
+{
+  "answers": {
+    "intent": "spatial"
+  },
+  "confidence": null,
+  "cost": 0.000029358,
+  "input_tokens": 699,
+  "ms": 249.618667,
+  "raw": {
+    "answers": {
+      "intent": {
+        "choice": "spatial",
+        "confidence": 0.64,
+        "probabilities": {
+          "change_over_time": 0,
+          "correlation": 0,
+          "deviation": 0,
+          "distribution": 0,
+          "flow": 0,
+          "magnitude": 0,
+          "none": 0.32,
+          "part_to_whole": 0,
+          "ranking": 0,
+          "spatial": 0.68
+        },
+        "type": "choice"
+      }
+    },
+    "id": "gen-dec-1790790435-mu3MBWB92wVQRTX2hdZy",
+    "model": "typesafe/jev-1.13-20260917",
+    "provider": "TypeSafe",
+    "usage": {
+      "cost": 0.000029358,
+      "input_tokens": 699,
+      "output_tokens": 99
+    }
+  }
+}
