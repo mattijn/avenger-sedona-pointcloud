@@ -1,0 +1,38 @@
+{
+  "answers": {
+    "intent": "part_to_whole"
+  },
+  "confidence": null,
+  "cost": 0.000028938,
+  "input_tokens": 689,
+  "ms": 271.19441700000004,
+  "raw": {
+    "answers": {
+      "intent": {
+        "choice": "part_to_whole",
+        "confidence": 0.73,
+        "probabilities": {
+          "change_over_time": 0,
+          "correlation": 0,
+          "deviation": 0,
+          "distribution": 0,
+          "flow": 0,
+          "magnitude": 0,
+          "none": 0.24,
+          "part_to_whole": 0.76,
+          "ranking": 0,
+          "spatial": 0
+        },
+        "type": "choice"
+      }
+    },
+    "id": "gen-dec-1790790067-KpMoT9bKISYlVy4bRw4S",
+    "model": "typesafe/jev-1.13-20260917",
+    "provider": "TypeSafe",
+    "usage": {
+      "cost": 0.000028938,
+      "input_tokens": 689,
+      "output_tokens": 101
+    }
+  }
+}

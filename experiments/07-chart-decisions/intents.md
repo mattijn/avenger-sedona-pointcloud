@@ -219,13 +219,33 @@ state; and checks the round trip for that chart. It writes
 
 ![The five questions, the chart Jev's decision draws, and the round trip](images/intent_roundtrip.png)
 
-Run on 30 Sep 2026: of the five questions, the chart Jev's decision draws
-closes the round trip for three; l08 and l23 do not, as above. The keyword
-rules agree with the hand labels on all 24 cases, but that says nothing: the
-rules were written after, and for, these cases. Jev was **not** asked: the
-key available returned 401, so its column reads "error" until a working key
-is set. With `--ask`, a question without a cached decision falls back to the
-chart the vocabulary leads to, and says so.
+Run on 30 Sep 2026, with Jev (`typesafe/jev-1.13`) answering the intent:
+
+| | |
+|---|---|
+| the five questions: intent by Jev | all five as labelled, at 0.71–1.00 |
+| all 24 cases: Jev agrees with the hand labels | 20 of 24 |
+| the round trip for the chart Jev's decision draws | closes for 3 of 5; l08 and l23 do not, as above |
+
+Jev's four disagreements are instructions labelled `none` that name a chart:
+"show this as a pie" → part-to-whole (0.73), "show a time series" → change
+over time (0.99), "put it on a map" → spatial (0.94), and "mark the tallest
+buildings" → ranking (0.53). The first three are the vocabulary's step back,
+from a chart to the message it carries, taken by Jev; they are arguably
+better labels than the hand ones. The keyword rules agree with the hand
+labels on all 24, which says nothing: they were written after, and for,
+these cases, and the first new question typed ("which class has the fewest
+points?") missed until "fewest" was added.
+
+Two questions typed with `--ask`, both new to Jev: "which class has the
+fewest points?" is ranking (0.72), and Jev's decision keeps the bars, which
+do not close it; "how do building heights compare between the classes?" is
+magnitude (0.69), and Jev's decision is the heatmap, which the vocabulary
+files under correlation. The second is where the vocabulary can be argued
+with: class by height is a fair chart for that question.
+
+With `--ask`, a question Jev cannot be asked (no key) falls back to the
+keyword rules and the chart the vocabulary leads to, and says so.
 
 ## What this suggests
 
@@ -236,9 +256,9 @@ Three layers, each taken from the literature rather than invented:
    name brings its charts with it.
 3. **Interaction**, Yi et al.'s seven.
 
-For experiment 7 that step is taken (`intent_roundtrip`, above) up to Jev's
-answer, which needs a working key. l08 and l23 are the first two findings:
-a distribution chart and ordered bars would close them. Declared in
+For experiment 7 that step is taken (`intent_roundtrip`, above). l08 and l23
+are the first two findings: a distribution chart and ordered bars would
+close them. Declared in
 Avenger's spec types, as the camera was in experiment 9, the intent would
 be validated with the chart and could explain a refusal: "a ranking asks for
 ordered bars".
