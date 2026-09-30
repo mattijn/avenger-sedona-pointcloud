@@ -16,7 +16,8 @@ landing pages, and the Financial Times' Visual Vocabulary read from its
 repository. The papers' full texts were **not** opened. The dimensions of
 Schulz et al. and the sub-levels of Brehmer and Munzner are given from
 knowledge of those papers, not re-read. The round trip below is this page's
-own classification of experiment 7's cases, done by hand, not a measurement.
+own classification of experiment 7's cases, by hand; `intent_roundtrip`
+(below) runs it, with Jev's own decisions as the charts.
 
 ## The vocabularies, by what they describe
 
@@ -195,6 +196,37 @@ deviation, correlation between two quantities, flow, and magnitude kept
 apart from ranking. Of Yi et al.'s seven intents, only *connect* is missing
 as a named action; it happens only through cross-filtering.
 
+## Run it
+
+The round trip is code: the FT's nine messages and their charts, with
+forward, back and the verdict, are [`src/layer/intent.rs`](src/layer/intent.rs);
+the hand labels are [`cases_intent.json`](cases_intent.json), kept apart from
+the cases, which were written before any decider ran.
+
+```sh
+cargo run --release -p lidar-decide --bin intent_roundtrip            # every case: a table and a contact sheet
+cargo run --release -p lidar-decide --bin intent_roundtrip -- --ask   # type questions, one per line; each chart as a PNG
+set -a; source <folder with your .env>/.env; set +a                   # to have Jev answer the intent too
+```
+
+For every case it puts the intent by hand, by keyword rules, and by Jev
+asked one typed question (`intent::question()`, its own question set, so the
+pilot's cached decisions keep their keys) beside each other; takes the chart
+Jev's own decision draws, from its cached pilot answer applied to the start
+state; and checks the round trip for that chart. It writes
+[results/intent_roundtrip.md](results/intent_roundtrip.md) and
+[images/intent_roundtrip.png](images/intent_roundtrip.png).
+
+![The five questions, the chart Jev's decision draws, and the round trip](images/intent_roundtrip.png)
+
+Run on 30 Sep 2026: of the five questions, the chart Jev's decision draws
+closes the round trip for three; l08 and l23 do not, as above. The keyword
+rules agree with the hand labels on all 24 cases, but that says nothing: the
+rules were written after, and for, these cases. Jev was **not** asked: the
+key available returned 401, so its column reads "error" until a working key
+is set. With `--ask`, a question without a cached decision falls back to the
+chart the vocabulary leads to, and says so.
+
 ## What this suggests
 
 Three layers, each taken from the literature rather than invented:
@@ -204,11 +236,9 @@ Three layers, each taken from the literature rather than invented:
    name brings its charts with it.
 3. **Interaction**, Yi et al.'s seven.
 
-For experiment 7 the smallest step is one more of Jev's typed questions,
-"which intent does the text express?", with the FT's nine names and `none`,
-and the table above as code. The round trip then runs on every case: a
-question's intent must lead to the chart the case expects, and that chart
-must lead back. l08 and l23 would be the first two findings. Declared in
+For experiment 7 that step is taken (`intent_roundtrip`, above) up to Jev's
+answer, which needs a working key. l08 and l23 are the first two findings:
+a distribution chart and ordered bars would close them. Declared in
 Avenger's spec types, as the camera was in experiment 9, the intent would
 be validated with the chart and could explain a refusal: "a ranking asks for
 ordered bars".

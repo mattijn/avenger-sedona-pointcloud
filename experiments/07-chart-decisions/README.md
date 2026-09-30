@@ -574,6 +574,7 @@ cargo run --release -p lidar-decide --bin typing            # deciding after eve
 cargo run --release -p lidar-decide --bin layer_eval        # the chart layer's vocabulary
 cargo run --release -p lidar-decide --bin writer_eval       # Jev steers, Haiku writes; --check: references only
 cargo run --release -p lidar-decide --bin layer_roundtrip   # decisions ↔ pipeline, and what is refused
+cargo run --release -p lidar-decide --bin intent_roundtrip  # question → intent → chart → back (intents.md); -- --ask to type questions
 cargo run --release -p lidar-decide --bin autopilot_live -- --snapshot <dir> "instruction" … | @file | @@session.txt
 cargo run --release -p lidar-decide --bin autopilot_live -- --tour out/autopilot_live/tour
 cargo run --release -p lidar-decide --bin autopilot_live -- --tour-interactions out/autopilot_live/tour   # then ffmpeg as below, to video/interactions_tour.mp4

@@ -1,0 +1,29 @@
+{
+ "note": "The intent each case in cases_layer.json expresses, in the Financial Times' Visual Vocabulary (intents.md), or none for an instruction about the chart. Labelled by hand on 30 Sep 2026, after the cases and their expected answers were written; see intents.md for the reasoning.",
+ "intents": {
+  "l01": "none",
+  "l02": "none",
+  "l03": "part_to_whole",
+  "l04": "none",
+  "l05": "none",
+  "l06": "none",
+  "l07": "none",
+  "l08": "distribution",
+  "l09": "none",
+  "l10": "change_over_time",
+  "l11": "none",
+  "l12": "none",
+  "l13": "none",
+  "l14": "none",
+  "l15": "spatial",
+  "l16": "none",
+  "l17": "none",
+  "l18": "none",
+  "l19": "none",
+  "l20": "none",
+  "l21": "none",
+  "l22": "none",
+  "l23": "ranking",
+  "l24": "none"
+ }
+}

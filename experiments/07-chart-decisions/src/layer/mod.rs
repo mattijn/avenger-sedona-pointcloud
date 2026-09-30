@@ -8,6 +8,7 @@ pub mod catalog;
 pub mod data;
 pub mod draw;
 pub mod editor;
+pub mod intent;
 pub mod model;
 pub mod package;
 pub mod selection_log;
