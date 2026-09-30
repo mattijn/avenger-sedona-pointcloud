@@ -238,17 +238,27 @@ struct WrittenInfo {
     done: bool,
 }
 
-/// What the chart is for, asked after every change (`intents.md`): Jev's
-/// reading of the new chart, and of the instruction that caused it, beside
-/// the messages the vocabulary gives the chart kind.
+/// What the chart is for, after every change (`intents.md`). The reader's
+/// side comes from the pipeline alone: its `intent` and `facts` queries over
+/// the chart line and the chart's own rows. The creator's side is what they
+/// typed, read by Jev. The round trip compares the two.
 #[derive(Clone)]
 struct ChartIntent {
     generation: u64,
-    mark: lidar_decide::layer::model::Mark,
     instruction: Option<String>,
-    /// (intent, confidence, from cache), once Jev has answered.
-    of_chart: Option<Result<(String, f64, bool), String>>,
+    /// The pipeline's reading, once its queries have run.
+    reader: Option<Result<Reader, String>>,
+    /// Jev on the instruction: (intent, confidence, from cache).
     of_text: Option<Result<(String, f64, bool), String>>,
+}
+
+#[derive(Clone)]
+struct Reader {
+    intent: String,
+    because: String,
+    also: Vec<String>,
+    /// (fact type, text)
+    facts: Vec<(String, String)>,
 }
 
 /// A pipeline Haiku wrote, back from its background task.
@@ -1635,21 +1645,26 @@ impl App {
             Some(Err(e)) => format!("error: {}", e.chars().take(40).collect::<String>()),
             None => "–".into(),
         };
+        let reader = match &c.reader {
+            Some(Ok(r)) => format!("{} ({}){} | {}", r.intent, r.because, r.also.iter().map(|a| format!(" + {a}")).collect::<String>(), r.facts.iter().map(|f| format!("{}: {}", f.0, f.1)).collect::<Vec<_>>().join(" | ")),
+            Some(Err(e)) => format!("error: {e}"),
+            None => "–".into(),
+        };
         let text = c.instruction.as_ref().map_or(String::new(), |t| {
-            let closes = match &c.of_text {
-                Some(Ok((i, _, _))) if i != "none" => if intent::closes(i, c.mark) { " · closes" } else { " · does not close" },
+            let closes = match (&c.of_text, &c.reader) {
+                (Some(Ok((i, _, _))), Some(Ok(r))) if i != "none" => if *i == r.intent { " · closes" } else { " · does not close" },
                 _ => "",
             };
-            format!(" · asked for ({t}): {}{closes}", show(&c.of_text))
+            format!("\n{:<46}creator ({t}): {}{closes}", "", show(&c.of_text))
         });
-        format!("intent of the {}: Jev {} · vocabulary {}{text}", c.mark.id(), show(&c.of_chart), intent::back(c.mark).join(", "))
+        format!("reader: {reader}{text}")
     }
 
     /// Headless runs wait for the intent answers (at most 20 s), so what is
     /// rendered shows them.
     async fn wait_for_intent(&self) {
         let t = std::time::Instant::now();
-        let pending = |ci: &Option<ChartIntent>| ci.as_ref().is_some_and(|c| c.of_chart.is_none() || (c.instruction.is_some() && c.of_text.is_none()));
+        let pending = |ci: &Option<ChartIntent>| ci.as_ref().is_some_and(|c| c.reader.is_none() || (c.instruction.is_some() && c.of_text.is_none()));
         while pending(&self.intent.lock().unwrap()) && t.elapsed().as_secs() < 20 {
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
@@ -1664,11 +1679,28 @@ impl App {
         self.intent_generation += 1;
         let generation = self.intent_generation;
         let instruction = self.cause.take();
-        *self.intent.lock().unwrap() = Some(ChartIntent { generation, mark: self.state.mark, instruction: instruction.clone(), of_chart: None, of_text: None });
-        let chart_obs = pilot::observation(&self.state, &self.data, "What is the intent of the chart?");
+        *self.intent.lock().unwrap() = Some(ChartIntent { generation, instruction: instruction.clone(), reader: None, of_text: None });
         let text_obs = instruction.as_ref().map(|i| pilot::observation(&before, &self.data, i));
-        let (jev, slot) = (self.jev.clone(), self.intent.clone());
+        let (jev, slot, pipe) = (self.jev.clone(), self.intent.clone(), self.pipe.clone());
         self.rt.spawn(async move {
+            // The reader: the pipeline's own queries, after the change has run
+            // through it.
+            let reader = {
+                let mut p = pipe.lock().await;
+                p.run("intent ! facts").await.map_err(|e| e.to_string()).and_then(|out| {
+                    let v: Vec<Value> = out.iter().map(|o| serde_json::from_str(o).unwrap_or(Value::Null)).collect();
+                    let (i, f) = (v.first().cloned().unwrap_or(Value::Null), v.get(1).cloned().unwrap_or(Value::Null));
+                    Ok(Reader {
+                        intent: i["intent"].as_str().unwrap_or("none").to_string(),
+                        because: i["because"].as_str().unwrap_or("").to_string(),
+                        also: i["also"].as_array().map_or(vec![], |a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()),
+                        facts: f["facts"].as_array().map_or(vec![], |a| a.iter().map(|x| (x["type"].as_str().unwrap_or("").to_string(), x["text"].as_str().unwrap_or("").to_string())).collect()),
+                    })
+                })
+            };
+            if let Some(ci) = slot.lock().unwrap().as_mut().filter(|c| c.generation == generation) {
+                ci.reader = Some(reader);
+            }
             let q = intent::question();
             let read = |r: Result<Decision, String>| {
                 r.map(|d| {
@@ -1677,10 +1709,6 @@ impl App {
                     (i, c, d.cached)
                 })
             };
-            let of_chart = read(jev.decide(&chart_obs, &q).await);
-            if let Some(ci) = slot.lock().unwrap().as_mut().filter(|c| c.generation == generation) {
-                ci.of_chart = Some(of_chart);
-            }
             if let Some(o) = text_obs {
                 let of_text = read(jev.decide(&o, &q).await);
                 if let Some(ci) = slot.lock().unwrap().as_mut().filter(|c| c.generation == generation) {
@@ -1994,53 +2022,69 @@ fn jev_column(s: &App, marks: &mut Vec<SceneMark>) {
     }
 }
 
-/// "What is the intent of the chart?", answered after every change: Jev's
-/// reading of the chart, the messages the FT's vocabulary gives its kind,
-/// and, when typed text caused the change, the text's intent and whether the
-/// chart leads back to it.
+/// What the chart is for, after every change. The reader has only the chart
+/// and its pipeline: the pipeline's `intent` and `facts` queries. The
+/// creator typed an intent, read by Jev. When both are there, the round trip
+/// says whether the chart carries what was asked.
 fn intent_block(s: &App, y: f32, marks: &mut Vec<SceneMark>) {
     const PX: f32 = JX;
     let Some(ci) = s.intent.lock().unwrap().clone() else { return };
     let name = |i: &str| i.replace('_', " ");
     marks.push(draw::rule(PX, y - 12.0, PX + JW, y - 12.0, ui().th.line));
-    marks.push(t("intent of the chart", PX, y, 12.0, muted(), false));
-    let vocab = intent::back(ci.mark);
-    let answer = |a: &Option<Result<(String, f64, bool), String>>| match a {
-        None => ("reading…".to_string(), None),
-        Some(Err(e)) => (format!("not asked: {}", fit(e, 30)), None),
-        Some(Ok((i, c, cached))) => (format!("{}  {c:.2}{}", name(i), if *cached { " · cache" } else { "" }), Some(i.clone())),
-    };
-    let (chart_line, chart_intent) = answer(&ci.of_chart);
-    marks.push(t(&chart_line, PX, y + 18.0, 16.0, if chart_intent.is_some() { ink() } else { muted() }, chart_intent.is_some()));
-    marks.push(t(&format!("vocabulary: {} ({})", vocab.iter().map(|v| name(v)).collect::<Vec<_>>().join(", "), intent::ft_chart(ci.mark)), PX, y + 40.0, 11.0, muted(), false));
-    let mut yy = y + 60.0;
-    let verdict = match &ci.instruction {
-        Some(text) => {
-            let (text_line, text_intent) = answer(&ci.of_text);
-            marks.push(t(&format!("asked for, in \"{}\":", fit(text, 22)), PX, yy, 11.0, muted(), false));
-            marks.push(t(&text_line, PX + 8.0, yy + 15.0, 12.0, ink(), text_intent.is_some()));
-            yy += 36.0;
-            text_intent.filter(|i| i != "none").map(|i| {
-                if intent::closes(&i, ci.mark) {
-                    (format!("closes: {} → {} → {}", name(&i), ci.mark.id(), name(&i)), ui().th.ok)
-                } else if intent::forward(&i).is_empty() {
-                    (format!("does not close: the layer has no chart for {} (the FT: {})", name(&i), intent::missing(&i)[..2].join(", ")), ui().th.error)
-                } else {
-                    (format!("does not close: {} is {}", ci.mark.id(), vocab.iter().map(|v| name(v)).collect::<Vec<_>>().join(", ")), ui().th.error)
-                }
-            })
+    marks.push(t("intent of the chart, read from its pipeline", PX, y, 12.0, muted(), false));
+    let mut yy = y + 18.0;
+    let reader = match &ci.reader {
+        None => {
+            marks.push(t("reading…", PX, yy, 14.0, muted(), false));
+            None
         }
-        None => chart_intent.filter(|i| i != "none").map(|i| {
-            if vocab.contains(&i.as_str()) {
-                ("Jev and the vocabulary agree".to_string(), ui().th.ok)
-            } else {
-                (format!("Jev reads {}; the vocabulary does not", name(&i)), ui().th.error)
+        Some(Err(e)) => {
+            marks.push(status(&fit(e, 40), PX, yy, 12.0, ui().th.error, false, false));
+            None
+        }
+        Some(Ok(r)) => {
+            marks.push(t(&name(&r.intent), PX, yy, 16.0, ink(), true));
+            marks.push(t(&fit(&r.because, 38), PX, yy + 20.0, 11.0, muted(), false));
+            yy += 36.0;
+            for a in r.also.iter().take(1) {
+                marks.push(t(&fit(&format!("+ {a}"), 40), PX, yy, 11.0, muted(), false));
+                yy += 14.0;
             }
-        }),
+            // Outliers first: what a reader looks for before anything else.
+            let mut facts: Vec<&(String, String)> = r.facts.iter().collect();
+            facts.sort_by_key(|f| f.0 != "outlier");
+            for (kind, text) in facts.into_iter().take(3) {
+                marks.push(t(kind, PX, yy + 2.0, 11.0, accent(), false));
+                for (k, line) in wrap(text, 34).iter().take(2).enumerate() {
+                    marks.push(t(line, PX + 70.0, yy + 2.0 + k as f32 * 13.0, 11.0, ink(), false));
+                    if k == 1 {
+                        yy += 13.0;
+                    }
+                }
+                yy += 16.0;
+            }
+            Some(r.intent.clone())
+        }
     };
-    if let Some((v, colour)) = verdict {
-        for (k, line) in wrap(&v, 40).iter().take(3).enumerate() {
-            marks.push(status(line, PX, yy + k as f32 * 16.0, 12.0, colour, false, false));
+    if let Some(text) = &ci.instruction {
+        let creator = match &ci.of_text {
+            None => ("reading…".to_string(), None),
+            Some(Err(e)) => (format!("not asked: {}", fit(e, 24)), None),
+            Some(Ok((i, c, _))) => (format!("{}  {c:.2}", name(i)), Some(i.clone())),
+        };
+        yy += 4.0;
+        marks.push(t(&format!("asked for, in \"{}\" (Jev):", fit(text, 20)), PX, yy, 11.0, muted(), false));
+        marks.push(t(&creator.0, PX + 8.0, yy + 15.0, 12.0, ink(), creator.1.is_some()));
+        yy += 34.0;
+        if let (Some(r), Some(c)) = (reader, creator.1.filter(|c| c != "none")) {
+            let (v, colour) = if r == c {
+                (format!("closes: the chart carries the {} that was asked", name(&c)), ui().th.ok)
+            } else {
+                (format!("does not close: asked {}, the chart reads as {}", name(&c), name(&r)), ui().th.error)
+            };
+            for (k, line) in wrap(&v, 40).iter().take(2).enumerate() {
+                marks.push(status(line, PX, yy + k as f32 * 15.0, 12.0, colour, false, false));
+            }
         }
     }
 }

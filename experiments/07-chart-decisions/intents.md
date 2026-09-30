@@ -247,29 +247,56 @@ with: class by height is a fair chart for that question.
 With `--ask`, a question Jev cannot be asked (no key) falls back to the
 keyword rules and the chart the vocabulary leads to, and says so.
 
-### In the window, after every change
+### The reader and the creator
 
-`autopilot_live` asks "what is the intent of the chart?" whenever the chart
-changes (`transition_to`): Jev is given the new chart's observation and the
-typed intent question, in the background, and the answer appears under
-*changes* in Jev's column, beside the messages the vocabulary gives the chart
-kind. When typed text caused the change, the text's intent is asked too
-(seen from the chart before it), and the block says whether the chart leads
-back to it. A change by a gesture has no text, so the block compares Jev's
-reading with the vocabulary instead. Headless, with
-`autopilot_live -- --snapshot <dir> "which share does each class have?" …`,
-each step waits for the answers and prints them, on 30 Sep 2026:
+A creator makes a chart with an intent; a reader has only the chart, and
+here its pipeline, to guess that intent from. So the chart's intent is not
+asked of a classifier: the pipeline says it. Two query steps in the `layer`
+package ([`package.rs`](src/layer/package.rs)) read it, like experiment 6's
+`describe`, and change nothing:
 
-| Typed | Chart after it | Jev on the chart | The text's intent | Closes |
-|---|---|---|---|---|
-| which share does each class have? | pie | part-to-whole 0.90 | part-to-whole 1.00 | yes |
-| which class has the most points? | pie, "Ground" selected (Haiku) | part-to-whole 0.90 | ranking 0.41 | no |
-| how are the classes spread over height? | heatmap | none 0.38 | distribution 0.87 | no |
-| where are the buildings? | map | spatial 0.64 | spatial 0.98 | yes |
+- **`intent`**: the message, by rule from the pipeline: the mark
+  (`intent::of_pipeline`), and for bars whether the rows reach the chart
+  ordered by the measure (the plan's last sort), which makes them a ranking
+  rather than a comparison of sizes. An emphasis or a selection is named on
+  top.
+- **`facts`**: what the chart's own rows say, as the data-fact types name
+  them, computed over the table the chart is drawn from: extremes, outliers
+  (outside 1.5 × the interquartile range of the measure), shares, rank,
+  per-series peaks and direction on the time series, and where each class
+  peaks on the heatmap.
 
-Jev cannot say what the heatmap is for (none, 0.38), which the vocabulary
-reads as correlation: the same gap as l08, seen from the chart's side. Not
-tried in the window with a real keyboard; only headless.
+`intent_roundtrip -- --read` builds each chart through its pipeline and runs
+both, 0–3 ms a chart:
+
+| Chart | `intent` | Some `facts` |
+|---|---|---|
+| bars | magnitude (bar of n by label, not ordered by it) | Ground is 53 % of all 17.34M; Ground (9.25M) is an outlier, outside 0–7.69M; fewest: Low vegetation |
+| pie | part-to-whole | the same rows: the same share and outlier |
+| time series | change over time | line 31 peaks at 15.5 s (181k); no outliers |
+| heatmap | correlation (of label and band) | largest cell Ground at 0 m (5.42M); Building peaks at 12 m; 4 of 41 cells outliers |
+| map | spatial | tallest cell 93.7 m; 104 of 11,719 cells outliers |
+
+In `autopilot_live`, after every change (`transition_to`), the pipeline runs
+`intent ! facts` and the answer shows under *changes* in Jev's column,
+outliers first. Jev reads only the creator's side: when typed text caused
+the change, it is asked which intent the text expresses (seen from the chart
+before it), and the block says whether the chart carries it. Headless, with
+`autopilot_live -- --snapshot <dir> …`, which waits for both, on 30 Sep 2026:
+
+| Typed (the creator) | Jev on the text | The pipeline (the reader) | Closes |
+|---|---|---|---|
+| which share does each class have? | part-to-whole 1.00 | part-to-whole | yes |
+| which class has the most points? | ranking 0.41 | part-to-whole, with a point selection (Haiku selected Ground on the pie) | no |
+| how are the classes spread over height? | distribution 0.87 | correlation | no |
+| where are the buildings? | spatial 0.98 | spatial | yes |
+| show the classes as bars sorted by size | ranking 0.58 | magnitude: bars, not ordered | no |
+
+The last row is the round trip doing its job. Jev's options have no sort,
+so its decision became `mark/bars`, and the sort the creator asked for was
+lost on the way into the pipeline. A reader of the pipeline sees unordered
+bars, and the block says so. Not tried in the window with a real keyboard;
+only headless.
 
 ## What this suggests
 

@@ -575,7 +575,8 @@ cargo run --release -p lidar-decide --bin layer_eval        # the chart layer's 
 cargo run --release -p lidar-decide --bin writer_eval       # Jev steers, Haiku writes; --check: references only
 cargo run --release -p lidar-decide --bin layer_roundtrip   # decisions ↔ pipeline, and what is refused
 cargo run --release -p lidar-decide --bin intent_roundtrip  # question → intent → chart → back (intents.md); -- --ask to type questions
-# autopilot_live also asks "what is the intent of the chart?" after every change, in Jev's column (intents.md)
+cargo run --release -p lidar-decide --bin intent_roundtrip -- --read  # the reader: the pipeline's `intent` and `facts` on each chart
+# autopilot_live shows the pipeline's intent and facts after every change, beside Jev's reading of what was typed (intents.md)
 cargo run --release -p lidar-decide --bin autopilot_live -- --snapshot <dir> "instruction" … | @file | @@session.txt
 cargo run --release -p lidar-decide --bin autopilot_live -- --tour out/autopilot_live/tour
 cargo run --release -p lidar-decide --bin autopilot_live -- --tour-interactions out/autopilot_live/tour   # then ffmpeg as below, to video/interactions_tour.mp4

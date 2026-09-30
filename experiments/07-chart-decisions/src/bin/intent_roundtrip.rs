@@ -10,6 +10,7 @@
 //!
 //!     cargo run --release -p lidar-decide --bin intent_roundtrip            # the cases: table and contact sheet
 //!     cargo run --release -p lidar-decide --bin intent_roundtrip -- --ask   # type questions, one per line
+//!     cargo run --release -p lidar-decide --bin intent_roundtrip -- --read  # the reader: `intent` and `facts` on each chart's pipeline
 
 use std::io::BufRead;
 use std::sync::Arc;
@@ -140,6 +141,24 @@ async fn main() -> Result<(), Error> {
 
     if std::env::args().any(|a| a == "--ask") {
         return ask(&jev, &d).await;
+    }
+    // `--read`: the reader's side. Each of the layer's charts is built through
+    // its pipeline from scratch, and asked `intent` and `facts`.
+    if std::env::args().any(|a| a == "--read") {
+        for (m, _) in pilot::MARKS {
+            let (mut p, _) = lidar_decide::layer_pipeline().await?;
+            for l in lidar_decide::layer::package::initial(&state_for(m), &d) {
+                p.run(&l).await?;
+            }
+            let chart_line = p.log.iter().rev().find(|l| l.starts_with("chart ") || ["bars ", "pie ", "line ", "heatmap ", "map "].iter().any(|s| l.starts_with(s))).cloned().unwrap_or_default();
+            let t = std::time::Instant::now();
+            let out = p.run("intent ! facts").await?;
+            println!("\n{} · {chart_line} ({:.0} ms)", m.id(), t.elapsed().as_secs_f64() * 1e3);
+            for o in out {
+                println!("  {o}");
+            }
+        }
+        return Ok(());
     }
 
     let cases: Value = serde_json::from_str(&std::fs::read_to_string(format!("{root}/cases_layer.json"))?)?;

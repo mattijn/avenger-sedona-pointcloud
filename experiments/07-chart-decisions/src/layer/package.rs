@@ -435,6 +435,199 @@ impl Step for ClearHighlight {
     }
 }
 
+// ---------------------------------------------------------------------------
+// The reader's side: what a chart is for and what its data says, from the
+// pipeline alone. A creator makes the chart with an intent; a reader has only
+// the chart, its pipeline and its rows to guess it from (`intents.md`).
+
+/// The chart's key fields and its measure, as the mark names them.
+fn roles(chart: &Value) -> Result<(Vec<String>, String)> {
+    let s = |k: &str| chart[k].as_str().map(String::from);
+    let mark = chart["mark"].as_str().ok_or_else(|| err("no chart yet"))?;
+    let (keys, value) = match mark {
+        "bar" | "arc" => (vec![s("by")], s("value")),
+        "line" => (vec![s("series"), chart["x"]["field"].as_str().map(String::from)], s("value")),
+        "heatmap" => (vec![chart["y"]["field"].as_str().map(String::from), chart["x"]["field"].as_str().map(String::from)], s("value")),
+        _ => (vec![chart["x"]["field"].as_str().map(String::from), chart["y"]["field"].as_str().map(String::from)], s("value")),
+    };
+    Ok((keys.into_iter().flatten().collect(), value.ok_or_else(|| err("the chart has no measure"))?))
+}
+
+/// Whether the rows reach the chart ordered by the measure, largest first:
+/// the plan's last sort, looking through projections.
+fn sorted_by(p: &Pipeline, field: &str) -> bool {
+    use datafusion::logical_expr::{Expr, LogicalPlan};
+    let mut plan = p.plan().ok().cloned();
+    while let Some(pl) = plan {
+        match pl {
+            LogicalPlan::Sort(s) => {
+                return s.expr.first().is_some_and(|e| !e.asc && matches!(&e.expr, Expr::Column(c) if c.name == field));
+            }
+            LogicalPlan::Projection(pr) => plan = Some((*pr.input).clone()),
+            LogicalPlan::SubqueryAlias(a) => plan = Some((*a.input).clone()),
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// `intent`: the message the chart carries, by rule from its pipeline: the
+/// mark, whether the rows are ordered by the measure, and any emphasis or
+/// selection on top.
+struct IntentStep;
+
+#[async_trait]
+impl Step for IntentStep {
+    fn kind(&self) -> Kind {
+        Kind::Query
+    }
+    fn help(&self) -> &'static str {
+        "intent: what the chart is for, read from its pipeline (the FT's Visual Vocabulary)"
+    }
+    async fn run(&self, p: &mut Pipeline, _c: &Call) -> Result<Option<String>> {
+        let mark = p.chart["mark"].as_str().ok_or_else(|| err("intent: no chart yet"))?.to_string();
+        let (keys, value) = roles(&p.chart)?;
+        let sorted = sorted_by(p, &value);
+        let (message, chart) = super::intent::of_pipeline(&mark, sorted);
+        let mut because = format!("{mark} of {value} by {}", keys.join(" and "));
+        if mark == "bar" {
+            because += if sorted { ", ordered by it" } else { ", not ordered by it" };
+        }
+        let mut also = vec![];
+        if let Some(w) = p.chart["highlight"]["where"].as_str() {
+            also.push(format!("emphasis where {w}"));
+        }
+        if let Some(k) = p.chart["select"]["kind"].as_str() {
+            also.push(format!("a {k} selection"));
+        }
+        Ok(Some(json!({"intent": message, "chart": chart, "because": because, "also": also}).to_string()))
+    }
+}
+
+/// `facts`: what the chart's own rows say, as the data-fact types name them
+/// (extreme, outlier, proportion, rank, trend, distribution), computed over
+/// the table the chart is drawn from.
+struct FactsStep;
+
+fn quartiles(v: &mut [f64]) -> (f64, f64) {
+    v.sort_by(|a, b| a.total_cmp(b));
+    let q = |f: f64| {
+        let i = f * (v.len() - 1) as f64;
+        let (lo, hi) = (i.floor() as usize, i.ceil() as usize);
+        v[lo] + (v[hi] - v[lo]) * (i - lo as f64)
+    };
+    (q(0.25), q(0.75))
+}
+
+fn num(v: f64) -> String {
+    if v.abs() >= 1e6 {
+        format!("{:.2}M", v / 1e6)
+    } else if v.abs() >= 1e4 {
+        format!("{:.0}k", v / 1e3)
+    } else if v.fract() == 0.0 {
+        format!("{v:.0}")
+    } else {
+        format!("{v:.1}")
+    }
+}
+
+#[async_trait]
+impl Step for FactsStep {
+    fn kind(&self) -> Kind {
+        Kind::Query
+    }
+    fn help(&self) -> &'static str {
+        "facts: what the chart's rows say: extremes, outliers, shares, rank, trends"
+    }
+    async fn run(&self, p: &mut Pipeline, _c: &Call) -> Result<Option<String>> {
+        use datafusion::arrow::array::{Array, Float64Array, StringArray};
+        use datafusion::arrow::compute::cast;
+        use datafusion::arrow::datatypes::DataType;
+        let mark = p.chart["mark"].as_str().ok_or_else(|| err("facts: no chart yet"))?.to_string();
+        let (keys, value) = roles(&p.chart)?;
+        let mut cols: Vec<&str> = keys.iter().map(String::as_str).collect();
+        cols.push(&value);
+        let batches = p.dataframe()?.select_columns(&cols)?.collect().await?;
+        // (key values as text, measure)
+        let mut rows: Vec<(Vec<String>, f64)> = vec![];
+        for b in &batches {
+            let text: Vec<StringArray> = (0..keys.len())
+                .map(|i| cast(b.column(i), &DataType::Utf8).map(|a| a.as_any().downcast_ref::<StringArray>().unwrap().clone()))
+                .collect::<std::result::Result<_, _>>()?;
+            let v = cast(b.column(keys.len()), &DataType::Float64)?;
+            let v = v.as_any().downcast_ref::<Float64Array>().unwrap();
+            for r in 0..b.num_rows() {
+                if v.is_valid(r) {
+                    rows.push((text.iter().map(|t| t.value(r).to_string()).collect(), v.value(r)));
+                }
+            }
+        }
+        if rows.is_empty() {
+            return Ok(Some(json!({"facts": [], "rows": 0}).to_string()));
+        }
+        let key = |r: &(Vec<String>, f64)| r.0.join(" · ");
+        let mut facts = vec![];
+        let mut fact = |t: &str, s: String| facts.push(json!({"type": t, "text": s}));
+        let max = rows.iter().max_by(|a, b| a.1.total_cmp(&b.1)).unwrap().clone();
+        let min = rows.iter().min_by(|a, b| a.1.total_cmp(&b.1)).unwrap().clone();
+        let total: f64 = rows.iter().map(|r| r.1).sum();
+        match mark.as_str() {
+            "bar" | "arc" => {
+                let share = max.1 / total * 100.0;
+                fact("proportion", format!("{} is {share:.0} % of all {}{}", key(&max), num(total), if share > 50.0 { ", more than the rest together" } else { "" }));
+                let mut ranked = rows.clone();
+                ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
+                fact("rank", ranked.iter().take(3).map(|r| key(r)).collect::<Vec<_>>().join(" > ") + " > …");
+                fact("extreme", format!("fewest: {} ({})", key(&min), num(min.1)));
+            }
+            "line" => {
+                // Per series: the peak, and the direction of a least-squares fit.
+                let mut series: std::collections::BTreeMap<String, Vec<(f64, f64)>> = Default::default();
+                for r in &rows {
+                    series.entry(r.0[0].clone()).or_default().push((r.0[1].parse().unwrap_or(0.0), r.1));
+                }
+                fact("extreme", format!("highest: {} {} at {} = {}", keys[0], max.0[0], max.0[1], num(max.1)));
+                for (s, pts) in series.iter().take(4) {
+                    let n = pts.len() as f64;
+                    let (mx, my) = (pts.iter().map(|p| p.0).sum::<f64>() / n, pts.iter().map(|p| p.1).sum::<f64>() / n);
+                    let slope = pts.iter().map(|p| (p.0 - mx) * (p.1 - my)).sum::<f64>() / pts.iter().map(|p| (p.0 - mx).powi(2)).sum::<f64>().max(1e-12);
+                    let peak = pts.iter().max_by(|a, b| a.1.total_cmp(&b.1)).unwrap();
+                    fact("trend", format!("{} {s}: peaks at {} ({}), {} overall", keys[0], num(peak.0), num(peak.1), if slope.abs() * (pts.last().unwrap().0 - pts[0].0) < 0.1 * my { "flat" } else if slope > 0.0 { "rising" } else { "falling" }));
+                }
+            }
+            "heatmap" => {
+                fact("extreme", format!("largest cell: {} = {}", key(&max), num(max.1)));
+                // Per row key: where its values sit.
+                let mut by: std::collections::BTreeMap<String, (String, f64)> = Default::default();
+                for r in &rows {
+                    let e = by.entry(r.0[0].clone()).or_insert((r.0[1].clone(), f64::MIN));
+                    if r.1 > e.1 {
+                        *e = (r.0[1].clone(), r.1);
+                    }
+                }
+                fact("distribution", by.iter().take(4).map(|(k, (x, _))| format!("{k} peaks at {x}")).collect::<Vec<_>>().join(" · "));
+            }
+            _ => {
+                fact("extreme", format!("highest {value}: {} at {}", num(max.1), key(&max)));
+            }
+        }
+        // Outliers, by 1.5 × the interquartile range, over the measure.
+        let mut vals: Vec<f64> = rows.iter().map(|r| r.1).collect();
+        if vals.len() >= 4 {
+            let (q1, q3) = quartiles(&mut vals);
+            let (lo, hi) = (q1 - 1.5 * (q3 - q1), q3 + 1.5 * (q3 - q1));
+            let out: Vec<&(Vec<String>, f64)> = rows.iter().filter(|r| r.1 < lo || r.1 > hi).collect();
+            let text = match out.len() {
+                0 => format!("none: every {value} lies within 1.5 × IQR ({}–{})", num(lo.max(0.0)), num(hi)),
+                n if n <= 3 => format!("{}: outside {}–{}", out.iter().map(|r| format!("{} ({})", key(r), num(r.1))).collect::<Vec<_>>().join(", "), num(lo.max(0.0)), num(hi)),
+                n => format!("{n} of {} rows outside {}–{} (1.5 × IQR)", rows.len(), num(lo.max(0.0)), num(hi)),
+            };
+            fact("outlier", text);
+        }
+        Ok(Some(json!({"facts": facts, "rows": rows.len()}).to_string()))
+    }
+}
+
 pub fn package() -> Package {
     let mut steps: Vec<(&'static str, Arc<dyn Step>)> =
         MARKS.iter().map(|m| (m.0, Arc::new(MarkStep) as Arc<dyn Step>)).collect();
@@ -444,6 +637,8 @@ pub fn package() -> Package {
     steps.push(("selection", Arc::new(SelectionStep)));
     steps.push(("lens", Arc::new(LensStep)));
     steps.push(("clear-highlight", Arc::new(ClearHighlight)));
+    steps.push(("intent", Arc::new(IntentStep)));
+    steps.push(("facts", Arc::new(FactsStep)));
     Package { name: "layer", functions: vec![], steps }
 }
 

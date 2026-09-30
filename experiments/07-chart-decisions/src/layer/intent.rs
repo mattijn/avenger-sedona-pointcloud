@@ -71,6 +71,23 @@ pub fn missing(intent: &str) -> &'static [&'static str] {
     charts(intent)
 }
 
+/// The reader's rule: the message a chart carries, from its pipeline alone.
+/// `mark` is the pipeline's chart mark (`bar`, `arc`, `line`, `heatmap`,
+/// `map`); `sorted` says whether its rows are ordered by the measure, which
+/// makes bars a ranking rather than a comparison of sizes. Returns the
+/// message and the FT chart the pipeline draws.
+pub fn of_pipeline(mark: &str, sorted: bool) -> (&'static str, &'static str) {
+    match (mark, sorted) {
+        ("bar", true) => ("ranking", "ordered bar"),
+        ("bar", false) => ("magnitude", "bar"),
+        ("arc", _) => ("part_to_whole", "donut"),
+        ("line", _) => ("change_over_time", "line"),
+        ("heatmap", _) => ("correlation", "XY heatmap"),
+        ("map", _) => ("spatial", "dot density"),
+        _ => ("none", "–"),
+    }
+}
+
 /// The typed question for a decider: which of the nine the text expresses,
 /// or none (an instruction about the chart, not a question of the data).
 /// Its own question set, so the pilot's questions and their cache keys stay.
