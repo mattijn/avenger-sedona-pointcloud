@@ -1,7 +1,7 @@
 # avenger-selection, carried here
 
 Jon Mease's `avenger-selection` from
-[jonmmease/avenger](https://github.com/jonmmease/avenger) at `f4890be`
+[jonmmease/avenger](https://github.com/jonmmease/avenger) at `d5f9738`
 (BSD-3-Clause, [LICENSE](LICENSE)), with additions that are not upstream.
 Nothing in the workspace depended on the git crate, so this copy is an
 ordinary path crate. [UPSTREAM.diff](UPSTREAM.diff) is the whole difference;
@@ -68,7 +68,7 @@ Measured by `cargo run --release -p lidar-probes --bin probe_selection -- <tile>
 Regenerate the diff against a checkout of upstream at the pin:
 
 ```sh
-git -C ../avenger archive f4890be avenger-selection | tar -x -C /tmp
+git -C ../avenger archive d5f9738 avenger-selection | tar -x -C /tmp
 diff -ruN --exclude=VENDORED.md --exclude=LICENSE --exclude=UPSTREAM.diff \
   /tmp/avenger-selection crates/avenger-selection > crates/avenger-selection/UPSTREAM.diff
 ```

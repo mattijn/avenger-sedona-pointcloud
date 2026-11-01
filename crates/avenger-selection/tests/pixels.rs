@@ -275,7 +275,7 @@ async fn clamp_offset_and_invalid_coordinates_follow_the_scale_kernel() {
             numbers(&[0.0, 100.0]),
             HashMap::from([
                 ("clamp".into(), Scalar::from_bool(clamp)),
-                ("range_offset".into(), Scalar::from_f32(10.0)),
+                ("range_offset".into(), Scalar::from_f64(10.0)),
                 ("round".into(), Scalar::from_bool(false)),
             ]),
             0.0,
@@ -510,8 +510,7 @@ fn configuration_validation_rejects_unsupported_and_degenerate_mappings() {
         vec![1.0, 1.0],
         vec![f64::NAN, 1.0],
         vec![f64::NEG_INFINITY, 1.0],
-        vec![1.0, 1.0 + 1e-10],
-        vec![-f32::MAX as f64, f32::MAX as f64],
+        vec![-f64::MAX, f64::MAX],
     ] {
         assert!(PixelGrid::new(
             BuiltinScale::Linear,
@@ -555,9 +554,8 @@ fn configuration_validation_rejects_unsupported_and_degenerate_mappings() {
     for (name, value) in [
         ("round", Scalar::from_bool(true)),
         ("nice", Scalar::from_bool(true)),
-        ("clamp", Scalar::from_f32(1.0)),
-        ("f64_precision", Scalar::from_bool(true)),
-        ("range_offset", Scalar::from_f32(f32::INFINITY)),
+        ("clamp", Scalar::from_f64(1.0)),
+        ("range_offset", Scalar::from_f64(f64::INFINITY)),
     ] {
         assert!(PixelGrid::new(
             BuiltinScale::Linear,
@@ -572,7 +570,7 @@ fn configuration_validation_rejects_unsupported_and_degenerate_mappings() {
     for (name, value) in [
         ("timezone", Scalar::from("America/New_York")),
         ("clamp", Scalar::from_bool(true)),
-        ("range_offset", Scalar::from_f32(1.0)),
+        ("range_offset", Scalar::from_f64(1.0)),
     ] {
         assert!(PixelGrid::new(
             BuiltinScale::Time,

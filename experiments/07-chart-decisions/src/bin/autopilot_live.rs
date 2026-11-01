@@ -40,8 +40,7 @@ use avenger_geometry::rtree::SceneGraphRTree;
 use avenger_scenegraph::marks::mark::SceneMark;
 use avenger_scenegraph::marks::text::SceneTextMark;
 use avenger_scenegraph::scene_graph::SceneGraph;
-use avenger_text::measurement::TextMeasurementConfig;
-use avenger_text::types::{FontStyle, FontWeight, FontWeightNameSpec, TextAlign, TextBaseline, TextSyntaxMode};
+use avenger_common::types::{FontStyle, FontWeight, TextAlign, TextBaseline};
 use avenger_wgpu::canvas::CanvasConfig;
 use lidar_decide::deciders::{Decider, Decision, Jev, Writer};
 use lidar_decide::layer::anim::{still, transition};
@@ -104,7 +103,7 @@ struct Ui {
     th: Theme,
     font: String,
     code: String,
-    engine: avenger_text::TextEngine,
+    engine: avenger_typst_label::LabelEngine,
     widths: Mutex<std::collections::HashMap<(char, u32, bool), f32>>,
 }
 
@@ -114,27 +113,19 @@ fn ui() -> &'static Ui {
     UI.get().expect("the theme is set at startup")
 }
 
-fn measure(engine: &avenger_text::TextEngine, s: &str, font: &str, size: f32) -> Option<f32> {
-    let params = avenger_text::LabelParams::default();
-    engine
-        .measure_bounds(&TextMeasurementConfig {
-            text: s,
-            font,
-            font_size: size,
-            font_weight: FontWeight::Name(FontWeightNameSpec::Normal),
-            font_style: FontStyle::Normal,
-            syntax_mode: TextSyntaxMode::Plain,
-            params: &params,
-            number_format: None,
-            datetime_format: None,
-        })
-        .ok()
-        .map(|b| b.width)
+fn measure(engine: &avenger_typst_label::LabelEngine, s: &str, font: &str, size: f32) -> Option<f32> {
+    // Since d5f9738 the engine measures a label from its options; an unknown
+    // family errs as before, so the font probe in `Ui::new` still works.
+    let options = avenger_typst_label::LabelOptions {
+        text: avenger_typst_label::TextStyle { font_family: font.into(), font_size: size, ..Default::default() },
+        ..Default::default()
+    };
+    engine.measure_text(s, &options).ok().map(|m| m.width)
 }
 
 impl Ui {
     fn new(th: Theme) -> Self {
-        let engine = avenger_text::default_text_engine();
+        let engine = lidar_common::text_engine().clone();
         // A family that is not installed cannot be measured.
         let font = th
             .fonts
@@ -1790,7 +1781,7 @@ fn status_on(s: &str, x: f32, y: f32, size: f32, grey: [f32; 4], colour: [f32; 4
         font: if code { ui().code.clone() } else { ui().font.clone() }.into(),
         font_size: size.into(),
         font_style: if th.status_italic { FontStyle::Italic } else { FontStyle::Normal }.into(),
-        font_weight: FontWeight::Name(if bold { FontWeightNameSpec::Bold } else { FontWeightNameSpec::Normal }).into(),
+        font_weight: (if bold { FontWeight::BOLD } else { FontWeight::NORMAL }).into(),
         color: draw::c(if th.status_italic { grey } else { colour }).into(),
         baseline: TextBaseline::Top.into(),
         ..Default::default()
@@ -2551,7 +2542,7 @@ fn build(s: &mut App) -> SceneBuild {
             rt.block_on(async move {
                 use avenger_wgpu::canvas::{Canvas, PngCanvas};
                 if let Ok(mut c) = PngCanvas::new(avenger_common::canvas::CanvasDimensions { size: [W, H], scale: 2.0 }, Default::default()).await {
-                    if c.set_scene(&sg).is_ok() {
+                    if c.set_scene(&sg, lidar_common::text_engine()).is_ok() {
                         if let Ok(img) = c.render().await {
                             let _ = img.save(VIEW_FILE);
                         }
@@ -2570,10 +2561,7 @@ fn build(s: &mut App) -> SceneBuild {
 struct Builder;
 #[async_trait]
 impl SceneGraphBuilder<App> for Builder {
-    async fn build(&self, s: &mut App) -> Result<SceneGraph, AvengerAppError> {
-        Ok(build(s).scene_graph)
-    }
-    async fn build_with_effects(&self, s: &mut App) -> Result<SceneBuild, AvengerAppError> {
+    async fn build(&self, s: &mut App) -> Result<SceneBuild, AvengerAppError> {
         Ok(build(s))
     }
 }
@@ -3211,7 +3199,7 @@ async fn record_script(mut app: App, dir: &str, script: Vec<Act>, captions: bool
             sg.marks.extend(draw::pointer(p, pressed, &badge));
         }
         if saving {
-            canvas.set_scene(&sg)?;
+            canvas.set_scene(&sg, lidar_common::text_engine())?;
             canvas.render().await?.save(format!("{dir}/f{written:05}.png"))?;
             written += 1;
         }
@@ -3482,7 +3470,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.started = None;
                     app.nerds = false;
                     app.wait_for_intent().await;
-                    canvas.set_scene(&build(&mut app).scene_graph)?;
+                    canvas.set_scene(&build(&mut app).scene_graph, lidar_common::text_engine())?;
                     canvas.render().await?.save(format!("{dir}/{i:02}.png"))?;
                     println!("{:<45} {}", "", app.intent_line());
                     println!("{text:<45} selection {:?} · hover {:?} · {}", app.state.selection, app.hover.as_ref().map(|h| &h.0), app.message);
@@ -3499,7 +3487,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app.started = None;
                     for nerds in [false, true] {
                         app.nerds = nerds;
-                        canvas.set_scene(&build(&mut app).scene_graph)?;
+                        canvas.set_scene(&build(&mut app).scene_graph, lidar_common::text_engine())?;
                         canvas.render().await?.save(format!("{dir}/{i:02}_editor{}.png", if nerds { "_nerds" } else { "" }))?;
                     }
                     println!("editor {path}: {}", app.edit_status.0);
@@ -3519,7 +3507,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // One frame while the writer or a query is still running.
                 if app.writing > 0 || app.applying {
                     tokio::time::sleep(std::time::Duration::from_millis(600)).await;
-                    canvas.set_scene(&build(&mut app).scene_graph)?;
+                    canvas.set_scene(&build(&mut app).scene_graph, lidar_common::text_engine())?;
                     canvas.render().await?.save(format!("{dir}/{i:02}_busy.png"))?;
                 }
                 while app.writing > 0 || app.applying {
@@ -3535,7 +3523,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 for nerds in [false, true] {
                     app.nerds = nerds;
-                    canvas.set_scene(&build(&mut app).scene_graph)?;
+                    canvas.set_scene(&build(&mut app).scene_graph, lidar_common::text_engine())?;
                     canvas.render().await?.save(format!("{dir}/{i:02}{}.png", if nerds { "_nerds" } else { "" }))?;
                 }
                 let _ = std::fs::write(SESSION_FILE, app.session_text());
@@ -3546,8 +3534,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    let engine = avenger_text::default_text_engine();
-    let avenger = runtime.block_on(AvengerApp::try_new_with_text_engine(
+    let engine = lidar_common::text_engine().clone();
+    let avenger = runtime.block_on(AvengerApp::try_new(
         app,
         Arc::new(Builder),
         vec![(
@@ -3566,7 +3554,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_resizable(false)
                 .with_inner_size(winit::dpi::LogicalSize::new(W as f64, H as f64)),
         )
-        .canvas_config(CanvasConfig { text_engine: Some(engine), ..Default::default() });
+        .canvas_config(CanvasConfig::default());
     let (mut host, event_loop) =
         avenger_winit_wgpu::WinitWgpuAvengerApp::try_new_and_event_loop_with_options(avenger, options, runtime)?;
     event_loop.run_app(&mut host)?;

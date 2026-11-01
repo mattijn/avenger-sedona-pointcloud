@@ -3,6 +3,7 @@
 //!
 //! Usage: cargo run --release -p lidar-charts --bin topviews -- <tile.copc.laz> <out_dir>
 
+use lidar_common::make_symbol_legend;
 use lidar_common::{las_context, CLASSES, INK, MUTED, OTHER};
 use std::sync::Arc;
 use std::time::Instant;
@@ -16,7 +17,7 @@ use avenger_common::types::SymbolShape;
 use avenger_common::value::ScalarOrArray;
 use lidar_common::make_numeric_axis_marks;
 use avenger_guides::axis::opts::{AxisConfig, AxisOrientation};
-use avenger_guides::legend::symbol::{make_symbol_legend, SymbolLegendConfig};
+use avenger_guides::legend::symbol::SymbolLegendConfig;
 use avenger_scales::scales::linear::LinearScale;
 use avenger_scales::scales::ConfiguredScale;
 use avenger_scenegraph::marks::group::{Clip, SceneGroup};
@@ -26,7 +27,7 @@ use avenger_scenegraph::marks::rule::SceneRuleMark;
 use avenger_scenegraph::marks::symbol::SceneSymbolMark;
 use avenger_scenegraph::marks::text::SceneTextMark;
 use avenger_scenegraph::scene_graph::SceneGraph;
-use avenger_text::types::{FontWeight, FontWeightNameSpec, TextAlign, TextBaseline};
+use avenger_common::types::{FontWeight, TextAlign, TextBaseline};
 use avenger_wgpu::canvas::{Canvas, PngCanvas};
 
 const PROFILE_Y: f32 = 400.0; // the cross-section from the first chart
@@ -54,7 +55,7 @@ fn class_colors(class: &ArrayRef) -> Vec<ColorOrGradient> {
 /// Linear colour scale from `domain`, with `colors` spread evenly across it.
 fn ramp(domain: (f32, f32), colors: &[&str]) -> ConfiguredScale {
     LinearScale::configured_color(
-        domain,
+        (domain.0 as f64, domain.1 as f64),
         colors.iter().map(|c| c.to_string()).collect::<Vec<_>>(),
     )
     .with_option("clamp", true)
@@ -97,11 +98,7 @@ fn text(lines: Vec<(String, f32, f32, f32, bool, [f32; 4])>) -> SceneTextMark {
         font_weight: lines
             .iter()
             .map(|l| {
-                FontWeight::Name(if l.4 {
-                    FontWeightNameSpec::Bold
-                } else {
-                    FontWeightNameSpec::Normal
-                })
+                if l.4 { FontWeight::BOLD } else { FontWeight::NORMAL }
             })
             .collect::<Vec<_>>()
             .into(),
@@ -119,8 +116,8 @@ fn text(lines: Vec<(String, f32, f32, f32, bool, [f32; 4])>) -> SceneTextMark {
 fn build(p: Panel) -> Result<SceneGraph, Box<dyn std::error::Error>> {
     let side = 620.0f32;
     let [x0, x1, y0, y1] = p.window;
-    let x_scale = LinearScale::configured((x0, x1), (0.0, side));
-    let y_scale = LinearScale::configured((y0, y1), (side, 0.0));
+    let x_scale = lidar_common::linear((x0, x1), (0.0, side));
+    let y_scale = lidar_common::linear((y0, y1), (side, 0.0));
 
     let mut plot_marks: Vec<SceneMark> = vec![SceneSymbolMark {
         len: p.x.len() as u32,
@@ -133,7 +130,7 @@ fn build(p: Panel) -> Result<SceneGraph, Box<dyn std::error::Error>> {
     }
     .into()];
     if p.profile_line {
-        let py = y_scale.scale_scalar_to_numeric(&PROFILE_Y.into())?;
+        let py = y_scale.scale_scalar_to_numeric(&(PROFILE_Y as f64).into())?;
         let py = *py.as_iter(1, None).next().unwrap();
         plot_marks.push(
             SceneRuleMark {
@@ -181,7 +178,7 @@ fn build(p: Panel) -> Result<SceneGraph, Box<dyn std::error::Error>> {
                 dimensions: [side, side],
                 orientation: o,
                 grid: false,
-                ..Default::default()
+                ..lidar_common::axis_config()
             },
         )
     };
@@ -206,10 +203,8 @@ fn build(p: Panel) -> Result<SceneGraph, Box<dyn std::error::Error>> {
                     size: 60.0.into(),
                     fill: swatches.into(),
                     stroke: ColorOrGradient::Color([0.0; 4]).into(),
-                    inner_width: side,
-                    inner_height: side,
                     ..Default::default()
-                })?
+                }, [side, 0.0])?
                 .into(),
             );
             marks.push(
@@ -246,7 +241,7 @@ fn build(p: Panel) -> Result<SceneGraph, Box<dyn std::error::Error>> {
                 fill: scale.scale_to_color(&values)?,
                 ..Default::default()
             };
-            let bar_scale = LinearScale::configured((lo, hi), (bar_h, 0.0));
+            let bar_scale = lidar_common::linear((lo, hi), (bar_h, 0.0));
             let bar_axis = make_numeric_axis_marks(
                 &bar_scale,
                 title,
@@ -255,7 +250,7 @@ fn build(p: Panel) -> Result<SceneGraph, Box<dyn std::error::Error>> {
                     dimensions: [bar_w, bar_h],
                     orientation: AxisOrientation::Right,
                     grid: false,
-                    ..Default::default()
+                    ..lidar_common::axis_config()
                 },
             )?;
             marks.push(
@@ -298,7 +293,7 @@ async fn render(scene: &SceneGraph, path: &str) -> Result<(), Box<dyn std::error
         Default::default(),
     )
     .await?;
-    canvas.set_scene(scene)?;
+    canvas.set_scene(scene, lidar_common::text_engine())?;
     canvas.render().await?.save(path)?;
     println!("  render {:.2?} -> {path}", t.elapsed());
     Ok(())

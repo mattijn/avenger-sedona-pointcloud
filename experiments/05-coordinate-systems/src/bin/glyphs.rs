@@ -120,7 +120,7 @@ fn legend(origin: [f32; 2], items: &[(&str, [f32; 4])]) -> SceneMark {
     for (label, c) in items {
         marks.push(
             SceneRectMark {
-                interactive: false,
+                interactive: Some(false),
                 len: 1,
                 x: x.into(),
                 y: 0.0.into(),
@@ -304,7 +304,7 @@ async fn main() -> Result<(), Error> {
         Default::default(),
     )
     .await?;
-    canvas.set_scene(&scene)?;
+    canvas.set_scene(&scene, lidar_common::text_engine())?;
     canvas.render().await?.save(out)?;
     println!("wrote {out}");
     Ok(())

@@ -4,9 +4,12 @@ What this repo has run into while building real charts on the Avenger stack,
 kept as a ledger so it can be rechecked when the stack moves. Every entry says
 how it was measured, so a recheck is a command rather than an opinion.
 
-- **Checked against:** `jonmmease/avenger` `f4890be` ([#130](https://github.com/jonmmease/avenger/pull/130), `codex/portable-dataflow-inputs`, the top of the stack after the rebase of 26 Sep 2026, 02:57 CEST), on 26 Sep 2026.
-  Previous rounds: `3065e2a` (#130, rebased 25 Sep 19:17 CEST); `602b99c` (#130), 25 Sep 2026; `5f31c58` (#124), 20 Sep 2026.
-- **Machine:** Apple Silicon, macOS, wgpu/Metal, Rust 1.89
+- **Checked against:** `jonmmease/avenger` `d5f9738` ([#130](https://github.com/jonmmease/avenger/pull/130), `codex/portable-dataflow-inputs`, still open, rebased 14 Oct 2026), on 1 Nov 2026.
+  Previous rounds: `f4890be` (#130), 26 Sep 2026; `3065e2a` (#130, rebased 25 Sep 19:17 CEST); `602b99c` (#130), 25 Sep 2026; `5f31c58` (#124), 20 Sep 2026.
+- **Machine:** Apple Silicon, macOS, wgpu/Metal, Rust 1.89, for every round up to `f4890be`.
+  The `d5f9738` round ran in a Linux cloud container (4 cores, Rust 1.97, wgpu on
+  lavapipe, the software Vulkan driver): its timings are not comparable with the
+  tables below, only ratios within one run are.
 - **Recheck:** `cargo run --release -p lidar-probes --bin probe_guides` and
   `cargo run --release -p lidar-probes --bin probe_render` print everything
   below (`probe_selection` covers [Selections](#selections-in-avenger-selection)) except the frame-rate numbers, which come from the streaming viewer
@@ -16,11 +19,11 @@ how it was measured, so a recheck is a command rather than an opinion.
 | # | Area | Finding | Status |
 |---|---|---|---|
 | 1 | app / geometry | Rebuilding the geometry index dominates data-driven frames | open |
-| 2 | app / geometry | `interactive: false` does not avoid that cost | open |
+| 2 | app / geometry | `interactive: false` does not avoid that cost | **fixed at `d5f9738`** (index 0.0 ms) |
 | 3 | winit | Invalidation-driven rebuilds always rebuild geometry | open, by design? |
-| 4 | wgpu | Gradient fills do not draw, or draw flat | open |
-| 5 | guides | Colorbar ignores its `origin` | open, documented in source |
-| 6 | guides | Symbol legend title is placed inside the plot | open |
+| 4 | wgpu | Gradient fills do not draw, or draw flat | open (lavapipe at `d5f9738`; Metal not rechecked) |
+| 5 | guides | Colorbar ignores its `origin` | **fixed at `d5f9738`** |
+| 6 | guides | Symbol legend title is placed inside the plot | **fixed at `d5f9738`** (the caller places the legend) |
 | 7 | scales | Linear domains must have exactly two stops | open |
 | 8 | guides | Axis always set a `band` option | fixed in the stack |
 | 9 | format | `NumberFormatContext` removed from `avenger-format-number` | API change, adapted |
@@ -30,10 +33,15 @@ how it was measured, so a recheck is a command rather than an opinion.
 | 13 | chart-definition | Unsupported properties should be errors with a path and a reason | not checked, suggestion |
 | 14 | text / guides | Number formatting must now be configured, and its absence fails at run time | open, adapted |
 | 15 | format | The format crates split into `avenger-format` and `*-d3`; two signatures changed | API change, adapted |
+| 37 | geometry / chart | `PlotMapping` (#209) against `avenger-coords`; one channel set for every coordinate system | suggestion, by reading |
+| 38 | text / guides / app | `avenger-text` dissolved into `avenger-typst-label`; guides, canvas and app take the engine | API change, adapted |
+| 39 | guides | A colorbar fails on a linear colour scale with more than two colours | **new at `d5f9738`** |
 
-Findings 1–7 were re-measured on `602b99c` with the two probes and are
-unchanged. The frame-rate numbers under [Live charts](#live-charts) were **not**
-re-measured this round, because they need the live window.
+Findings 1–7 were re-measured on `d5f9738` with the two probes: 2, 5 and 6 are
+fixed, 1, 3, 4 and 7 remain, and a colorbar now fails on three colours (39). See
+[the `d5f9738` round](#from-the-repin-to-d5f9738-and-209). The frame-rate
+numbers under [Live charts](#live-charts) were **not** re-measured, because they
+need the live window and the tile.
 
 ## Live charts
 
@@ -378,6 +386,201 @@ types. **Measure:** `python crates/avenger-altair/bench/altair_generator.py <alt
 Also: the compiler's `pdf` feature pulls in `krilla` 0.8.2, which needs
 rustc 1.92, so the bridge builds with `svg` and `png` only on this machine's
 1.89.
+
+## From the repin to `d5f9738`, and #209
+
+**Which line to pin.** Avenger now has two lines. `main` moves daily through
+the `claude/*` stack (#206 merged on 31 Oct; #209 and the two PRs on it,
+1 Nov), and is where `avenger-chart`'s protobuf format, `PlotMapping` and the
+mapped brushes live. Neither it nor #209 carries ten crates this repo depends on
+(and #209 lacks `avenger-chart` as well):
+`avenger-datafusion-dataflow`, `-preaggregate`, `-aggregate-state`,
+`avenger-scales-datafusion`, `avenger-vegalite-compiler`, `-spec`,
+`avenger-chart-definition`, `avenger-transform`, `avenger-resource` and
+`avenger-text` (the last dissolved, finding 38). Those live on the `codex/*`
+stack, whose top, #130, is still open and was last rebased on 14 Oct
+(`d5f9738`, 348 commits since `f4890be`). This round pins that. Pinning #209
+would mean dropping experiments 6–10 and the DataFusion half of this repo; we
+would like to know from Jon whether #130's line will merge, or is being
+replaced by `avenger-chart` on `main`. Checked with `git ls-remote` and by
+looking for each crate's `Cargo.toml` at both tips.
+
+Re-measured on `d5f9738` with the two probes, on the container (see Machine):
+
+| Symbols | `set_scene` | `render` (lavapipe) | index, interactive | index, `interactive: Some(false)` |
+|---|---|---|---|---|
+| 10,000 | 1.2 ms | 67.1 ms | 4.1 ms | 0.0 ms |
+| 50,000 | 2.9 ms | 130.7 ms | 26.9 ms | 0.0 ms |
+| 150,000 | 7.4 ms | 254.9 ms | 96.9 ms | 0.0 ms |
+| 300,000 | 14.3 ms | 445.4 ms | 193.0 ms | 0.0 ms |
+
+- **Finding 1, open.** The index still grows with the instances, about
+  0.64 µs each here. `render` is slow only because lavapipe draws on the CPU.
+- **Finding 2, fixed.** A group marked non-interactive now costs nothing in
+  the index: 193 ms to 0.0 ms at 300k. (`interactive` became `Option<bool>`,
+  and a mark takes its group's setting unless it sets its own.)
+- **Finding 3, open, with a new hook.** `SceneBuild` gained `rebuild_geometry`,
+  so a builder can now say whether its geometry changed, and
+  `SceneBuild::new` says it did not. But `render_invalidation.rs` still calls
+  `rebuild_scene_graph(true)` (lines 121 and 164), so a data push still pays
+  finding 1. Read in the source; not measured, as it needs the live viewer.
+- **Finding 4, open.** Every gradient case in `probe_render` is still flat or
+  missing, and the colorbar in `out/probe_guides.png` is one colour. On
+  lavapipe, so a renderer difference cannot be ruled out; Metal not rechecked.
+- **Finding 5, fixed.** The colorbar's group lands where it was asked:
+  `[320, 10]`.
+- **Finding 6, fixed.** A symbol legend now draws at its own group's origin
+  with its title inside it (`LiDAR class` at `(4, 4)` of the legend), and the
+  caller places the group. `inner_width` and `inner_height` are gone.
+- **Finding 7, open.** A three-stop linear domain is still refused
+  (`numeric_interval_domain`).
+
+**Measure:** `cargo run --release -p lidar-probes --bin probe_render` and
+`… --bin probe_guides`. The workspace builds with no warnings and its 135 tests
+pass, with `avenger-selection`'s 85 passing after the upstream change below.
+The `avenger-validate` corpus flags the same (269 pipelines, 39 refused, all
+39 flagged); warm 7.0 µs a pipeline on this machine.
+
+### 37. `PlotMapping` (#209) and `avenger-coords`: one trait, two directions
+
+[#209](https://github.com/jonmmease/avenger/pull/209) (`claude/plot-mappings`,
+`14196ff`, base of a three-PR stack with `mapped-navigation` and
+`mapped-brushes`) adds `PlotMapping` to `avenger-geometry`: the map between a
+plot's pixels and the positions along its two dimensions, with
+`RectMapping`, `PolarMapping` (`avenger-guides`) and `ProjectorMapping`
+(`avenger-guides-geo`). The stack on top rewrites the app-tools brushes, lasso
+and pan-zoom over it, and removes `GeoBoxBrush`: one `IntervalBrush` now
+selects in a rectangle, a polar plot and a map. Checked by reading the
+branches on 1 Nov 2026; nothing on that line was built here, because it no
+longer carries the DataFusion crates this repo pins (see the round summary).
+
+`avenger-coords` (experiment 5) answers the same question from the other end:
+
+| | `avenger-coords::CoordinateSystem` | `PlotMapping` |
+|---|---|---|
+| main direction | forward: inputs → pixels, to draw marks; `invert` optional (3 of 11 systems) | inverse: pixels → positions, for tools; `position` required |
+| input units | unit space for scaled channels, degrees for lon/lat | the plot's own: pixels (rect), degrees + pixels (polar), degrees (map) |
+| wrap | none | `period`, and `toward` takes the short way round |
+| clip | none (`Fitted` shrinks) | pieces cut where the plot shows nothing; lassos cut at the antimeridian and the globe's horizon |
+| lines | adaptive, 0.25 px; `Spatial` follows great circles | fixed steps (64; polar 2°; map 2.5° along parallels, so a box edge stays a parallel) |
+| dimensions | any number (3D, `Nested`) | two; a 3D plot has no mapping and takes no brush |
+| morph | `Bend { t }` | none |
+
+**Plot units or unit space.** Both designs give a map no scale, so neither
+treats geo more specially than the other: lon/lat are already positions with
+a fixed period, and the projector's scale and translate do the work a scale's
+range does on a rectangle. The difference is only who owns the size. In
+`PlotMapping` the scale's range carries it (pixels on a rectangle, the radius
+in pixels on a polar plot), which is what Avenger's axes need to count ticks
+and thin labels by length; unit space would need a per-channel length
+(the Jacobian `avenger-coords` does not have). Nothing is lost by it either:
+`extent()` gives each dimension's span, so unit space is
+`(position − lo) / (hi − lo)`, and `mapped-navigation` already pans "by the
+change of its range position as a fraction of its dimension's extent". We do
+not suggest switching to unit space.
+
+**Channels per coordinate system.** The real asymmetry is one level up. On
+`claude/chart-maps`, `avenger-chart`'s `Channel` enum has `X`/`Y`,
+`THETA`/`RADIUS` and `LONGITUDE`/`LATITUDE` (each with a `2`), plus
+`GEOMETRY`: Vega-Lite's set, a separate pair of position channels for each
+coordinate system. Leland Wilkinson's objection to exactly that, in
+[vega-lite#408](https://github.com/vega/vega-lite/issues/408#issuecomment-500216868),
+is that it needs "a separate set of parameters for each coordinate system";
+in the Grammar of Graphics x, y and z are roles that each coordinate system
+assigns to its own parameters, so every mark works in every system (squares on
+a globe, lines as great circles). The tool layer of this stack already works
+that way: `PlotMapping` indexes dimensions 0 and 1, and `Interval` replaced
+`GeoBox` "with x and y for the first and the second dimension", so a lon/lat
+box is an x/y box. `avenger-coords` does it for polar (`Polar` and `Bend`
+take the same x and y as `Cartesian`, which is why `Bend` can morph between
+them) but not for maps (`Spatial` takes `lon`/`lat`).
+
+Wilkinson's model costs something the per-system channels give for free:
+theta stacking to a full turn, a square-root radius for area, angle ticks,
+the wrap. In it those become defaults of the coordinate system and its scales
+rather than meanings of a channel name. `GEOMETRY` stays: a shape's vertices
+are already positions, and they draw through the system as any polygon does
+(`avenger-coords::draw::shape` through `Spatial`). So the suggestion is
+small: make the coordinate system a property of the plot, bind `x`/`y` to
+its two dimensions through its `PlotMapping`, and keep `theta`/`radius` and
+`longitude`/`latitude` as aliases that choose the system.
+
+**Further suggestions**, each backed by an experiment here:
+
+1. *Draw marks through the mapping too.* On `claude/chart-maps`,
+   `avenger-chart-eval`'s `CoordSystem` has three implementations, each with
+   its own `marks()`, and a map places rows with `locate()`; the mapping is
+   used only by tools. `PlotMapping::pixel`, `path` and `polygon` are what
+   `avenger-coords::draw` uses to draw points, rects (as paths when the system
+   bends), rings and lines through any system (experiment 5, `coords`). As the
+   default route with the three current systems as overrides, a fourth system
+   (a lens, a tilt) would be one `PlotMapping`. This is the general
+   coordinate function Leland Wilkinson asks for in
+   [vega-lite#408](https://github.com/vega/vega-lite/issues/408#issuecomment-500218456).
+2. *A morph between mappings.* Experiments 5, 7 and 10 animate bars to a
+   donut with `Bend`, which interpolates the transform rather than the
+   screen positions (`Blend` folds mid-way). With `extent()` normalising
+   both ends, `Bend` fits as a `PlotMapping` whose positions are the
+   rectangle's pixels; a brush on the donut then reads back through
+   `position` at every `t` (experiment 10, `flights_morph`).
+3. *A lasso in a 3D view needs the other direction.* `mapped-brushes` gives
+   a 3D plot no mapping, so it takes no lasso. A pixel there has no single
+   position, but each row has a single pixel: experiment 11's lasso projects
+   every row forward with its height (`lidar_common::tilt`) and tests the
+   cell in pixels (`SelectionValue::polygon`, FINDINGS 25), which also keeps
+   the selection a DataFusion predicate. A brush that can fall back to
+   "project the rows, test in pixels" when `position` has no answer covers
+   that case. (Experiment 7's `untilt`, pixels to the ground at z = 0, is the
+   2D mapping such a view does have, for a lens.)
+4. *Adaptive sampling for the default `path`.* 64 fixed steps can be coarse
+   on a long arc and wasteful on a short one; `avenger-coords` subdivides
+   until the midpoint is within 0.25 px. **Not measured.**
+
+And what `PlotMapping` has that `avenger-coords` lacks: `period` (our
+`Polar::invert` cuts at 12 o'clock and `Bend::invert` at 6, so a brush across
+the cut reads back as the long arc; by reading, not run), clipping, and box
+edges along parallels (our `Spatial::project_line` follows great circles,
+which is right for a route and wrong for a lon/lat box).
+
+### 38. `avenger-text` dissolved; the engine is passed everywhere
+
+Found by the compiler, in 34 files; none of it changes what a chart draws.
+`avenger-text` is gone (`dc0e194`): `TextEngine` is
+`avenger_typst_label::LabelEngine`, the text types moved to
+`avenger_common::types`, and `FontWeight` is a CSS number
+(`FontWeight::BOLD`, no `FontWeightNameSpec`). `ScaleFormatting` is gone too:
+an engine gets `with_number_formatting` and `with_datetime_formatting` with
+the D3 providers, and charts take `avenger_chart::ChartFormatting`. Every
+guide (`make_continuous_axis_marks`, `make_colorbar_legend`,
+`make_symbol_legend`), `Canvas::set_scene`, `AvengerApp::try_new` and
+`SceneGraphRTree::from_scene_graph` now take the engine, and
+`CanvasConfig::text_engine` is gone. That answers finding 14's suggestion:
+the requirement now shows at compile time. Also: `AxisConfig` and
+`ColorbarConfig` lost `Default` (`tick_count` moved into `style`,
+`format_number` became `tick_format`), `LinearScale::configured` takes `f64`,
+`interactive` is `Option<bool>`, and `SceneGraphBuilder` has one `build`
+returning a `SceneBuild` (no `build_with_effects`). `lidar_common` keeps the
+short signatures the experiments use (`text_engine`,
+`make_numeric_axis_marks`, `make_colorbar_marks`, `make_symbol_legend`,
+`axis_config`, `colorbar_config`, `linear`, `chart_formatting`).
+
+The vendored `avenger-selection` took upstream's own change for this rebase
+(the pixel grid in `f64`, and the f32-precision test cases dropped);
+`UPSTREAM.diff` is regenerated against `d5f9738` and still lists only this
+repo's additions. `avenger-vegalite-spec` is still carried at `f4890be`.
+
+### 39. A colorbar fails on more than two colours
+
+New at `d5f9738`. `make_colorbar_legend` on a linear colour scale with three
+colours fails with
+`InvalidScale(ScaleOperationNotSupported("numeric_interval_range"))`; two
+colours draw. That holds for `LinearScale::configured_color` and for a numeric
+scale given a colour range with `with_range`; both drew a colorbar at
+`f4890be`. The colorbar now places its axis with
+`scale.with_range_interval(range)`, which a range of more than two colours
+cannot take. Scales themselves still interpolate three colours
+(`probe_render` section 0). With finding 7, a multi-stop ramp now cannot have
+a colorbar at all. **Measure:** `probe_guides`, the three `COLORBAR` lines.
 
 ## From experiment 7: charts driven by typed decisions
 
@@ -888,6 +1091,18 @@ From an earlier round, **not re-verified on the current branch**:
 
 ## What this round did not check
 
+- The `d5f9738` round ran in a cloud container whose network policy refuses
+  `3d.oslandia.com`, so the tile could not be downloaded. Nothing that reads it
+  ran: `cross_section`, `topviews`, `bench_window`, `explorer --snapshots`,
+  `probe_selection`, `coords`, `coords_live --snapshots`, `pipeline_bench`,
+  `cqrs_check` and the stream pair. They build; their output and the README
+  timings are as of `f4890be`. Two edits may move their renders: symbol
+  legends are now placed at `[plot width, 0]` by the caller (finding 38), and
+  `autopilot_live`'s font probe measures through `LabelEngine::measure_text`,
+  whose missing-font policy may fall back where the old engine refused.
+- No live window, no Metal: findings 3 and 4 and the frame rates.
+- #209 and its stack were read, not built; finding 37 is a design note.
+
 - After the repin to `f4890be`: the renders of experiments 1–3 ran, but were
   not compared with the committed images; the live viewers were not opened.
 
@@ -910,3 +1125,8 @@ What we would like to measure when the stack next moves:
    thing that would make streaming charts cheap.
 3. The chart-language items above, against whatever the language branch has
    become.
+4. Which line to pin: #130's DataFusion stack or `main` with `avenger-chart`
+   (see the `d5f9738` round). If `main`, experiments 6–10 need a new home for
+   dataflow and preaggregation, and #209's `PlotMapping` can replace the
+   inverse half of `avenger-coords`.
+5. Everything that reads the tile, on a machine that can fetch it.

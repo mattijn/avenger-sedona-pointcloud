@@ -35,12 +35,12 @@ fn panel(origin: [f32; 2], layers: [&[[f32; 2]]; 3], step: usize, mut extra: Vec
 }
 async fn render(marks: Vec<SceneMark>, size: [f32; 2], path: &str) -> Result<(), Error> {
     let background: SceneMark = SceneRectMark { len: 1, x: 0.0.into(), y: 0.0.into(), width: Some(size[0].into()), height: Some(size[1].into()),
-        fill: ColorOrGradient::Color([1.0; 4]).into(), interactive: false, ..Default::default() }.into();
+        fill: ColorOrGradient::Color([1.0; 4]).into(), interactive: Some(false), ..Default::default() }.into();
     let mut all = vec![background];
     all.extend(marks);
     let scene = SceneGraph { width: size[0], height: size[1], origin: [0.0; 2], marks: vec![SceneGroup { marks: all, ..Default::default() }.into()] };
     let mut canvas = PngCanvas::new(CanvasDimensions { size, scale: 2.0 }, Default::default()).await?;
-    canvas.set_scene(&scene)?;
+    canvas.set_scene(&scene, lidar_common::text_engine())?;
     canvas.render().await?.save(path)?;
     println!("  -> {path}");
     Ok(())
@@ -139,7 +139,7 @@ async fn main() -> Result<(), Error> {
         .into_iter().enumerate() {
         let y = side_top + 40.0 + i as f32 * 24.0;
         marks.push(SceneRectMark { len: 1, x: right.into(), y: (y - 10.0).into(), width: Some(12.0.into()), height: Some(12.0.into()),
-            fill: ColorOrGradient::Color(colour).into(), interactive: false, ..Default::default() }.into());
+            fill: ColorOrGradient::Color(colour).into(), interactive: Some(false), ..Default::default() }.into());
         marks.push(text(label, right + 20.0, y, 12.0, INK));
     }
     render(marks, [right + pf + 40.0, side_top + pw + 40.0], &format!("{out}/cloudlasso.png")).await

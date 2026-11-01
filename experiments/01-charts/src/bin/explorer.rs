@@ -9,6 +9,7 @@
 //! Usage: cargo run --release -p lidar-charts --bin explorer -- <tile.copc.laz>
 //!        cargo run --release -p lidar-charts --bin explorer -- <tile.copc.laz> --snapshots <out_dir>
 
+use lidar_common::make_symbol_legend;
 use lidar_common::{las_context, CLASSES, INK, MUTED, OTHER};
 use std::sync::Arc;
 use std::time::Instant as StdInstant;
@@ -17,7 +18,7 @@ use arrow::array::{Array, ArrayRef, AsArray, RecordBatch};
 use arrow::compute::concat;
 use arrow::datatypes::{Float64Type, UInt8Type};
 use avenger_app::{
-    app::{AvengerApp, SceneGraphBuilder},
+    app::{AvengerApp, SceneBuild, SceneGraphBuilder},
     error::AvengerAppError,
 };
 use avenger_color::ColorOrGradient;
@@ -32,9 +33,9 @@ use avenger_geometry::rtree::SceneGraphRTree;
 use lidar_common::make_numeric_axis_marks;
 use avenger_guides::{
     axis::opts::{AxisConfig, AxisOrientation},
-    legend::symbol::{make_symbol_legend, SymbolLegendConfig},
+    legend::symbol::SymbolLegendConfig,
 };
-use avenger_scales::scales::{linear::LinearScale, ConfiguredScale};
+use avenger_scales::scales::ConfiguredScale;
 use avenger_scenegraph::{
     marks::{
         group::{Clip, SceneGroup},
@@ -44,7 +45,7 @@ use avenger_scenegraph::{
     },
     scene_graph::SceneGraph,
 };
-use avenger_text::types::{FontWeight, FontWeightNameSpec, TextAlign, TextBaseline};
+use avenger_common::types::{FontWeight, TextAlign, TextBaseline};
 use avenger_winit_wgpu::{WinitWgpuAvengerApp, WinitWgpuAvengerAppOptions};
 use datafusion::prelude::SessionContext;
 use winit::{dpi::LogicalSize, window::WindowAttributes};
@@ -112,10 +113,10 @@ impl State {
         (self.center[1] - half, self.center[1] + half)
     }
     fn x_scale(&self) -> ConfiguredScale {
-        LinearScale::configured(self.x_domain(), (0.0, self.width))
+        lidar_common::linear(self.x_domain(), (0.0, self.width))
     }
     fn y_scale(&self) -> ConfiguredScale {
-        LinearScale::configured(self.y_domain(), (self.height, 0.0))
+        lidar_common::linear(self.y_domain(), (self.height, 0.0))
     }
     /// Pointer position relative to the plot, or None outside it.
     fn plot_pointer(&self, position: [f32; 2], rtree: &SceneGraphRTree) -> Option<[f32; 2]> {
@@ -266,8 +267,8 @@ async fn load_layer(
         column(&batches, 2),
     );
 
-    let base_x = LinearScale::configured(x_domain, (0.0, width));
-    let base_y = LinearScale::configured(y_domain, (height, 0.0));
+    let base_x = lidar_common::linear(x_domain, (0.0, width));
+    let base_y = lidar_common::linear(y_domain, (height, 0.0));
     let layer = Layer {
         x: base_x.scale_to_numeric(&xs).unwrap(),
         y: base_y.scale_to_numeric(&ys).unwrap(),
@@ -293,11 +294,7 @@ fn text(x: f32, y: f32, s: String, size: f32, bold: bool, color: [f32; 4]) -> Sc
         x: x.into(),
         y: y.into(),
         font_size: size.into(),
-        font_weight: FontWeight::Name(if bold {
-            FontWeightNameSpec::Bold
-        } else {
-            FontWeightNameSpec::Normal
-        })
+        font_weight: (if bold { FontWeight::BOLD } else { FontWeight::NORMAL })
         .into(),
         color: ColorOrGradient::Color(color).into(),
         align: TextAlign::Left.into(),
@@ -311,12 +308,18 @@ struct Builder;
 
 #[async_trait::async_trait]
 impl SceneGraphBuilder<State> for Builder {
-    async fn build(&self, s: &mut State) -> Result<SceneGraph, AvengerAppError> {
+    async fn build(&self, s: &mut State) -> Result<SceneBuild, AvengerAppError> {
+        self.scene(s).await.map(SceneBuild::new)
+    }
+}
+
+impl Builder {
+    async fn scene(&self, s: &mut State) -> Result<SceneGraph, AvengerAppError> {
         let (x_scale, y_scale) = (s.x_scale(), s.y_scale());
         let layer = &s.layer;
         let points = SceneSymbolMark {
             name: "points".into(),
-            interactive: false,
+            interactive: Some(false),
             len: layer.len as u32,
             x: layer.x.clone(),
             y: layer.y.clone(),
@@ -350,7 +353,7 @@ impl SceneGraphBuilder<State> for Builder {
                     dimensions: [s.width, s.height],
                     orientation: o,
                     grid: false,
-                    ..Default::default()
+                    ..lidar_common::axis_config()
                 },
             )
             .unwrap()
@@ -645,10 +648,8 @@ fn main() {
         size: 60.0.into(),
         fill: swatches.into(),
         stroke: ColorOrGradient::Color([0.0; 4]).into(),
-        inner_width: 600.0,
-        inner_height: 600.0,
         ..Default::default()
-    })
+    }, [600.0, 0.0])
     .unwrap();
 
     let state = State {
@@ -721,7 +722,7 @@ fn main() {
         .build()
         .unwrap();
     let app = window_rt
-        .block_on(AvengerApp::try_new(state, Arc::new(Builder), handlers))
+        .block_on(AvengerApp::try_new(state, Arc::new(Builder), handlers, lidar_common::text_engine().clone()))
         .expect("create app");
     let options = WinitWgpuAvengerAppOptions::new(2.0).window_attributes(
         WindowAttributes::default()
@@ -746,7 +747,7 @@ async fn snapshots(mut s: State, out: &str) {
     use avenger_wgpu::canvas::{Canvas, PngCanvas};
 
     async fn save(s: &mut State, path: String) {
-        let scene = Builder.build(s).await.unwrap();
+        let scene = Builder.scene(s).await.unwrap();
         let mut canvas = PngCanvas::new(
             CanvasDimensions {
                 size: [scene.width, scene.height],
@@ -756,7 +757,7 @@ async fn snapshots(mut s: State, out: &str) {
         )
         .await
         .unwrap();
-        canvas.set_scene(&scene).unwrap();
+        canvas.set_scene(&scene, lidar_common::text_engine()).unwrap();
         canvas.render().await.unwrap().save(&path).unwrap();
         println!("  -> {path}");
     }

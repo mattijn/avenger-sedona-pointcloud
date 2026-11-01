@@ -18,7 +18,7 @@ use std::sync::Arc;
 use avenger_scenegraph::marks::group::SceneGroup;
 use avenger_scenegraph::marks::mark::SceneMark;
 use avenger_scenegraph::scene_graph::SceneGraph;
-use avenger_text::types::{TextAlign, TextBaseline};
+use avenger_common::types::{TextAlign, TextBaseline};
 use avenger_wgpu::canvas::{Canvas, PngCanvas};
 use lidar_decide::deciders::{Decider, Jev};
 use lidar_decide::layer::anim::still;
@@ -126,7 +126,7 @@ async fn render(marks: Vec<SceneMark>, size: [f32; 2], scale: f32, path: &str) -
     all.extend(marks);
     let scene = SceneGraph { marks: vec![SceneGroup { marks: all, ..Default::default() }.into()], width: size[0], height: size[1], origin: [0.0; 2] };
     let mut canvas = PngCanvas::new(CanvasDimensions { size, scale }, Default::default()).await?;
-    canvas.set_scene(&scene)?;
+    canvas.set_scene(&scene, lidar_common::text_engine())?;
     canvas.render().await?.save(path)?;
     Ok(())
 }

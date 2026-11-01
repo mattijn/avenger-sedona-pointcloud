@@ -10,7 +10,6 @@ use arrow::datatypes::DataType;
 use avenger_color::ColorOrGradient;
 use avenger_common::canvas::CanvasDimensions;
 use avenger_guides::axis::opts::{AxisConfig, AxisOrientation};
-use avenger_scales::scales::linear::LinearScale;
 use avenger_scales_datafusion::BuiltinScale;
 use avenger_scenegraph::marks::{group::SceneGroup, line::SceneLineMark, mark::SceneMark, rect::SceneRectMark, text::SceneTextMark};
 use avenger_scenegraph::scene_graph::SceneGraph;
@@ -108,17 +107,17 @@ pub fn i64s(b: &RecordBatch, n: &str) -> arrow::array::Int64Array {
 
 pub fn text(s: impl Into<String>, x: f32, y: f32, size: f32, color: [f32; 4]) -> SceneMark {
     SceneTextMark { text: s.into().into(), x: x.into(), y: y.into(), font_size: size.into(), color: ColorOrGradient::Color(color).into(),
-        interactive: false, ..Default::default() }.into()
+        interactive: Some(false), ..Default::default() }.into()
 }
 pub fn rects(xywh: &[[f32; 4]], fill: Vec<[f32; 4]>) -> SceneMark {
     let col = |i: usize| xywh.iter().map(|r| r[i]).collect::<Vec<_>>();
     SceneRectMark { len: xywh.len() as u32, x: col(0).into(), y: col(1).into(), width: Some(col(2).into()), height: Some(col(3).into()),
-        fill: fill.into_iter().map(ColorOrGradient::Color).collect::<Vec<_>>().into(), interactive: false, ..Default::default() }.into()
+        fill: fill.into_iter().map(ColorOrGradient::Color).collect::<Vec<_>>().into(), interactive: Some(false), ..Default::default() }.into()
 }
 pub fn outline(points: &[[f32; 2]], color: [f32; 4], width: f32) -> SceneMark {
     SceneLineMark { len: points.len() as u32, x: points.iter().map(|p| p[0]).collect::<Vec<_>>().into(),
         y: points.iter().map(|p| p[1]).collect::<Vec<_>>().into(), stroke: ColorOrGradient::Color(color), stroke_width: width,
-        interactive: false, ..Default::default() }.into()
+        interactive: Some(false), ..Default::default() }.into()
 }
 pub fn axes(x: [f64; 2], y: [f64; 2], x_title: &str, y_title: &str, origin: [f32; 2], w: f32, h: f32) -> Result<Vec<SceneMark>, Error> {
     let mut out = Vec::new();
@@ -126,8 +125,8 @@ pub fn axes(x: [f64; 2], y: [f64; 2], x_title: &str, y_title: &str, origin: [f32
         (x, (0.0, w), AxisOrientation::Bottom, x_title, ",.0f"),
         (y, (h, 0.0), AxisOrientation::Left, y_title, ".2~s"),
     ] {
-        let scale = LinearScale::configured((domain[0] as f32, domain[1] as f32), range);
-        let config = AxisConfig { dimensions: [w, h], orientation, tick_count: Some(5.), format_number: Some(format.into()), ..Default::default() };
+        let scale = lidar_common::linear((domain[0] as f32, domain[1] as f32), range);
+        let config = AxisConfig { dimensions: [w, h], orientation, tick_format: format.into(), style: avenger_guides::axis::opts::AxisStyle { tick_count: Some(5.), ..Default::default() }, ..lidar_common::axis_config() };
         out.push(lidar_common::make_numeric_axis_marks(&scale, title, origin, &config)?.into());
     }
     Ok(out)
@@ -171,7 +170,7 @@ pub async fn render(marks: Vec<SceneMark>, size: [f32; 2], path: &str) -> Result
     scene_marks.extend(marks);
     let scene = SceneGraph { width: size[0], height: size[1], origin: [0.0; 2], marks: vec![SceneGroup { marks: scene_marks, ..Default::default() }.into()] };
     let mut canvas = PngCanvas::new(CanvasDimensions { size, scale: 2.0 }, Default::default()).await?;
-    canvas.set_scene(&scene)?;
+    canvas.set_scene(&scene, lidar_common::text_engine())?;
     canvas.render().await?.save(path)?;
     println!("  -> {path}");
     Ok(())

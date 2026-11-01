@@ -462,7 +462,7 @@ pub fn render_avc(bytes: Vec<u8>) -> Result<Vec<u8>> {
                 let chart = Chart::prepare(
                     definition,
                     // Numbers on axes need a formatter since avenger#139.
-                    ChartOptions { dataflow: Some(runtime), ..Default::default() }.with_formatting(lidar_common::scale_formatting()),
+                    ChartOptions { dataflow: Some(runtime), ..Default::default() }.with_formatting(lidar_common::chart_formatting()),
                 )
                 .await
                 .map_err(|e| err(e.to_string()))?;
@@ -479,7 +479,7 @@ pub fn render_avc(bytes: Vec<u8>) -> Result<Vec<u8>> {
 
 /// Render a chart definition to PNG bytes.
 pub async fn render_definition(definition: ChartDefinition) -> Result<Vec<u8>> {
-    let chart = Chart::prepare(definition, ChartOptions::default().with_formatting(lidar_common::scale_formatting()))
+    let chart = Chart::prepare(definition, ChartOptions::default().with_formatting(lidar_common::chart_formatting()))
         .await
         .map_err(|e| err(e.to_string()))?;
     let frame = chart

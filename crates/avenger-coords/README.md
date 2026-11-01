@@ -49,6 +49,12 @@ positions, and between a strip and a ring the middle frames fold.
 every frame is a valid ring segment (experiment 5's `morph.png`). Animate it by
 stepping `t` from a `RequestWakeup` every 16 ms, as `coords_live` does.
 
+## Compared with upstream
+
+Avenger's `PlotMapping` (jonmmease/avenger#209, `avenger-geometry`) answers
+the inverse question for brushes and navigation, in the plot's own units, with
+wrap-around and clipping that this crate lacks. FINDINGS.md 37 compares the two.
+
 ## What is not here
 
 These were listed as open in experiment 5 and are still open:

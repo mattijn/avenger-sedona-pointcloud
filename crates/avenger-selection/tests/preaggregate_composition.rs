@@ -116,8 +116,8 @@ async fn mapped_correlated_pixel_dimensions_and_inactive_match_none_can_warm() -
         ProjectionId::new("x")?,
         PixelGrid::new(
             avenger_scales_datafusion::BuiltinScale::Linear,
-            Arc::new(Float32Array::from(vec![0., 40.])),
-            Arc::new(Float32Array::from(vec![40., 0.])),
+            Arc::new(Float64Array::from(vec![0., 40.])),
+            Arc::new(Float64Array::from(vec![40., 0.])),
             Default::default(),
             0.,
             10.,
@@ -205,8 +205,8 @@ async fn exact_nonfinite_categories_and_invalid_pixel_cells_survive_materializat
         ProjectionId::new("x")?,
         PixelGrid::new(
             avenger_scales_datafusion::BuiltinScale::Linear,
-            Arc::new(Float32Array::from(vec![0., 2.])),
-            Arc::new(Float32Array::from(vec![0., 20.])),
+            Arc::new(Float64Array::from(vec![0., 2.])),
+            Arc::new(Float64Array::from(vec![0., 20.])),
             Default::default(),
             0.,
             2.,

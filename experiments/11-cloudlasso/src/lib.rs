@@ -11,7 +11,6 @@ use arrow::array::{ArrayRef, Float64Array, Int64Array, RecordBatch};
 use arrow::datatypes::DataType;
 use avenger_color::ColorOrGradient;
 use avenger_guides::axis::opts::{AxisConfig, AxisOrientation};
-use avenger_scales::scales::linear::LinearScale;
 use avenger_scales_datafusion::BuiltinScale;
 use avenger_scenegraph::marks::{line::SceneLineMark, mark::SceneMark, symbol::SceneSymbolMark, text::SceneTextMark};
 use avenger_selection::{
@@ -152,20 +151,20 @@ pub async fn select(mem: &SessionContext, hz: (f64, f64), yaw: f64, elevation: f
 
 pub fn text(s: impl Into<String>, x: f32, y: f32, size: f32, color: [f32; 4]) -> SceneMark {
     SceneTextMark { text: s.into().into(), x: x.into(), y: y.into(), font_size: size.into(), color: ColorOrGradient::Color(color).into(),
-        interactive: false, ..Default::default() }.into()
+        interactive: Some(false), ..Default::default() }.into()
 }
 pub fn line(points: &[[f32; 2]], color: [f32; 4], width: f32) -> SceneMark {
     SceneLineMark { len: points.len() as u32, x: points.iter().map(|p| p[0]).collect::<Vec<_>>().into(),
         y: points.iter().map(|p| p[1]).collect::<Vec<_>>().into(), stroke: ColorOrGradient::Color(color), stroke_width: width,
-        interactive: false, ..Default::default() }.into()
+        interactive: Some(false), ..Default::default() }.into()
 }
 pub fn dots(points: &[[f32; 2]], color: [f32; 4]) -> SceneMark {
     SceneSymbolMark { len: points.len() as u32, x: points.iter().map(|p| p[0]).collect::<Vec<_>>().into(),
         y: points.iter().map(|p| p[1]).collect::<Vec<_>>().into(), fill: ColorOrGradient::Color(color).into(), size: 1.5.into(),
-        stroke_width: 0.0f32.into(), interactive: false, ..Default::default() }.into()
+        stroke_width: 0.0f32.into(), interactive: Some(false), ..Default::default() }.into()
 }
 pub fn axis(domain: [f64; 2], range: (f32, f32), orientation: AxisOrientation, title: &str, w: f32, h: f32) -> Result<SceneMark, Error> {
-    let scale = LinearScale::configured((domain[0] as f32, domain[1] as f32), range);
-    let config = AxisConfig { dimensions: [w, h], orientation, tick_count: Some(4.), format_number: Some(",.0f".into()), ..Default::default() };
+    let scale = lidar_common::linear((domain[0] as f32, domain[1] as f32), range);
+    let config = AxisConfig { dimensions: [w, h], orientation, tick_format: ",.0f".into(), style: avenger_guides::axis::opts::AxisStyle { tick_count: Some(4.), ..Default::default() }, ..lidar_common::axis_config() };
     Ok(lidar_common::make_numeric_axis_marks(&scale, title, [0.0, 0.0], &config)?.into())
 }

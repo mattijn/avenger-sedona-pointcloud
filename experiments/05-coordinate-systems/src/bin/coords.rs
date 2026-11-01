@@ -80,7 +80,7 @@ async fn render(mut scene: SceneGraph, rows: usize, path: &str) -> Result<(), Er
         Default::default(),
     )
     .await?;
-    canvas.set_scene(&scene)?;
+    canvas.set_scene(&scene, lidar_common::text_engine())?;
     canvas.render().await?.save(path)?;
     println!("  render {:.0?} -> {path}", t.elapsed());
     Ok(())

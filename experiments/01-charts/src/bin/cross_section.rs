@@ -4,6 +4,7 @@
 //!
 //! Usage: cargo run --release -p lidar-charts --bin cross_section -- <tile.copc.laz> <out.png>
 
+use lidar_common::make_symbol_legend;
 use lidar_common::{las_context, CLASSES, OTHER};
 use std::time::Instant;
 
@@ -15,14 +16,13 @@ use avenger_common::canvas::CanvasDimensions;
 use avenger_common::types::SymbolShape;
 use lidar_common::make_numeric_axis_marks;
 use avenger_guides::axis::opts::{AxisConfig, AxisOrientation};
-use avenger_guides::legend::symbol::{make_symbol_legend, SymbolLegendConfig};
-use avenger_scales::scales::linear::LinearScale;
+use avenger_guides::legend::symbol::SymbolLegendConfig;
 use avenger_scenegraph::marks::group::{Clip, SceneGroup};
 use avenger_scenegraph::marks::mark::SceneMark;
 use avenger_scenegraph::marks::symbol::SceneSymbolMark;
 use avenger_scenegraph::marks::text::SceneTextMark;
 use avenger_scenegraph::scene_graph::SceneGraph;
-use avenger_text::types::{FontWeight, FontWeightNameSpec, TextAlign, TextBaseline};
+use avenger_common::types::{FontWeight, TextAlign, TextBaseline};
 use avenger_wgpu::canvas::{Canvas, PngCanvas};
 
 /// ASPRS classes present in LiDAR HD, with display colours.
@@ -60,8 +60,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ---- chart --------------------------------------------------------------
     let (width, height) = (820.0f32, 300.0f32);
-    let x_scale = LinearScale::configured((0.0, 1000.0), (0.0, width));
-    let y_scale = LinearScale::configured((35.0, 100.0), (height, 0.0)).with_option("nice", true);
+    let x_scale = lidar_common::linear((0.0, 1000.0), (0.0, width));
+    let y_scale = lidar_common::linear((35.0, 100.0), (height, 0.0)).with_option("nice", true);
 
     // Categorical colours from the Arrow classification column.
     let fill: Vec<ColorOrGradient> = class
@@ -105,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             dimensions: [width, height],
             orientation: AxisOrientation::Left,
             grid: true,
-            ..Default::default()
+            ..lidar_common::axis_config()
         },
     )?;
     let x_axis = make_numeric_axis_marks(
@@ -116,7 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             dimensions: [width, height],
             orientation: AxisOrientation::Bottom,
             grid: false,
-            ..Default::default()
+            ..lidar_common::axis_config()
         },
     )?;
 
@@ -134,10 +134,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         size: 60.0.into(),
         fill: swatches.into(),
         stroke: ColorOrGradient::Color([0.0, 0.0, 0.0, 0.0]).into(),
-        inner_width: width,
-        inner_height: height,
         ..Default::default()
-    })?;
+    }, [width, 0.0])?;
 
     let title = SceneTextMark {
         len: 2,
@@ -150,8 +148,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         y: vec![-34.0, -14.0].into(),
         font_size: vec![17.0, 11.0].into(),
         font_weight: vec![
-            FontWeight::Name(FontWeightNameSpec::Bold),
-            FontWeight::Name(FontWeightNameSpec::Normal),
+            FontWeight::BOLD,
+            FontWeight::NORMAL,
         ]
         .into(),
         color: vec![
@@ -170,7 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         x: (width + 16.0).into(),
         y: (-6.0f32).into(),
         font_size: 12.0.into(),
-        font_weight: FontWeight::Name(FontWeightNameSpec::Bold).into(),
+        font_weight: FontWeight::BOLD.into(),
         color: ColorOrGradient::Color([0.1, 0.12, 0.15, 1.0]).into(),
         baseline: TextBaseline::Alphabetic.into(),
         ..Default::default()
@@ -205,7 +203,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Default::default(),
     )
     .await?;
-    canvas.set_scene(&scene)?;
+    canvas.set_scene(&scene, lidar_common::text_engine())?;
     let img = canvas.render().await?;
     img.save(out)?;
     println!("render: {:.2?} -> {out}", t.elapsed());

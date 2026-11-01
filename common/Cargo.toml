@@ -7,9 +7,12 @@ publish.workspace = true
 
 [dependencies]
 avenger-format-number-d3.workspace = true
+avenger-format-datetime-d3.workspace = true
 avenger-guides.workspace = true
 avenger-scales.workspace = true
 avenger-scenegraph.workspace = true
-avenger-text.workspace = true
+avenger-typst-label.workspace = true
+avenger-common.workspace = true
+avenger-chart.workspace = true
 datafusion.workspace = true
 sedona-pointcloud.workspace = true

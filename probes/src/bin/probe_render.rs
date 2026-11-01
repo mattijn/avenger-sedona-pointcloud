@@ -101,7 +101,7 @@ async fn render_at(scene: &SceneGraph, size: [f32; 2], scale: f32) -> (image::Rg
         .await
         .unwrap();
     let t0 = Instant::now();
-    canvas.set_scene(scene).unwrap();
+    canvas.set_scene(scene, lidar_common::text_engine()).unwrap();
     let set_ms = t0.elapsed().as_secs_f64() * 1000.0;
     let t1 = Instant::now();
     let img = canvas.render().await.unwrap();
@@ -118,7 +118,7 @@ fn time_rtree(scene: &SceneGraph) -> f64 {
     let mut best = f64::MAX;
     for _ in 0..3 {
         let t = Instant::now();
-        let _rtree = SceneGraphRTree::from_scene_graph(scene);
+        let _rtree = SceneGraphRTree::from_scene_graph(scene, lidar_common::text_engine());
         best = best.min(t.elapsed().as_secs_f64() * 1000.0);
     }
     best
@@ -132,7 +132,7 @@ fn noninteractive(scene: &SceneGraph) -> SceneGraph {
         .map(|m| match m {
             avenger_scenegraph::marks::mark::SceneMark::Group(g) => {
                 let mut g = g.clone();
-                g.interactive = false;
+                g.interactive = Some(false);
                 avenger_scenegraph::marks::mark::SceneMark::Group(g)
             }
             other => other.clone(),
@@ -296,7 +296,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n3. rebuilding the geometry index for the same scenes");
     println!(
         "  {:>9}  {:>14}  {:>20}",
-        "symbols", "interactive", "interactive: false"
+        "symbols", "interactive", "interactive: Some(false)"
     );
     for (n, yes, no) in rtree_ms {
         println!("  {n:>9}  {yes:>11.1} ms  {no:>17.1} ms");
