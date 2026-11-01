@@ -24,7 +24,7 @@ use std::time::Instant;
 use arrow::array::{AsArray, RecordBatch};
 use arrow::datatypes::{Float32Type, Float64Type, Int64Type};
 use arrow_flight::{FlightClient, Ticket};
-use avenger_app::app::{AvengerApp, SceneGraphBuilder};
+use avenger_app::app::{AvengerApp, SceneBuild, SceneGraphBuilder};
 use avenger_app::error::AvengerAppError;
 use avenger_color::ColorOrGradient;
 use avenger_common::canvas::CanvasDimensions;
@@ -49,7 +49,7 @@ use avenger_scenegraph::marks::rect::SceneRectMark;
 use avenger_scenegraph::marks::symbol::SceneSymbolMark;
 use avenger_scenegraph::marks::text::SceneTextMark;
 use avenger_scenegraph::scene_graph::SceneGraph;
-use avenger_text::types::{FontWeight, FontWeightNameSpec, TextAlign, TextBaseline};
+use avenger_common::types::{FontWeight, TextAlign, TextBaseline};
 use avenger_wgpu::canvas::{Canvas, PngCanvas};
 use avenger_winit_wgpu::{WinitWgpuAvengerApp, WinitWgpuAvengerAppOptions};
 use datafusion::prelude::SessionContext;
@@ -378,9 +378,9 @@ fn text_mark(items: Vec<(String, f32, f32, f32, bool, [f32; 4])>) -> SceneTextMa
             .iter()
             .map(|i| {
                 if i.4 {
-                    FontWeight::Name(FontWeightNameSpec::Bold)
+                    FontWeight::BOLD
                 } else {
-                    FontWeight::Name(FontWeightNameSpec::Normal)
+                    FontWeight::NORMAL
                 }
             })
             .collect::<Vec<_>>()
@@ -400,7 +400,13 @@ struct Builder;
 
 #[async_trait::async_trait]
 impl SceneGraphBuilder<State> for Builder {
-    async fn build(&self, s: &mut State) -> Result<SceneGraph, AvengerAppError> {
+    async fn build(&self, s: &mut State) -> Result<SceneBuild, AvengerAppError> {
+        self.scene(s).await.map(SceneBuild::new)
+    }
+}
+
+impl Builder {
+    async fn scene(&self, s: &mut State) -> Result<SceneGraph, AvengerAppError> {
         let (states, step, live) = {
             let l = s.live.lock().unwrap();
             let states: Vec<RecordBatch> = l.states.iter().map(|(_, b)| b.clone()).collect();
@@ -506,7 +512,7 @@ impl SceneGraphBuilder<State> for Builder {
                     // Nothing hit-tests the map, and leaving it out of the
                     // geometry index saves rebuilding an R-tree over every
                     // cell on each frame.
-                    interactive: false,
+                    interactive: Some(false),
                     clip: Clip::Rect {
                         x: 0.0,
                         y: 0.0,
@@ -531,8 +537,8 @@ impl SceneGraphBuilder<State> for Builder {
         }
 
         // Axes in metres across the tile.
-        let x_scale = LinearScale::configured((0.0, TILE_M), (0.0, plot));
-        let y_scale = LinearScale::configured((0.0, TILE_M), (plot, 0.0));
+        let x_scale = lidar_common::linear((0.0, TILE_M), (0.0, plot));
+        let y_scale = lidar_common::linear((0.0, TILE_M), (plot, 0.0));
         let axis = |scale: &ConfiguredScale, title: &str, orientation: AxisOrientation| {
             make_numeric_axis_marks(
                 scale,
@@ -542,7 +548,7 @@ impl SceneGraphBuilder<State> for Builder {
                     dimensions: [plot, plot],
                     orientation,
                     grid: false,
-                    ..Default::default()
+                    ..lidar_common::axis_config()
                 },
             )
         };
@@ -575,7 +581,7 @@ impl SceneGraphBuilder<State> for Builder {
             marks.push(
                 SceneGroup {
                     origin: [0.0, plot + 46.0],
-                    interactive: false,
+                    interactive: Some(false),
                     marks: vec![
                         SceneRectMark {
                             len: history.len() as u32,
@@ -832,8 +838,8 @@ fn main() {
                 } else if frame > 0 {
                     late += 1;
                 }
-                let scene = Builder.build(&mut state).await.expect("build scene");
-                canvas.set_scene(&scene).unwrap();
+                let scene = Builder.scene(&mut state).await.expect("build scene");
+                canvas.set_scene(&scene, lidar_common::text_engine()).unwrap();
                 canvas
                     .render()
                     .await
@@ -872,7 +878,7 @@ fn main() {
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
-                let scene = Builder.build(&mut state).await.expect("build scene");
+                let scene = Builder.scene(&mut state).await.expect("build scene");
                 let mut canvas = PngCanvas::new(
                     CanvasDimensions {
                         size: [width, height],
@@ -882,7 +888,7 @@ fn main() {
                 )
                 .await
                 .unwrap();
-                canvas.set_scene(&scene).unwrap();
+                canvas.set_scene(&scene, lidar_common::text_engine()).unwrap();
                 let path = format!("{dir}/stream_{i}.png");
                 canvas.render().await.unwrap().save(&path).unwrap();
                 let l = state.live.lock().unwrap();
@@ -924,7 +930,7 @@ fn main() {
 
     let window_rt = tokio::runtime::Runtime::new().unwrap();
     let app = window_rt
-        .block_on(AvengerApp::try_new(state, Arc::new(Builder), handlers))
+        .block_on(AvengerApp::try_new(state, Arc::new(Builder), handlers, lidar_common::text_engine().clone()))
         .expect("build app");
 
     let options = WinitWgpuAvengerAppOptions::new(2.0)

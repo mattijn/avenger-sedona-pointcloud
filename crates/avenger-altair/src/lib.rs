@@ -94,7 +94,7 @@ pub fn render_timed(spec: &str, format: Format, scale: f32, base_dir: Option<&st
     st.validate = ms(t);
     // Axis labels need a number formatter; without one, rendering fails
     // ("number formatting is not configured").
-    let formatting = avenger_scales::formatter::ScaleFormatting::d3(Default::default(), Default::default());
+    let formatting = d3_formatting();
     let options = VegaLiteOptions {
         base_dir: base_dir.map_or_else(|| ".".into(), Into::into),
         chart: avenger_chart::ChartOptions { dataflow: Some(dataflow(budget())?), ..Default::default() }.with_formatting(formatting),
@@ -120,7 +120,7 @@ pub fn render_timed(spec: &str, format: Format, scale: f32, base_dir: Option<&st
 pub fn scene_outline(spec: &str) -> Result<String, Refusal> {
     use avenger_scenegraph::marks::mark::SceneMark;
     let unit = validate(spec)?;
-    let formatting = avenger_scales::formatter::ScaleFormatting::d3(Default::default(), Default::default());
+    let formatting = d3_formatting();
     let options = VegaLiteOptions { chart: avenger_chart::ChartOptions { dataflow: Some(dataflow(budget())?), ..Default::default() }.with_formatting(formatting), ..Default::default() };
     runtime().block_on(async move {
         let chart = Chart::from_vegalite(&unit, &BTreeMap::new(), options).await.map_err(|e| Refusal { path: e.path().to_string(), message: e.message(), stage: "compile" })?;
@@ -175,7 +175,7 @@ fn layout(frame: &avenger_chart::RenderedChart) -> Layout {
 pub fn render_with_layout(spec: &str, format: Format, scale: f32, tables: &Tables) -> Result<(Vec<u8>, Layout), Refusal> {
     let unit = validate(spec)?;
     let camera = unit.camera.clone();
-    let formatting = avenger_scales::formatter::ScaleFormatting::d3(Default::default(), Default::default());
+    let formatting = d3_formatting();
     let options = VegaLiteOptions { chart: avenger_chart::ChartOptions { dataflow: Some(dataflow(budget())?), ..Default::default() }.with_formatting(formatting), ..Default::default() };
     runtime().block_on(async move {
         let chart = Chart::from_vegalite(&unit, tables, options).await.map_err(|e| Refusal { path: e.path().to_string(), message: e.message(), stage: "compile" })?;
@@ -224,7 +224,7 @@ impl Live {
         let run = |e: String| Refusal { path: "$".into(), message: e, stage: "render" };
         let definition = avenger_vegalite_compiler::compile_vegalite_with_input(&unit, first.schema().clone()).map_err(compile)?;
         let input = definition.dataflow().interface().root().table_input(&name).map_err(|e| run(e.to_string()))?;
-        let formatting = avenger_scales::formatter::ScaleFormatting::d3(Default::default(), Default::default());
+        let formatting = d3_formatting();
         let options = avenger_chart::ChartOptions { dataflow: Some(dataflow(budget())?), ..Default::default() }.with_formatting(formatting);
         let store = avenger_datafusion_dataflow::TableStore::new(first);
         runtime().block_on(async {
@@ -272,3 +272,15 @@ pub mod camera;
 
 #[cfg(feature = "python")]
 mod python;
+
+/// D3 number and date formatting for charts, as upstream's own chart tests
+/// configure it. Axis labels need it; without it rendering fails ("number
+/// formatting is not configured").
+pub fn d3_formatting() -> avenger_chart::ChartFormatting {
+    avenger_chart::ChartFormatting {
+        number: std::sync::Arc::new(avenger_format_number_d3::D3NumberFormatProvider::new()),
+        number_pattern: ",f".into(),
+        category_pattern: "c".into(),
+        datetime: std::sync::Arc::new(avenger_format_datetime_d3::D3DateTimeFormatProvider::new()),
+    }
+}

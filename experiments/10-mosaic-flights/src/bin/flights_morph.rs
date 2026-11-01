@@ -216,7 +216,7 @@ fn panel_at(b: &Bins, t: f64, brush: [f64; 2], origin: [f32; 2], caption: &str, 
     if let Some(p) = pointer {
         marks.push(SceneSymbolMark { len: 1, x: vec![p[0] as f32].into(), y: vec![p[1] as f32].into(), size: 160.0.into(),
             fill: ColorOrGradient::Color([0.85, 0.2, 0.15, 0.55]).into(), stroke: ColorOrGradient::Color([1.0; 4]).into(),
-            stroke_width: Some(2.0), interactive: false, ..Default::default() }.into());
+            stroke_width: Some(2.0), interactive: Some(false), ..Default::default() }.into());
     }
     marks.push(text(caption, 0.0, P as f32 + 22.0, 11.0, INK));
     SceneGroup { origin, marks, ..Default::default() }.into()

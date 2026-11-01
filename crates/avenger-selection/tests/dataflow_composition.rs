@@ -8,7 +8,7 @@ use avenger_selection::*;
 use common::*;
 use composition::{ExampleResult, OptimizedQuery};
 use datafusion::{
-    arrow::{array::Float32Array, datatypes::DataType},
+    arrow::{array::Float64Array, datatypes::DataType},
     functions_aggregate::expr_fn::count,
     logical_expr::{col, lit, LogicalPlan, LogicalPlanBuilder},
 };
@@ -206,8 +206,8 @@ async fn changed_grid_or_union_uses_the_complete_current_direct_predicate() -> E
     let grid = |size| {
         PixelGrid::new(
             avenger_scales_datafusion::BuiltinScale::Linear,
-            Arc::new(Float32Array::from(vec![0., 40.])),
-            Arc::new(Float32Array::from(vec![0., 40.])),
+            Arc::new(Float64Array::from(vec![0., 40.])),
+            Arc::new(Float64Array::from(vec![0., 40.])),
             Default::default(),
             0.,
             size,

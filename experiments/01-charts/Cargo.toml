@@ -24,6 +24,6 @@ avenger-geometry.workspace = true
 avenger-guides.workspace = true
 avenger-scales.workspace = true
 avenger-scenegraph.workspace = true
-avenger-text.workspace = true
+avenger-typst-label.workspace = true
 avenger-wgpu.workspace = true
 avenger-winit-wgpu.workspace = true

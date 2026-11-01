@@ -43,41 +43,90 @@ pub const INK: [f32; 4] = [0.1, 0.12, 0.15, 1.0];
 pub const MUTED: [f32; 4] = [0.38, 0.42, 0.47, 1.0];
 
 // ---------------------------------------------------------------------------
-// Number formatting for guides. Since avenger#139 a text engine formats
-// numbers only when a formatter is configured; `default_text_engine()` has
-// none, and the guides' short entry points use it. These wrappers keep the
-// short signatures and pass an engine with D3 number formatting.
+// Number formatting for guides. Since d5f9738 (avenger-text dissolved into
+// avenger-typst-label) every guide takes a `LabelEngine`, and numbers are
+// formatted by the providers configured on it. These wrappers keep the short
+// signatures the experiments use and pass one engine: the bundled fonts with
+// D3 number and date formatting.
 
 use avenger_guides::axis::opts::AxisConfig;
 use avenger_guides::error::AvengerGuidesError;
 use avenger_guides::legend::colorbar::ColorbarConfig;
+use avenger_guides::legend::symbol::SymbolLegendConfig;
 use avenger_scales::scales::ConfiguredScale;
 use avenger_scenegraph::marks::group::SceneGroup;
+use avenger_typst_label::LabelEngine;
 
-/// D3 number and date formatting, for scales and for text alike.
-pub fn scale_formatting() -> avenger_scales::formatter::ScaleFormatting {
-    avenger_scales::formatter::ScaleFormatting::d3(Default::default(), Default::default())
-}
-
-/// The default text engine with D3 number formatting, built once.
-pub fn text_engine() -> &'static avenger_text::TextEngine {
-    static ENGINE: std::sync::OnceLock<avenger_text::TextEngine> = std::sync::OnceLock::new();
+/// The bundled fonts with D3 number and date formatting, built once.
+pub fn text_engine() -> &'static LabelEngine {
+    static ENGINE: std::sync::OnceLock<LabelEngine> = std::sync::OnceLock::new();
     ENGINE.get_or_init(|| {
-        scale_formatting().configure_text_engine(avenger_text::default_text_engine())
+        avenger_typst_label::bundled_label_engine()
+            .with_number_formatting(Arc::new(avenger_format_number_d3::D3NumberFormatProvider::new()))
+            .with_datetime_formatting(Arc::new(avenger_format_datetime_d3::D3DateTimeFormatProvider::new()))
     })
 }
 
-/// `avenger_guides::axis::numeric::make_numeric_axis_marks`, with numbers formatted.
-pub fn make_numeric_axis_marks(scale: &ConfiguredScale, title: &str, origin: [f32; 2], config: &AxisConfig) -> Result<SceneGroup, AvengerGuidesError> {
-    // Since f4890be a scale carries its own label formatting as well.
-    let scale = scale.clone().with_formatting(scale_formatting());
-    avenger_guides::axis::numeric::make_numeric_axis_marks_with_text_engine(&scale, title, origin, config, text_engine())
+/// D3 formatting for `avenger_chart`, as upstream's own tests configure it.
+pub fn chart_formatting() -> avenger_chart::ChartFormatting {
+    avenger_chart::ChartFormatting {
+        number: Arc::new(avenger_format_number_d3::D3NumberFormatProvider::new()),
+        number_pattern: ",f".into(),
+        category_pattern: "c".into(),
+        datetime: Arc::new(avenger_format_datetime_d3::D3DateTimeFormatProvider::new()),
+    }
 }
 
-/// `avenger_guides::legend::colorbar::make_colorbar_marks`, with numbers formatted.
+/// `avenger_guides::axis::continuous::make_continuous_axis_marks` with [`text_engine`].
+pub fn make_numeric_axis_marks(scale: &ConfiguredScale, title: &str, origin: [f32; 2], config: &AxisConfig) -> Result<SceneGroup, AvengerGuidesError> {
+    avenger_guides::axis::continuous::make_continuous_axis_marks(scale, title, origin, config, text_engine())
+}
+
+/// `avenger_guides::legend::colorbar::make_colorbar_legend` with [`text_engine`], drawn group only.
 pub fn make_colorbar_marks(scale: &ConfiguredScale, title: &str, origin: [f32; 2], config: &ColorbarConfig) -> Result<SceneGroup, AvengerGuidesError> {
-    let scale = scale.clone().with_formatting(scale_formatting());
-    avenger_guides::legend::colorbar::make_colorbar_marks_with_text_engine(&scale, title, origin, config, text_engine())
+    Ok(avenger_guides::legend::colorbar::make_colorbar_legend(scale, title, origin, config, text_engine())?.group)
+}
+
+/// `avenger_guides::legend::symbol::make_symbol_legend` with [`text_engine`],
+/// drawn group only, placed at `origin`. Before d5f9738 a legend placed itself
+/// right of the plot from `inner_width`; now it draws at its group's origin.
+pub fn make_symbol_legend(config: &SymbolLegendConfig, origin: [f32; 2]) -> Result<SceneGroup, AvengerGuidesError> {
+    let mut group = avenger_guides::legend::symbol::make_symbol_legend(config, text_engine())?.group;
+    group.origin = origin;
+    Ok(group)
+}
+
+/// `LinearScale::configured` from f32 bounds; since d5f9738 it takes f64.
+pub fn linear(domain: (f32, f32), range: (f32, f32)) -> ConfiguredScale {
+    avenger_scales::scales::linear::LinearScale::configured(
+        (domain.0 as f64, domain.1 as f64),
+        (range.0 as f64, range.1 as f64),
+    )
+}
+
+/// What `AxisConfig::default()` was before d5f9738, which dropped `Default`:
+/// a bottom axis with no grid, the provider's default tick format, and the
+/// default style. Use it as the base of a struct update.
+pub fn axis_config() -> AxisConfig {
+    AxisConfig {
+        orientation: avenger_guides::axis::opts::AxisOrientation::Bottom,
+        dimensions: [0.0, 0.0],
+        grid: false,
+        tick_format: String::new(),
+        tick_label: None,
+        style: Default::default(),
+    }
+}
+
+/// The same for `ColorbarConfig`: a colorbar on the right.
+pub fn colorbar_config() -> ColorbarConfig {
+    ColorbarConfig {
+        orientation: avenger_guides::legend::colorbar::ColorbarOrientation::Right,
+        dimensions: [0.0, 0.0],
+        tick_format: String::new(),
+        tick_label: None,
+        style: Default::default(),
+    }
 }
 
 // ---------------------------------------------------------------------------

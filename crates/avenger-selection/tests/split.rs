@@ -1,7 +1,7 @@
 mod common;
 use avenger_selection::*;
 use common::*;
-use datafusion::{arrow::array::Float32Array, logical_expr::col};
+use datafusion::{arrow::array::Float64Array, logical_expr::col};
 use std::sync::Arc;
 
 type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
@@ -131,8 +131,8 @@ async fn mapped_pixel_dimensions_cover_inactive_brushes_and_reject_changed_defin
     let grid = |size| {
         PixelGrid::new(
             avenger_scales_datafusion::BuiltinScale::Linear,
-            Arc::new(Float32Array::from(vec![0., 40.])),
-            Arc::new(Float32Array::from(vec![40., 0.])),
+            Arc::new(Float64Array::from(vec![0., 40.])),
+            Arc::new(Float64Array::from(vec![40., 0.])),
             Default::default(),
             0.,
             size,

@@ -9,5 +9,5 @@ publish.workspace = true
 avenger-color.workspace = true
 avenger-geo.workspace = true
 avenger-scenegraph.workspace = true
-avenger-text.workspace = true
+avenger-common.workspace = true
 lyon_path.workspace = true

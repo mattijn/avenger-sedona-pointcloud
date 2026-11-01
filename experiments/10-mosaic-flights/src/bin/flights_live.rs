@@ -526,12 +526,9 @@ async fn compute(ctx: SessionContext, brushes: [Option<[f64; 2]>; 3], lasso: Vec
 struct Builder;
 #[async_trait::async_trait]
 impl SceneGraphBuilder<State> for Builder {
-    async fn build(&self, s: &mut State) -> Result<SceneGraph, AvengerAppError> {
-        self.build_with_effects(s).await.map(|b| b.scene_graph)
-    }
     /// While a panel morphs, each build moves it on by the time since the
     /// last and asks the host to wake again in 16 ms.
-    async fn build_with_effects(&self, s: &mut State) -> Result<SceneBuild, AvengerAppError> {
+    async fn build(&self, s: &mut State) -> Result<SceneBuild, AvengerAppError> {
         let now = Instant::now();
         let dt = s.last_tick.map_or(0.0, |l| now.duration_since(l).as_secs_f64()).min(0.1);
         let animating = s.step(dt);
@@ -642,7 +639,7 @@ fn main() -> Result<(), Error> {
         }, Arc::new(Input)),
     ];
     let window_rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-    let app = window_rt.block_on(AvengerApp::try_new(state, Arc::new(Builder), handlers))?;
+    let app = window_rt.block_on(AvengerApp::try_new(state, Arc::new(Builder), handlers, lidar_common::text_engine().clone()))?;
     let options = WinitWgpuAvengerAppOptions::new(2.0).window_attributes(
         WindowAttributes::default()
             .with_title("Experiment 10 · Mosaic flights with avenger-selection")
@@ -747,7 +744,7 @@ async fn snapshots(mut s: State, out: &str) -> Result<(), Error> {
         s.refresh().await;
         let scene = s.scene()?;
         let mut canvas = PngCanvas::new(CanvasDimensions { size: [scene.width, scene.height], scale: 2.0 }, Default::default()).await?;
-        canvas.set_scene(&scene)?;
+        canvas.set_scene(&scene, lidar_common::text_engine())?;
         let path = format!("{out}/flights_live-{name}.png");
         canvas.render().await?.save(&path)?;
         let flights: f64 = s.hard[0].iter().map(|x| x.1).sum();
@@ -763,7 +760,7 @@ fn pointer_mark(p: [f32; 2], pressed: bool) -> SceneMark {
     use avenger_scenegraph::marks::symbol::SceneSymbolMark;
     SceneSymbolMark { len: 1, x: vec![p[0]].into(), y: vec![p[1]].into(), size: (if pressed { 260.0 } else { 110.0 }).into(),
         fill: avenger_color::ColorOrGradient::Color(if pressed { [0.85, 0.2, 0.15, 0.55] } else { [0.15, 0.16, 0.18, 0.8] }).into(),
-        stroke: avenger_color::ColorOrGradient::Color([1.0; 4]).into(), stroke_width: Some(2.0), interactive: false, ..Default::default() }.into()
+        stroke: avenger_color::ColorOrGradient::Color([1.0; 4]).into(), stroke_width: Some(2.0), interactive: Some(false), ..Default::default() }.into()
 }
 
 /// A pointer path along the middle of panel `i`'s donut, from the place of
@@ -797,7 +794,7 @@ impl Recorder {
         use avenger_wgpu::canvas::Canvas;
         s.step(1.0 / FPS as f64);
         let scene = s.scene()?;
-        self.canvas.set_scene(&scene)?;
+        self.canvas.set_scene(&scene, lidar_common::text_engine())?;
         self.canvas.render().await?.save(format!("{}/frame_{:05}.png", self.dir, self.frame))?;
         self.frame += 1;
         Ok(())

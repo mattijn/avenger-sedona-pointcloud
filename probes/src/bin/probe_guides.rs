@@ -3,6 +3,7 @@
 //! land and writes out/probe_guides.png.
 //!
 //! Usage: cargo run --release -p lidar-probes --bin probe_guides
+use lidar_common::make_symbol_legend;
 use std::sync::Arc;
 
 use arrow::array::{ArrayRef, Float32Array};
@@ -11,7 +12,7 @@ use avenger_common::canvas::CanvasDimensions;
 use avenger_common::types::SymbolShape;
 use avenger_guides::legend::colorbar::{ColorbarConfig, ColorbarOrientation};
 use lidar_common::make_colorbar_marks;
-use avenger_guides::legend::symbol::{make_symbol_legend, SymbolLegendConfig};
+use avenger_guides::legend::symbol::SymbolLegendConfig;
 use avenger_scales::scales::linear::LinearScale;
 use avenger_scenegraph::marks::group::SceneGroup;
 use avenger_scenegraph::marks::mark::SceneMark;
@@ -70,19 +71,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Pitfall 1: colorbar honours its origin argument? gradient fill in PngCanvas?
-    let color_scale = LinearScale::configured((46.0, 76.0), (0.0, 1.0))
+    let config = ColorbarConfig {
+        orientation: ColorbarOrientation::Right,
+        dimensions: [PLOT, PLOT],
+        ..lidar_common::colorbar_config()
+    };
+    // Up to f4890be both colour scales below drew a colorbar. Since d5f9738
+    // the colorbar asks the scale for a numeric range (to place its axis), and
+    // a range of more than two colours has none.
+    let swapped = LinearScale::configured((46.0, 76.0), (0.0, 1.0))
         .with_range(Arc::new(arrow::array::StringArray::from(vec![
             "#2c7fb8", "#7fcdbb", "#edf8b1",
         ])) as ArrayRef);
+    for (label, scale) in [
+        ("configured + with_range, 3 colours", swapped),
+        ("configured_color, 3 colours", LinearScale::configured_color((46.0, 76.0), vec!["#2c7fb8", "#7fcdbb", "#edf8b1"])),
+        ("configured_color, 2 colours", LinearScale::configured_color((46.0, 76.0), vec!["#2c7fb8", "#edf8b1"])),
+    ] {
+        match make_colorbar_marks(&scale, "Elevation (m)", [PLOT + 20.0, 10.0], &config) {
+            Ok(_) => println!("COLORBAR {label}: drawn"),
+            Err(e) => println!("COLORBAR {label}: FAILS -> {e:?}"),
+        }
+    }
+    let color_scale = LinearScale::configured_color((46.0, 76.0), vec!["#2c7fb8", "#edf8b1"]);
     let colorbar = make_colorbar_marks(
         &color_scale,
         "Elevation (m)",
         [PLOT + 20.0, 10.0], // ask for a spot to the right of the plot
-        &ColorbarConfig {
-            orientation: ColorbarOrientation::Right,
-            dimensions: [PLOT, PLOT],
-            ..Default::default()
-        },
+        &config,
     )?;
     println!(
         "\nPITFALL 1: colorbar group origin = {:?} (asked for [{}, 10.0])",
@@ -103,10 +119,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ]
         .into(),
         stroke: ColorOrGradient::Color([0.0; 4]).into(),
-        inner_width: PLOT,
-        inner_height: PLOT,
         ..Default::default()
-    })?;
+    }, [PLOT, 0.0])?;
     println!(
         "\nPITFALL 2: legend group origin = {:?} (plot is {PLOT} wide)",
         legend.origin
@@ -142,7 +156,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Default::default(),
     )
     .await?;
-    canvas.set_scene(&scene)?;
+    canvas.set_scene(&scene, lidar_common::text_engine())?;
     canvas.render().await?.save("out/probe_guides.png")?;
     println!("\nwrote out/probe_guides.png");
     Ok(())

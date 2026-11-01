@@ -280,7 +280,7 @@ fn tilt(scene: &SceneGraph, plot: Plot, yaw: f64, elevation: f64) -> Result<Scen
     let paths: Vec<lyon_path::Path> = faces.iter().map(|f| polyline(&f.1, true)).collect();
     marks.push(SceneMark::Path(ScenePathMark { name: "bars".into(), len: paths.len() as u32, path: paths.into(), fill: fills.into(), stroke: C::Color([1.0, 1.0, 1.0, 0.6]).into(), stroke_width: Some(0.5), ..Default::default() }));
     // Labels: x along the front edge, values up the back-left corner.
-    let label = |text: Vec<String>, at: Vec<[f32; 2]>, align: avenger_text::types::TextAlign| -> SceneMark {
+    let label = |text: Vec<String>, at: Vec<[f32; 2]>, align: avenger_common::types::TextAlign| -> SceneMark {
         let (x, y): (Vec<f32>, Vec<f32>) = at.iter().map(|a| (a[0], a[1])).unzip();
         SceneMark::Text(Arc::new(SceneTextMark {
             len: text.len() as u32,
@@ -288,7 +288,7 @@ fn tilt(scene: &SceneGraph, plot: Plot, yaw: f64, elevation: f64) -> Result<Scen
             x: x.into(),
             y: y.into(),
             align: align.into(),
-            baseline: avenger_text::types::TextBaseline::Middle.into(),
+            baseline: avenger_common::types::TextBaseline::Middle.into(),
             color: C::Color(ink).into(),
             font_size: 10.0.into(),
             ..Default::default()
@@ -298,19 +298,19 @@ fn tilt(scene: &SceneGraph, plot: Plot, yaw: f64, elevation: f64) -> Result<Scen
     let front = (v0 - 0.08).max(0.0);
     let xs: Vec<[f32; 2]> = x_labels.iter().map(|(_, u)| { let q = p(*u, front, 0.0).0; [q[0], q[1] + 8.0] }).collect();
     if !x_labels.is_empty() {
-        marks.push(label(x_labels.iter().map(|l| l.0.clone()).collect(), xs, avenger_text::types::TextAlign::Center));
+        marks.push(label(x_labels.iter().map(|l| l.0.clone()).collect(), xs, avenger_common::types::TextAlign::Center));
     }
     if !y_ticks.is_empty() {
         let ys: Vec<[f32; 2]> = y_ticks.iter().map(|(_, z)| { let q = p(0.0, 1.0, *z).0; [q[0] - 6.0, q[1]] }).collect();
-        marks.push(label(y_ticks.iter().map(|l| l.0.clone()).collect(), ys, avenger_text::types::TextAlign::Right));
+        marks.push(label(y_ticks.iter().map(|l| l.0.clone()).collect(), ys, avenger_common::types::TextAlign::Right));
     }
     if let Some(t) = x_title {
         let q = p(0.5, 0.0, 0.0).0;
-        marks.push(label(vec![t], vec![[q[0], q[1] + 22.0]], avenger_text::types::TextAlign::Center));
+        marks.push(label(vec![t], vec![[q[0], q[1] + 22.0]], avenger_common::types::TextAlign::Center));
     }
     if let Some(t) = y_title {
         let q = p(0.0, 1.0, 1.0).0;
-        marks.push(label(vec![t], vec![[q[0], q[1] - 14.0]], avenger_text::types::TextAlign::Center));
+        marks.push(label(vec![t], vec![[q[0], q[1] - 14.0]], avenger_common::types::TextAlign::Center));
     }
     // Replace the plot's own groups (grid, bars, axes) by the 3D drawing.
     let mut out = scene.clone();
@@ -334,14 +334,17 @@ fn tilt(scene: &SceneGraph, plot: Plot, yaw: f64, elevation: f64) -> Result<Scen
 pub async fn png(scene: &SceneGraph, scale: f32) -> Result<Vec<u8>, String> {
     use avenger_wgpu::canvas::{Canvas, CanvasConfig, PngCanvas};
     let e = |x: &dyn std::fmt::Display| x.to_string();
-    let engine = avenger_scales::formatter::ScaleFormatting::d3(Default::default(), Default::default()).configure_text_engine(avenger_text::default_text_engine());
+    let formatting = crate::d3_formatting();
+    let engine = avenger_typst_label::bundled_label_engine()
+        .with_number_formatting(formatting.number)
+        .with_datetime_formatting(formatting.datetime);
     let mut canvas = PngCanvas::new(
         avenger_common::canvas::CanvasDimensions { size: [scene.width, scene.height], scale },
-        CanvasConfig { text_engine: Some(engine), ..Default::default() },
+        CanvasConfig::default(),
     )
     .await
     .map_err(|x| e(&x))?;
-    canvas.set_scene(scene).map_err(|x| e(&x))?;
+    canvas.set_scene(scene, &engine).map_err(|x| e(&x))?;
     let image = canvas.render().await.map_err(|x| e(&x))?;
     let mut bytes = std::io::Cursor::new(Vec::new());
     image.write_to(&mut bytes, image::ImageFormat::Png).map_err(|x| e(&x))?;

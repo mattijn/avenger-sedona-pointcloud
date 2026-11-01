@@ -10,7 +10,7 @@ use avenger_scales_datafusion::{
 };
 use datafusion::{
     arrow::{
-        array::{Array, ArrayRef, BooleanArray, Float32Array, Int64Array},
+        array::{Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int64Array},
         compute::{cast, nullif},
         datatypes::{DataType, Field, TimeUnit},
     },
@@ -68,7 +68,7 @@ impl PixelGrid {
     /// Linear options are `clamp`, finite `range_offset`, and `round: false`.
     /// Time supports only `timezone: "UTC"` (case insensitive). Domains are
     /// already resolved: normalization options such as `nice` are rejected.
-    /// Domain/range endpoints must remain distinct in the scale kernel's precision.
+    /// Domain and range endpoints must be distinct.
     pub fn new(
         builtin: BuiltinScale,
         domain: ArrayRef,
@@ -125,11 +125,11 @@ impl PixelGrid {
                 (BuiltinScale::Linear, "round", ScalarValue::Boolean(Some(false))) => true,
                 (BuiltinScale::Linear, "range_offset", _) if option.0.data_type().is_numeric() => {
                     let array =
-                        cast(&option.0, &DataType::Float32).map_err(DataFusionError::from)?;
+                        cast(&option.0, &DataType::Float64).map_err(DataFusionError::from)?;
                     array.null_count() == 0
                         && array
                             .as_any()
-                            .downcast_ref::<Float32Array>()
+                            .downcast_ref::<Float64Array>()
                             .unwrap()
                             .value(0)
                             .is_finite()
@@ -347,17 +347,17 @@ fn pair_values(array: &ArrayRef) -> Result<Vec<ScalarValue>> {
         ScalarValue::try_from_array(array, 1)?,
     ])
 }
-fn numeric_pair(array: &ArrayRef) -> Result<(f32, f32)> {
+fn numeric_pair(array: &ArrayRef) -> Result<(f64, f64)> {
     if !array.data_type().is_numeric() {
         return Err(invalid("linear domains and pixel ranges must be numeric"));
     }
-    let array = cast(array, &DataType::Float32).map_err(DataFusionError::from)?;
-    let array = array.as_any().downcast_ref::<Float32Array>().unwrap();
+    let array = cast(array, &DataType::Float64).map_err(DataFusionError::from)?;
+    let array = array.as_any().downcast_ref::<Float64Array>().unwrap();
     let (a, b) = (array.value(0), array.value(1));
     if array.null_count() != 0 || !a.is_finite() || !b.is_finite() || a == b || !(b - a).is_finite()
     {
         return Err(invalid(
-            "pixel domain and range must have finite, nonzero spans in scale precision",
+            "pixel domain and range must have finite, nonzero spans",
         ));
     }
     Ok((a, b))

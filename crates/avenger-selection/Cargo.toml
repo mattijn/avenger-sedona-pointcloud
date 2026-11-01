@@ -7,7 +7,7 @@ description = "Typed selections and consumer-specific DataFusion predicates"
 license = "BSD-3-Clause"
 publish = false
 
-# Carried from jonmmease/avenger at f4890be (VENDORED.md). Only the path
+# Carried from jonmmease/avenger at d5f9738 (VENDORED.md). Only the path
 # dependencies changed: they point at the workspace's git pin.
 [dependencies]
 avenger-scales-datafusion.workspace = true

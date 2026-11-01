@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use arrow::array::{Array, BooleanArray};
-use avenger_app::{app::{AvengerApp, SceneGraphBuilder}, error::AvengerAppError};
+use avenger_app::{app::{AvengerApp, SceneBuild, SceneGraphBuilder}, error::AvengerAppError};
 use avenger_color::ColorOrGradient;
 use avenger_eventstream::{
     manager::EventStreamHandler,
@@ -181,7 +181,7 @@ impl State {
     fn scene(&self) -> Result<SceneGraph, Error> {
         let size = [self.size[0].max(SIZE[0]), self.size[1].max(SIZE[1])];
         let background: SceneMark = SceneRectMark { len: 1, x: 0.0.into(), y: 0.0.into(), width: Some(size[0].into()), height: Some(size[1].into()),
-            fill: ColorOrGradient::Color([1.0; 4]).into(), interactive: false, ..Default::default() }.into();
+            fill: ColorOrGradient::Color([1.0; 4]).into(), interactive: Some(false), ..Default::default() }.into();
         let mut marks = vec![background,
             text("CloudLasso through avenger-selection, live", 24.0, 30.0, 20.0, INK),
             text(format!("{} points in a 500 m window · draw a lasso in the tilted view · Shift-drag or right-drag to turn it, or the arrow keys",
@@ -230,7 +230,7 @@ impl State {
             .into_iter().enumerate() {
             let y = SIDE_TOP + 40.0 + i as f32 * 24.0;
             marks.push(SceneRectMark { len: 1, x: RIGHT.into(), y: (y - 10.0).into(), width: Some(12.0.into()), height: Some(12.0.into()),
-                fill: ColorOrGradient::Color(colour).into(), interactive: false, ..Default::default() }.into());
+                fill: ColorOrGradient::Color(colour).into(), interactive: Some(false), ..Default::default() }.into());
             marks.push(text(label, RIGHT + 20.0, y, 12.0, INK));
         }
         if let Some(c) = &self.caption {
@@ -240,7 +240,7 @@ impl State {
             use avenger_scenegraph::marks::symbol::SceneSymbolMark;
             marks.push(SceneSymbolMark { len: 1, x: vec![p[0]].into(), y: vec![p[1]].into(), size: (if pressed { 260.0 } else { 110.0 }).into(),
                 fill: ColorOrGradient::Color(if pressed { [0.85, 0.2, 0.15, 0.55] } else { [0.15, 0.16, 0.18, 0.8] }).into(),
-                stroke: ColorOrGradient::Color([1.0; 4]).into(), stroke_width: Some(2.0), interactive: false, ..Default::default() }.into());
+                stroke: ColorOrGradient::Color([1.0; 4]).into(), stroke_width: Some(2.0), interactive: Some(false), ..Default::default() }.into());
         }
         Ok(SceneGraph { width: size[0], height: size[1], origin: [0.0; 2], marks: vec![SceneGroup { marks, ..Default::default() }.into()] })
     }
@@ -290,8 +290,8 @@ async fn compute(mem: SessionContext, hz: (f64, f64), n: usize, ring: Vec<[f64; 
 struct Builder;
 #[async_trait::async_trait]
 impl SceneGraphBuilder<State> for Builder {
-    async fn build(&self, s: &mut State) -> Result<SceneGraph, AvengerAppError> {
-        s.scene().map_err(|e| AvengerAppError::InternalError(e.to_string()))
+    async fn build(&self, s: &mut State) -> Result<SceneBuild, AvengerAppError> {
+        s.scene().map(SceneBuild::new).map_err(|e| AvengerAppError::InternalError(e.to_string()))
     }
 }
 fn redraw() -> UpdateStatus {
@@ -363,7 +363,7 @@ fn main() -> Result<(), Error> {
         }, Arc::new(Input)),
     ];
     let window_rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-    let app = window_rt.block_on(AvengerApp::try_new(state, Arc::new(Builder), handlers))?;
+    let app = window_rt.block_on(AvengerApp::try_new(state, Arc::new(Builder), handlers, lidar_common::text_engine().clone()))?;
     let options = WinitWgpuAvengerAppOptions::new(2.0).window_attributes(
         WindowAttributes::default()
             .with_title("Experiment 11 · CloudLasso with avenger-selection")
@@ -404,7 +404,7 @@ async fn snapshots(mut s: State, out: &str) -> Result<(), Error> {
         }
         let scene = s.scene()?;
         let mut canvas = PngCanvas::new(CanvasDimensions { size: [scene.width, scene.height], scale: 2.0 }, Default::default()).await?;
-        canvas.set_scene(&scene)?;
+        canvas.set_scene(&scene, lidar_common::text_engine())?;
         let path = format!("{out}/cloudlasso_live-{name}.png");
         canvas.render().await?.save(&path)?;
         println!("{name}: yaw {:.0}, elevation {:.0}, cloud {}, structure {:.2}, counts {:?}, {:.0} ms -> {path}",
@@ -426,7 +426,7 @@ impl Recorder {
     async fn shot(&mut self, s: &mut State) -> Result<(), Error> {
         use avenger_wgpu::canvas::Canvas;
         let scene = s.scene()?;
-        self.canvas.set_scene(&scene)?;
+        self.canvas.set_scene(&scene, lidar_common::text_engine())?;
         self.canvas.render().await?.save(format!("{}/frame_{:05}.png", self.dir, self.frame))?;
         self.frame += 1;
         Ok(())

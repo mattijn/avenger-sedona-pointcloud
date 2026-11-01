@@ -32,7 +32,7 @@ use avenger_scenegraph::marks::mark::SceneMark;
 use avenger_scenegraph::marks::rect::SceneRectMark;
 use avenger_scenegraph::marks::symbol::SceneSymbolMark;
 use avenger_scenegraph::scene_graph::SceneGraph;
-use avenger_text::TextEngine;
+use avenger_typst_label::LabelEngine as TextEngine;
 use avenger_wgpu::canvas::{Canvas, CanvasConfig, PngCanvas};
 use avenger_widgets::prelude::*;
 use lidar_common::{las_context, INK, MUTED};
@@ -394,7 +394,7 @@ impl State {
 fn label(s: &str, x: f32, y: f32, size: f32, color: [f32; 4], bold: bool) -> SceneMark {
     let mut m = draw::title(&[(s, size, bold, color)], [x, y - size * 1.35]);
     if let SceneMark::Group(g) = &mut m {
-        g.interactive = false;
+        g.interactive = Some(false);
     }
     m
 }
@@ -496,7 +496,7 @@ fn build_scene(s: &mut State) -> Result<SceneBuild, String> {
 
     let mut marks: Vec<SceneMark> = vec![
         SceneRectMark {
-            interactive: false,
+            interactive: Some(false),
             len: 1,
             x: 0.0.into(),
             y: 0.0.into(),
@@ -522,7 +522,7 @@ fn build_scene(s: &mut State) -> Result<SceneBuild, String> {
         let f = s.focus;
         marks.push(
             SceneSymbolMark {
-                interactive: false,
+                interactive: Some(false),
                 len: 1,
                 x: (plot.x + f[0] as f32 * plot.width).into(),
                 y: (plot.y + (1.0 - f[1] as f32) * plot.height).into(),
@@ -616,10 +616,7 @@ fn build_scene(s: &mut State) -> Result<SceneBuild, String> {
 struct Builder;
 #[async_trait]
 impl SceneGraphBuilder<State> for Builder {
-    async fn build(&self, s: &mut State) -> Result<SceneGraph, AvengerAppError> {
-        self.build_with_effects(s).await.map(|b| b.scene_graph)
-    }
-    async fn build_with_effects(&self, s: &mut State) -> Result<SceneBuild, AvengerAppError> {
+    async fn build(&self, s: &mut State) -> Result<SceneBuild, AvengerAppError> {
         build_scene(s).map_err(AvengerAppError::InternalError)
     }
 }
@@ -874,7 +871,6 @@ async fn snapshots(mut s: State, dir: &str) -> Result<(), Box<dyn std::error::Er
             scale: 2.0,
         },
         CanvasConfig {
-            text_engine: Some(s.engine.clone()),
             ..Default::default()
         },
     )
@@ -887,7 +883,7 @@ async fn snapshots(mut s: State, dir: &str) -> Result<(), Box<dyn std::error::Er
         s.t_fixed = t;
         s.message = format!("snapshot {name}");
         let scene = build_scene(&mut s)?.scene_graph;
-        canvas.set_scene(&scene)?;
+        canvas.set_scene(&scene, lidar_common::text_engine())?;
         let path = format!("{dir}/{name}.png");
         canvas.render().await?.save(&path)?;
         println!("  {path}");
@@ -939,7 +935,6 @@ async fn record(
             scale: 1.0,
         },
         CanvasConfig {
-            text_engine: Some(s.engine.clone()),
             ..Default::default()
         },
     )
@@ -960,7 +955,7 @@ async fn record(
         s.focus = [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
         s.message = "fisheye · focus follows the pointer".into();
         let scene = build_scene(&mut s)?.scene_graph;
-        canvas.set_scene(&scene)?;
+        canvas.set_scene(&scene, lidar_common::text_engine())?;
         canvas
             .render()
             .await?
@@ -1024,7 +1019,6 @@ async fn tour(mut s: State, dir: &str) -> Result<(), Box<dyn std::error::Error>>
             scale: 1.0,
         },
         CanvasConfig {
-            text_engine: Some(s.engine.clone()),
             ..Default::default()
         },
     )
@@ -1065,7 +1059,7 @@ async fn tour(mut s: State, dir: &str) -> Result<(), Box<dyn std::error::Error>>
                 s.focus = [0.5, 0.5];
             }
             let scene = build_scene(&mut s)?.scene_graph;
-            canvas.set_scene(&scene)?;
+            canvas.set_scene(&scene, lidar_common::text_engine())?;
             canvas
                 .render()
                 .await?
@@ -1102,7 +1096,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         t.elapsed()
     );
 
-    let engine = avenger_text::default_text_engine();
+    let engine = lidar_common::text_engine().clone();
     let state = State {
         engine: engine.clone(),
         widgets: WidgetRuntime::new().with_focus_boundary(FocusBoundary::Cycle),
@@ -1141,7 +1135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return runtime.block_on(record(state, dir, 30.0, 14.0));
     }
 
-    let app = runtime.block_on(AvengerApp::try_new_with_text_engine(
+    let app = runtime.block_on(AvengerApp::try_new(
         state,
         Arc::new(Builder),
         vec![(
@@ -1176,7 +1170,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_min_inner_size(winit::dpi::LogicalSize::new(900.0, 700.0)),
         )
         .canvas_config(CanvasConfig {
-            text_engine: Some(engine),
             ..Default::default()
         });
     let (mut host, event_loop) =

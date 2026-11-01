@@ -43,13 +43,13 @@ async fn main() -> Result<(), Error> {
     for w in frames.windows(2) {
         for t in [0.0, 0.25, 0.5, 0.75] {
             let scene = draw::scene(&transition(&w[0], &w[1], t));
-            canvas.set_scene(&scene)?;
+            canvas.set_scene(&scene, lidar_common::text_engine())?;
             canvas.render().await?.save(format!("{out}/f{n:03}.png"))?;
             n += 1;
         }
     }
     let scene = draw::scene(&still(frames.last().unwrap()));
-    canvas.set_scene(&scene)?;
+    canvas.set_scene(&scene, lidar_common::text_engine())?;
     canvas.render().await?.save(format!("{out}/f{n:03}.png"))?;
     println!("wrote {} frames to {out}", n + 1);
     Ok(())

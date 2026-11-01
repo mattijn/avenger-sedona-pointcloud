@@ -21,7 +21,9 @@ avenger-scenegraph.workspace = true
 avenger-common.workspace = true
 avenger-wgpu.workspace = true
 lyon_path.workspace = true
-avenger-text.workspace = true
+avenger-typst-label.workspace = true
+avenger-format-number-d3.workspace = true
+avenger-format-datetime-d3.workspace = true
 avenger-color.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
 avenger-transform.workspace = true

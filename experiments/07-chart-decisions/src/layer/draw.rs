@@ -12,7 +12,7 @@ use avenger_scenegraph::marks::rect::SceneRectMark;
 use avenger_scenegraph::marks::symbol::SceneSymbolMark;
 use avenger_scenegraph::marks::text::SceneTextMark;
 use avenger_scenegraph::scene_graph::SceneGraph;
-use avenger_text::types::{FontWeight, FontWeightNameSpec, TextAlign, TextBaseline};
+use avenger_common::types::{FontWeight, TextAlign, TextBaseline};
 use lidar_common::{INK, MUTED};
 use lyon_path::math::point;
 
@@ -69,7 +69,7 @@ pub fn project(u: [f64; 2], t: f64) -> [f64; 2] {
 
 pub fn text(s: &str, x: f32, y: f32, size: f32, color: [f32; 4], align: TextAlign, baseline: TextBaseline, bold: bool, angle: f32) -> SceneMark {
     SceneTextMark {
-        interactive: false,
+        interactive: Some(false),
         len: 1,
         text: s.to_string().into(),
         x: x.into(),
@@ -80,7 +80,7 @@ pub fn text(s: &str, x: f32, y: f32, size: f32, color: [f32; 4], align: TextAlig
         align: align.into(),
         baseline: baseline.into(),
         angle: angle.into(),
-        font_weight: FontWeight::Name(if bold { FontWeightNameSpec::Bold } else { FontWeightNameSpec::Normal }).into(),
+        font_weight: (if bold { FontWeight::BOLD } else { FontWeight::NORMAL }).into(),
         ..Default::default()
     }
     .into()
@@ -88,7 +88,7 @@ pub fn text(s: &str, x: f32, y: f32, size: f32, color: [f32; 4], align: TextAlig
 
 pub fn rule(x: f32, y: f32, x2: f32, y2: f32, color: [f32; 4]) -> SceneMark {
     SceneLineMark {
-        interactive: false,
+        interactive: Some(false),
         len: 2,
         x: vec![x, x2].into(),
         y: vec![y, y2].into(),
@@ -225,7 +225,7 @@ fn axis_marks(ax: &DAxis, horizontal: bool, proj: &dyn Fn([f64; 2]) -> [f64; 2],
 
 fn polyline(pts: &[[f64; 2]], stroke: [f32; 4], width: f32) -> SceneMark {
     SceneLineMark {
-        interactive: false,
+        interactive: Some(false),
         len: pts.len() as u32,
         x: pts.iter().map(|p| p[0] as f32).collect::<Vec<_>>().into(),
         y: pts.iter().map(|p| p[1] as f32).collect::<Vec<_>>().into(),
@@ -341,12 +341,12 @@ fn item_marks(d: &Drawn, proj: &dyn Fn([f64; 2], f64) -> ([f64; 2], f64), flat: 
                 y2.push(b[1] as f32);
                 f.push(c(*fill));
             }
-            plot.push(SceneRectMark { interactive: false, len: rects.len() as u32, x: x.into(), y: y.into(), x2: Some(x2.into()), y2: Some(y2.into()), fill: f.into(), stroke: c([1.0, 1.0, 1.0, 0.8]).into(), stroke_width: 0.75.into(), ..Default::default() }.into());
+            plot.push(SceneRectMark { interactive: Some(false), len: rects.len() as u32, x: x.into(), y: y.into(), x2: Some(x2.into()), y2: Some(y2.into()), fill: f.into(), stroke: c([1.0, 1.0, 1.0, 0.8]).into(), stroke_width: 0.75.into(), ..Default::default() }.into());
         } else {
             let p2 = |u: [f64; 2]| proj(u, 0.0).0;
             plot.push(
                 ScenePathMark {
-                    interactive: false,
+                    interactive: Some(false),
                     len: rects.len() as u32,
                     path: rects.iter().map(|(r, _)| ring_with(*r, &p2)).collect::<Vec<_>>().into(),
                     fill: rects.iter().map(|(_, f)| c(*f)).collect::<Vec<_>>().into(),
@@ -389,7 +389,7 @@ fn item_marks(d: &Drawn, proj: &dyn Fn([f64; 2], f64) -> ([f64; 2], f64), flat: 
     if !points.is_empty() {
         plot.push(
             SceneSymbolMark {
-                interactive: false,
+                interactive: Some(false),
                 len: points.len() as u32,
                 x: points.iter().map(|p| p.0[0] as f32).collect::<Vec<_>>().into(),
                 y: points.iter().map(|p| p.0[1] as f32).collect::<Vec<_>>().into(),
@@ -598,7 +598,7 @@ pub fn chart_marks(d: &Drawn, origin: [f32; 2]) -> Vec<SceneMark> {
         let cen = project(focus, 0.0);
         let ink = fade(style().ink, 0.7);
         let ring = |c0: [f64; 2], r: f64, width: f32| -> SceneMark {
-            ScenePathMark { interactive: false, len: 1, path: vec![circle(c0, r)].into(), fill: c([0.0; 4]).into(), stroke: c(ink).into(), stroke_width: Some(width), ..Default::default() }.into()
+            ScenePathMark { interactive: Some(false), len: 1, path: vec![circle(c0, r)].into(), fill: c([0.0; 4]).into(), stroke: c(ink).into(), stroke_width: Some(width), ..Default::default() }.into()
         };
         // In place, the magnified view sits over the focus; offset
         // (DragMag), a source circle marks the focus and the callout sits
@@ -629,7 +629,7 @@ pub fn chart_marks(d: &Drawn, origin: [f32; 2]) -> Vec<SceneMark> {
             let q = project(u, 0.0);
             ([c2[0] + zoom * (q[0] - cen[0]), c2[1] + zoom * (q[1] - cen[1])], 0.0)
         };
-        let mut inner = vec![ScenePathMark { interactive: false, len: 1, path: vec![circle(c2, r2)].into(), fill: c([1.0; 4]).into(), ..Default::default() }.into()];
+        let mut inner = vec![ScenePathMark { interactive: Some(false), len: 1, path: vec![circle(c2, r2)].into(), fill: c([1.0; 4]).into(), ..Default::default() }.into()];
         inner.extend(item_marks(d, &lens, true, zoom * zoom));
         marks.push(SceneMark::Group(SceneGroup { marks: inner, clip: Clip::Path { path: circle(c2, r2), fill_rule: Default::default() }, ..Default::default() }));
         marks.push(ring(c2, r2, 1.5));
@@ -652,7 +652,7 @@ pub fn chart_marks(d: &Drawn, origin: [f32; 2]) -> Vec<SceneMark> {
             let y = 6.0 + k as f32 * 22.0;
             marks.push(
                 SceneRectMark {
-                    interactive: false,
+                    interactive: Some(false),
                     len: 1,
                     x: lx.into(),
                     y: y.into(),
@@ -680,7 +680,7 @@ pub fn chart_marks(d: &Drawn, origin: [f32; 2]) -> Vec<SceneMark> {
         }
         marks.push(
             SceneRectMark {
-                interactive: false,
+                interactive: Some(false),
                 len: n as u32,
                 x: lx.into(),
                 width: Some(16.0.into()),
@@ -706,7 +706,7 @@ pub fn chart_marks(d: &Drawn, origin: [f32; 2]) -> Vec<SceneMark> {
 /// A filled rectangle, optionally rounded and outlined.
 pub fn rect(x: f32, y: f32, w: f32, h: f32, fill: [f32; 4], stroke: Option<[f32; 4]>, radius: f32) -> SceneMark {
     SceneRectMark {
-        interactive: false,
+        interactive: Some(false),
         len: 1,
         x: x.into(),
         y: y.into(),
@@ -743,9 +743,9 @@ pub fn pointer(p: [f32; 2], pressed: bool, badge: &str) -> Vec<SceneMark> {
     let mut out: Vec<SceneMark> = vec![];
     if pressed {
         // A ring where the button is down.
-        out.push(ScenePathMark { interactive: false, len: 1, path: vec![circle([p[0] as f64, p[1] as f64], 11.0)].into(), fill: c([0.0; 4]).into(), stroke: c([0.95, 0.56, 0.17, 0.9]).into(), stroke_width: Some(2.0), ..Default::default() }.into());
+        out.push(ScenePathMark { interactive: Some(false), len: 1, path: vec![circle([p[0] as f64, p[1] as f64], 11.0)].into(), fill: c([0.0; 4]).into(), stroke: c([0.95, 0.56, 0.17, 0.9]).into(), stroke_width: Some(2.0), ..Default::default() }.into());
     }
-    out.push(ScenePathMark { interactive: false, len: 1, path: vec![path].into(), fill: c([0.08, 0.08, 0.08, 1.0]).into(), stroke: c([1.0; 4]).into(), stroke_width: Some(1.3), ..Default::default() }.into());
+    out.push(ScenePathMark { interactive: Some(false), len: 1, path: vec![path].into(), fill: c([0.08, 0.08, 0.08, 1.0]).into(), stroke: c([1.0; 4]).into(), stroke_width: Some(1.3), ..Default::default() }.into());
     if !badge.is_empty() {
         let w = badge.chars().count() as f32 * 7.4 + 14.0;
         out.push(rect(p[0] + 16.0, p[1] + 20.0, w, 21.0, [0.0, 0.145, 0.196, 0.92], None, 4.0));

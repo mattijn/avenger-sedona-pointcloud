@@ -17,7 +17,7 @@
 
 use avenger_scenegraph::marks::mark::SceneMark;
 use avenger_scenegraph::scene_graph::SceneGraph;
-use avenger_text::types::{TextAlign, TextBaseline};
+use avenger_common::types::{TextAlign, TextBaseline};
 use avenger_wgpu::canvas::{Canvas, PngCanvas};
 use avenger_common::canvas::CanvasDimensions;
 use lidar_common::{INK, MUTED};
@@ -217,7 +217,7 @@ async fn main() -> Result<(), Error> {
         let spent: f64 = seen.iter().map(|a| a.d.cost).sum();
         marks.push(t(&format!("{} decisions · {} changes · ${spent:.4}", seen.len(), done.len()), PX, H - 32.0, 12.0, MUTED, false));
 
-        canvas.set_scene(&SceneGraph { marks, width: W, height: H, origin: [0.0; 2] })?;
+        canvas.set_scene(&SceneGraph { marks, width: W, height: H, origin: [0.0; 2] }, lidar_common::text_engine())?;
         canvas.render().await?.save(format!("{out}/f{i:05}.png"))?;
     }
     std::fs::write(

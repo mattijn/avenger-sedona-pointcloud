@@ -195,12 +195,12 @@ coercion and Float32 output, then computes
 use std::{collections::HashMap, sync::Arc};
 use avenger_selection::PixelGrid;
 use avenger_scales_datafusion::BuiltinScale;
-use datafusion::{arrow::array::Float32Array, logical_expr::col};
+use datafusion::{arrow::array::Float64Array, logical_expr::col};
 
 let grid = PixelGrid::new(
     BuiltinScale::Linear,
-    Arc::new(Float32Array::from(vec![0.0, 200.0])),
-    Arc::new(Float32Array::from(vec![0.0, 600.0])),
+    Arc::new(Float64Array::from(vec![0.0, 200.0])),
+    Arc::new(Float64Array::from(vec![0.0, 600.0])),
     HashMap::new(),
     0.0, // Grid origin in chart-local logical pixels.
     2.0, // Logical pixels per cell.
@@ -213,8 +213,8 @@ let cell_expression = grid.cell_expr(col("delay"));
 
 Call `brush.with_pixel_grids([(projection_id, grid)])` to configure pixel
 membership for a projection. Each grid must identify a declared projection,
-use a positive size, and have finite nondegenerate domains and ranges in the
-scale kernel's precision. Different projections can use different cell sizes.
+use a positive size, and have finite nondegenerate domains and ranges.
+Different projections can use different cell sizes.
 Gridded projections require range comparisons. Ungridded projections retain
 exact equality, set, or range comparisons. `with_pixel_grids([])` removes all
 grids from the returned definition.
@@ -248,8 +248,8 @@ Supported configuration:
   optional `timezone: "UTC"` (case insensitive). Row and bound types must match
   the domain. The existing kernel reduces temporal coordinates to milliseconds.
   Inputs that would overflow its time arithmetic become null cells.
-- Domain normalization, output rounding, custom/nonlinear scales, alternate
-  precision modes, and other options are rejected. Supply an already resolved
+- Domain normalization, output rounding, custom/nonlinear scales, and other
+  options are rejected. Supply an already resolved
   domain. Time does not support clamp or range offset in the current kernel.
 
 Changing a scale, range, origin, or cell size creates a new grid. Build a new

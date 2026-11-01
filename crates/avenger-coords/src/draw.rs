@@ -10,7 +10,7 @@ use avenger_scenegraph::marks::path::ScenePathMark;
 use avenger_scenegraph::marks::rect::SceneRectMark;
 use avenger_scenegraph::marks::symbol::SceneSymbolMark;
 use avenger_scenegraph::marks::text::SceneTextMark;
-use avenger_text::types::{FontWeight, FontWeightNameSpec, TextAlign, TextBaseline};
+use avenger_common::types::{FontWeight, TextAlign, TextBaseline};
 use lyon_path::math::point;
 use lyon_path::Path;
 
@@ -73,7 +73,7 @@ pub fn points(
         }
     }
     SceneSymbolMark {
-        interactive: false,
+        interactive: Some(false),
         len: x.len() as u32,
         x: x.into(),
         y: y.into(),
@@ -105,7 +105,7 @@ pub fn rects(
             y2.push(pa[1].max(pb[1]) as f32);
         }
         let mark = SceneRectMark {
-            interactive: false,
+            interactive: Some(false),
             len: lo.len() as u32,
             x: x.into(),
             y: y.into(),
@@ -135,7 +135,7 @@ pub fn rects(
         paths.push(path);
     }
     let mark = ScenePathMark {
-        interactive: false,
+        interactive: Some(false),
         len: paths.len() as u32,
         path: paths.into(),
         fill: fill.iter().map(|c| color(*c)).collect::<Vec<_>>().into(),
@@ -167,7 +167,7 @@ pub fn rings(
         paths.push(path);
     }
     let mark = ScenePathMark {
-        interactive: false,
+        interactive: Some(false),
         len: paths.len() as u32,
         path: paths.into(),
         fill: fill.iter().map(|c| color(*c)).collect::<Vec<_>>().into(),
@@ -199,7 +199,7 @@ pub fn shape(
         })
         .collect();
     ScenePathMark {
-        interactive: false,
+        interactive: Some(false),
         len: 1,
         path: path_of(&lines, true).0.into(),
         fill: color(fill).into(),
@@ -223,7 +223,7 @@ pub fn polylines(lines: &[Vec<Screen>], stroke: [f32; 4], width: f32) -> SceneMa
         d.push(false);
     }
     SceneLineMark {
-        interactive: false,
+        interactive: Some(false),
         len: x.len() as u32,
         x: x.into(),
         y: y.into(),
@@ -341,7 +341,7 @@ fn text_at(s: &str, p: Screen, dir: [f64; 2], ink: [f32; 4]) -> SceneMark {
         TextBaseline::Middle
     };
     SceneTextMark {
-        interactive: false,
+        interactive: Some(false),
         len: 1,
         text: s.to_string().into(),
         x: (p[0] as f32).into(),
@@ -362,17 +362,13 @@ pub fn title(lines: &[(&str, f32, bool, [f32; 4])], origin: [f32; 2]) -> SceneMa
         .map(|(s, size, bold, c)| {
             y += size * 1.35;
             SceneTextMark {
-                interactive: false,
+                interactive: Some(false),
                 len: 1,
                 text: s.to_string().into(),
                 x: 0.0.into(),
                 y: y.into(),
                 font_size: (*size).into(),
-                font_weight: FontWeight::Name(if *bold {
-                    FontWeightNameSpec::Bold
-                } else {
-                    FontWeightNameSpec::Normal
-                })
+                font_weight: (if *bold { FontWeight::BOLD } else { FontWeight::NORMAL })
                 .into(),
                 color: color(*c).into(),
                 align: TextAlign::Left.into(),
