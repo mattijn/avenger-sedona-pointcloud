@@ -14,36 +14,64 @@ how it was measured, so a recheck is a command rather than an opinion.
   `cargo run --release -p lidar-probes --bin probe_render` print everything
   below (`probe_selection` covers [Selections](#selections-in-avenger-selection)) except the frame-rate numbers, which come from the streaming viewer
   (`cargo run --release -p lidar-stream --bin stream_live`; see
-  [Live charts](#live-charts)).
+  [Rendering and live charts](#rendering-and-live-charts)).
 
-| # | Area | Finding | Status |
-|---|---|---|---|
-| 1 | app / geometry | Rebuilding the geometry index dominates data-driven frames | open |
-| 2 | app / geometry | `interactive: false` does not avoid that cost | **fixed at `d5f9738`** (index 0.0 ms) |
-| 3 | winit | Invalidation-driven rebuilds always rebuild geometry | open, by design? |
-| 4 | wgpu | Gradient fills do not draw, or draw flat | open (lavapipe at `d5f9738`; Metal not rechecked) |
-| 5 | guides | Colorbar ignores its `origin` | **fixed at `d5f9738`** |
-| 6 | guides | Symbol legend title is placed inside the plot | **fixed at `d5f9738`** (the caller places the legend) |
-| 7 | scales | Linear domains must have exactly two stops | open |
-| 8 | guides | Axis always set a `band` option | fixed in the stack |
-| 9 | format | `NumberFormatContext` removed from `avenger-format-number` | API change, adapted |
-| 10 | chart-definition | One constant fill per mark, no colour scale, no line or arc | open, suggestion |
-| 11 | chart / chart-definition | No per-item key, so frames cannot be joined for transitions | open, suggestion |
-| 12 | chart-definition | The accepted vocabulary is not available as data | open, suggestion |
-| 13 | chart-definition | Unsupported properties should be errors with a path and a reason | not checked, suggestion |
-| 14 | text / guides | Number formatting must now be configured, and its absence fails at run time | open, adapted |
-| 15 | format | The format crates split into `avenger-format` and `*-d3`; two signatures changed | API change, adapted |
-| 37 | geometry / chart | `PlotMapping` (#209) against `avenger-coords`; one channel set for every coordinate system | suggestion, by reading |
-| 38 | text / guides / app | `avenger-text` dissolved into `avenger-typst-label`; guides, canvas and app take the engine | API change, adapted |
-| 39 | guides | A colorbar fails on a linear colour scale with more than two colours | **new at `d5f9738`** |
+The file is grouped by topic; numbers are kept from when each finding was
+made, so other READMEs can cite them. Each entry starts with its status; the
+[history](#history-of-the-rounds) says what each repin changed.
 
-Findings 1–7 were re-measured on `d5f9738` with the two probes: 2, 5 and 6 are
-fixed, 1, 3, 4 and 7 remain, and a colorbar now fails on three colours (39). See
-[the `d5f9738` round](#from-the-repin-to-d5f9738-and-209). The frame-rate
-numbers under [Live charts](#live-charts) were **not** re-measured, because they
-need the live window and the tile.
+## Contents
 
-## Live charts
+| # | Finding | Status |
+|---|---|---|
+| | **[Rendering and live charts](#rendering-and-live-charts)** | |
+| 1 | [Rebuilding the geometry index dominates data-driven frames](#1-the-geometry-index-is-the-frame-budget) | open (re-measured at `d5f9738`) |
+| 2 | [`interactive: false` does not avoid that cost](#2-interactive-false-does-not-avoid-it) | **fixed at `d5f9738`** |
+| 3 | [Invalidation-driven rebuilds always rebuild geometry](#3-invalidation-driven-rebuilds-always-rebuild-geometry) | open (source read at `d5f9738`) |
+| 4 | [Gradient fills do not draw, or draw flat](#4-gradient-fills-do-not-draw-or-draw-flat) | open (lavapipe at `d5f9738`; Metal last at `f4890be`) |
+| | **[Guides and scales](#guides-and-scales)** | |
+| 5 | [Colorbar ignores its `origin`](#5-colorbar-ignores-its-origin) | **fixed at `d5f9738`** |
+| 6 | [Symbol legend title is placed inside the plot](#6-symbol-legend-title-sits-inside-the-plot) | **fixed at `d5f9738`** |
+| 7 | [Linear domains must have exactly two stops](#7-linear-domains-must-have-exactly-two-stops) | open (`d5f9738`) |
+| 8 | [Axis always set a `band` option](#8-fixed-axis-band-option) | fixed in the stack |
+| 39 | [A colorbar fails on a colour scale with more than two colours](#39-a-colorbar-fails-on-more-than-two-colours) | **new at `d5f9738`** |
+| | **[Coordinate systems](#coordinate-systems)** | |
+| 37 | [`PlotMapping` (#209) against `avenger-coords`; one channel set for every coordinate system](#37-plotmapping-209-and-avenger-coords-one-trait-two-directions) | suggestion, by reading |
+| | **[Selections in `avenger-selection`](#selections-in-avenger-selection)** | |
+| 25 | [A lasso as tuples; its predicate repeated the cell expression](#25-a-lasso-fits-the-crate-as-tuples-but-its-predicate-repeated-the-cell-expression) | added here; cost fixed here |
+| 26 | [Soft selection needs a degree, not a predicate](#26-soft-selection-needs-a-degree-not-a-predicate) | added here |
+| 27 | [Tests over a whole series become keys](#27-tests-over-a-whole-series-become-keys) | added here |
+| 28 | [CloudLasso: the chart finds the region, the crate takes its voxels](#28-cloudlasso-the-chart-finds-the-region-the-crate-takes-its-voxels) | added here |
+| 29 | [What was drawn, and a log to replay it](#29-what-was-drawn-and-a-log-to-replay-it) | added here |
+| 30 | [Soft series: a degree per key](#30-soft-series-a-degree-per-key) | added here |
+| 31 | [The preaggregation split takes a lasso, a fade and CloudLasso](#31-the-preaggregation-split-takes-a-lasso-a-fade-and-cloudlasso) | added here |
+| 32 | [The log in experiment 7's pipeline text](#32-the-log-in-experiment-7s-pipeline-text) | added here |
+| 33 | [Five adversarial edge cases](#33-an-adversarial-pass-five-edge-cases-all-broken-all-fixed) | fixed here |
+| 34 | [Where a lasso's time goes: the pixel-cell function](#34-where-a-lassos-time-goes-the-pixel-cell-function) | measured |
+| 35 | [The selections on Jon's flights](#35-the-selections-on-jons-flights) | measured |
+| 36 | [The soft brush in a window: two bugs](#36-the-soft-brush-in-a-window-two-bugs-both-fixed) | fixed here |
+| | **[Chart definitions, Vega-Lite and Altair](#chart-definitions-vega-lite-and-altair)** | |
+| 10 | [One constant fill per mark, no colour scale, no line or arc](#10-one-constant-fill-per-mark-no-colour-scale-no-line-or-arc) | open, suggestion |
+| 11 | [No per-item key, so frames cannot be joined for transitions](#11-no-per-item-key) | open, suggestion |
+| 12 | [The accepted vocabulary is not available as data](#12-the-vocabulary-as-data) | open, suggestion |
+| 13 | [Unsupported properties should be errors with a path and a reason](#13-refuse-unsupported-properties-with-a-path) | not checked, suggestion |
+| 18 | [The Vega-Lite front end fails on axis labels with default options](#18-the-vega-lite-front-end-fails-on-axis-labels-with-default-options) | open (by reading at `d5f9738`) |
+| 19 | [Every Altair chart carries `config`, which the spec types refuse](#19-every-altair-chart-carries-config-which-the-spec-types-refuse) | open, worked around (`f4890be`) |
+| 20 | [SVG export spends 340 ms on the font](#20-svg-export-spends-340-ms-on-the-font) | open, not profiled (`f4890be`) |
+| 21 | [What Altair's gallery needs first](#21-what-altairs-gallery-needs-first) | measured (`f4890be`) |
+| 23 | [The spec types accept a JSON array where an object belongs](#23-the-spec-types-accept-a-json-array-where-an-object-belongs) | open, not proposed (`f4890be`) |
+| 24 | [The spec types can export their schema, with CEL for the rest](#24-the-spec-types-can-export-their-schema-with-cel-for-the-rest) | added here, not proposed |
+| | **[Dataflow and DataFusion](#dataflow-and-datafusion)** | |
+| 22 | [The materialisation charge counts shared buffers once per batch](#22-the-materialisation-charge-counts-shared-buffers-once-per-batch) | **fixed upstream at `d5f9738`** (in source; not re-measured) |
+| 16 | [`geo` 0.29 keeps SedonaDB's spatial predicates out](#16-geo-029-keeps-sedonadbs-spatial-predicates-out) | open (`geo` 0.29.3 at `d5f9738`) |
+| | **[API changes between pins](#api-changes-between-pins)** | |
+| 9 | [`NumberFormatContext` removed](#9-numberformatcontext-removed) | adapted |
+| 14 | [Number formatting must be configured, and its absence fails at run time](#14-number-formatting-fails-at-run-time-when-not-configured) | addressed at `d5f9738` (38) |
+| 15 | [The format crates split](#15-the-format-crates-split) | adapted |
+| 17 | [Number formatting moved again, and scales carry it](#17-number-formatting-moved-again-and-scales-now-carry-it) | adapted; superseded by 38 |
+| 38 | [`avenger-text` dissolved; the engine is passed everywhere](#38-avenger-text-dissolved-the-engine-is-passed-everywhere) | adapted |
+
+## Rendering and live charts
 
 The case that produced findings 1–3: a LiDAR feed arriving over Arrow Flight,
 aggregated per batch and merged per frame, with the feed thread asking for a
@@ -57,6 +85,8 @@ redraw through `RenderInvalidationHub`. Measured with `stream_live`:
 Building the scene was never the problem: 12 ms of a 235 ms frame.
 
 ### 1. The geometry index is the frame budget
+
+*Status: open (re-measured at `d5f9738`).*
 
 `probes/src/bin/probe_render.rs` builds one symbol mark of *n* instances and times the pieces
 separately. Best of three, canvas 900 × 900, scale 1.0:
@@ -79,6 +109,8 @@ index, not the GPU.
 
 ### 2. `interactive: false` does not avoid it
 
+*Status: **fixed at `d5f9738`**.*
+
 The same scene with the enclosing group marked non-interactive:
 
 | Symbols | interactive | `interactive: false` |
@@ -94,6 +126,8 @@ own test is named `noninteractive_marks_are_excluded_from_scene_graph_rtree_but_
 which fits what we measure.)
 
 ### 3. Invalidation-driven rebuilds always rebuild geometry
+
+*Status: open (source read at `d5f9738`).*
 
 `avenger-winit-wgpu/src/render_invalidation.rs` calls
 `rebuild_scene_graph(true)` for an `EvaluationChanged` invalidation, so every
@@ -126,6 +160,8 @@ marks are the data.
 
 ### 4. Gradient fills do not draw, or draw flat
 
+*Status: open (lavapipe at `d5f9738`; Metal last at `f4890be`).*
+
 Two symptoms, both reproducible:
 
 - **Minimal scene, nothing drawn.** A `SceneRectMark` with
@@ -148,10 +184,9 @@ charts draw colorbars as stacked solid rects instead.
 
 ## Guides and scales
 
-Re-verified on #124 and again on `602b99c` (#130) with `probe_guides`; all three are still present, and all
-three still need a workaround in this repo's charts.
-
 ### 5. Colorbar ignores its `origin`
+
+*Status: **fixed at `d5f9738`**.*
 
 `make_colorbar_marks(scale, title, [320.0, 10.0], config)` returns a group at
 `[0, 0]`, so the caller must wrap it to place it. The parameter is marked dead
@@ -161,11 +196,15 @@ clearly than ignoring it.
 
 ### 6. Symbol legend title sits inside the plot
 
+*Status: **fixed at `d5f9738`**.*
+
 For a 300-wide plot, entries are placed correctly at x = 308 while the title is
 drawn at x = 8, on top of the chart. Our charts pass `title: None` and draw the
 title themselves.
 
 ### 7. Linear domains must have exactly two stops
+
+*Status: open (`d5f9738`).*
 
 `numeric_interval_domain` errors when `domain.len() != 2`, so a piecewise
 colour ramp with uneven stops (a common need for elevation or intensity) cannot
@@ -173,275 +212,32 @@ be expressed; ranges have to be resampled to evenly spaced stops first.
 
 ### 8. Fixed: axis `band` option
 
+*Status: fixed in the stack.*
+
 `make_numeric_axis_marks` used to set a `band` option unconditionally, which
 `LinearScale` rejected. It now sets it only when the scale has one. Kept here
 so the ledger records the fix.
 
-### 9. `NumberFormatContext` removed
+### 39. A colorbar fails on more than two colours
 
-`PreparedNumberFormat::new(spec, overrides, NumberFormatContext::new(&locale))`
-became `PreparedNumberFormat::new(spec, overrides, &locale)` somewhere in the
-formatting rework (`5d1518f` … `e86810b`). One call site in experiment 6
-(`experiments/06-pipelines/src/packages/vega_format.rs`), a one-line change.
-Recorded as drift, not as a defect: the new signature is simpler.
+*Status: **new at `d5f9738`**.*
 
-## From the repin to `3065e2a`
+New at `d5f9738`. `make_colorbar_legend` on a linear colour scale with three
+colours fails with
+`InvalidScale(ScaleOperationNotSupported("numeric_interval_range"))`; two
+colours draw. That holds for `LinearScale::configured_color` and for a numeric
+scale given a colour range with `with_range`; both drew a colorbar at
+`f4890be`. The colorbar now places its axis with
+`scale.with_range_interval(range)`, which a range of more than two colours
+cannot take. Scales themselves still interpolate three colours
+(`probe_render` section 0). With finding 7, a multi-stop ramp now cannot have
+a colorbar at all. **Measure:** `probe_guides`, the three `COLORBAR` lines.
 
-### 14. Number formatting fails at run time when not configured
-
-After #139 ("require explicit number formatter setup"), the workspace built
-with no warning about it, and then seven binaries failed when they drew an
-axis: `InvalidAxisLabelFormat("number formatting is not configured")`
-(probe_guides, cross_section, topviews, explorer, cqrs_check, stream_live;
-explorer and stream_live as panics). The short entry points
-`make_numeric_axis_marks`, `make_colorbar_marks` and `ChartOptions::default()`
-use `default_text_engine()`, which has no formatter. Upstream's own examples
-build one: a `NumberFormatRegistry` with `D3NumberFormatProvider`, and
-`default_text_engine().with_number_formatting(NumberFormatConfig::new("d3"), …)`.
-This repo now does the same once, in `lidar_common::text_engine()`, with
-wrappers of the same names.
-
-The suggestion: an entry point that compiles and cannot draw a number is a
-trap. Either `default_text_engine()` could come with D3 formatting, or the
-short entry points could take the engine, so the requirement shows at compile
-time. Measured by running every binary in the cycle.
-
-### 15. The format crates split
-
-`avenger-format-number` and `avenger-format-datetime` became `avenger-format`
-(the traits) plus `avenger-format-number-d3` and `avenger-format-datetime-d3`.
-For this repo: the crate names;
-`PreparedDateTimeFormat::format_zoned` now returns `Result<String, _>` instead
-of a value with `.text`; and `TextMeasurementConfig`'s five locale fields became
-`number_format` and `datetime_format`. Three small changes, found by the
-compiler.
-
-All other findings were re-measured on `3065e2a` and are unchanged: the index
-costs 392 ms for 300k symbols (`interactive: false` the same), gradients draw
-flat, and the guide pitfalls remain.
-
-## From the repin to `f4890be`, and Altair on Avenger
-
-Findings 1–7 re-measured on `f4890be` are unchanged: the geometry index
-costs 383 ms for 300k symbols (392 ms before; `interactive: false` the
-same), gradients draw flat, and the three guide pitfalls remain.
-
-### 17. Number formatting moved again, and scales now carry it
-
-Three changes, found by the compiler. `avenger_text::NumberFormatRegistry`
-and `NumberFormatConfig` are gone; the idiom is
-`ScaleFormatting::d3(Default::default(), Default::default())`, applied to a
-text engine with `configure_text_engine` and to chart options with
-`ChartOptions::with_formatting` (which also gained a `scale_formatting`
-field). `PreparedNumberFormat::new` and `PreparedDateTimeFormat::new` each
-lost one argument. And a scale now needs its own `with_formatting`: a
-colorbar built with a formatted text engine but an unformatted scale fails
-with `InvalidAxisLabelFormat("number formatting is not configured")`
-(`probe_guides` did, until `lidar_common` formatted the scale too). Two
-places must now agree on formatting for one axis. **Measure:**
-`cargo run --release -p lidar-probes --bin probe_guides`.
-
-### 18. The Vega-Lite front end fails on axis labels with default options
-
-`Chart::from_vegalite(&spec, &datasets, VegaLiteOptions::default())`, then
-`render`, fails for Altair's plain bar chart with "Invalid axis label format:
-number formatting is not configured"; with
-`VegaLiteOptions { chart: ChartOptions::default().with_formatting(ScaleFormatting::d3(..)), .. }`
-it draws. This is finding 14 reached through the Vega-Lite front end; a
-default that formats numbers the way Vega-Lite does would suit a Vega-Lite
-compiler. The compiler README's example uses the default options; that
-example itself was not run here. **Measure:** in
-`crates/avenger-altair/src/lib.rs`, drop the `chart:` option and run
-`avenger-altair render <spec> out.png`.
-
-### 19. Every Altair chart carries `config`, which the spec types refuse
-
-Altair's default theme adds `"config": {"view": {"continuousWidth": 300,
-"continuousHeight": 300}}` to every chart, and `avenger-vegalite-spec`
-refuses the key (`config: unknown field`), so no Altair chart passes as
-written. `avenger-altair` writes that one config out as Vega-Lite applies it
-(a width or height of 300 for a continuous axis) and leaves any other config
-to be refused. Reading `config.view` (and ignoring, or reporting, the rest)
-would let Altair's output through unchanged. **Measure:**
-`python crates/avenger-altair/bench/coverage.py ~/vega/altair/tests/examples_methods_syntax`
-(19 of 117 gallery examples stop at `config` even after the default theme is
-written out).
-
-### 20. SVG export spends 340 ms on the font
-
-For an 8-bar chart, validating takes 0.05 ms, compiling 0.7–1.8 ms,
-rendering 4–5 ms, PNG export 14 ms, and SVG export 341 ms. The SVG is 148 KB,
-of which 139 KB is one embedded font, subset and encoded as WOFF2 in
-`avenger-svg`'s `font_face_css`; the time is most likely there (not
-profiled). An option to reference fonts instead of embedding them, or a
-cached subset, would make SVG the cheap format it is in Vega. **Measure:**
-`avenger-altair render <spec> out.svg 10` and `… out.png 10` print the
-stages.
-
-### 21. What Altair's gallery needs first
-
-Of Altair's 120 gallery examples (`tests/examples_methods_syntax`), 117 run
-here and none compiles to Avenger yet. The first refusal of each, with the
-default theme written out and `config` set aside: `layer` 41, `mark.type`
-41 (marks other than bar), `encoding.color` 8, composition (`vconcat`,
-`hconcat`, `concat`, `facet`, `repeat`) 19, sorting by another channel
-(`sort: "-x"`) 3, and one each of `joinaggregate`, `mark.binSpacing`,
-`mark.cursor`, `data.format.parse`, `encoding.row`. By this measure the
-order that opens the most of Altair is: other marks and layering, then
-colour, then composition. The same script reruns it; `coverage.json` has
-every example.
-
-### 22. The materialisation charge counts shared buffers once per batch
-
-`ExecutionConfig::max_materialized_bytes` (256 MB by default) is charged by
-what active queries produce. For a Vega-Lite histogram (`bin`, `count()`) over
-one float column, the smallest budget that draws grows roughly quadratically:
-83 bytes a row at 30k rows, 216 at 100k, 628 at 300k, about 2,000 at 1M and
-about 5,900 at 3M (17.7 GB, while the process peaks 121 MB above where it
-started). So the default refuses a histogram over 1M rows ("active
-materialization exceeds the 268435456 byte budget").
-
-**Where.** `avenger-datafusion-dataflow/src/runtime.rs`, where each batch a
-query streams is charged:
-
-```rust
-self.reservation.charge(
-    batch.get_array_memory_size().saturating_add(std::mem::size_of::<RecordBatch>()),
-)?;
-```
-
-`get_array_memory_size` counts the whole buffers a column refers to, and a
-batch that is a slice of a larger array shares them. Logged per node (a
-scratch copy with a counter at that line): at 1M rows every byte of the
-1,968 MB is charged by one node, `__vl_bins_5`, the compiler's bin
-assignment, whose 123 batches of about 8,192 rows each hold 0.26 MB and are
-charged about 16 MB, the buffers of all 1M rows. Handing the input over in
-8,192-row batches only shrinks it (524 MB at 1M, 4.5 GB at 3M): the bin
-node's batches still share buffers of 3.6 to 7.6 MB each.
-
-**Measured fix.** Charging each column's `to_data().get_slice_memory_size()`
-instead makes the charge linear and exact: 3.2 MB at 100k rows, 32 MB at 1M,
-97 MB at 3M, 32 bytes a row, which is the bin node's four 8-byte columns. The
-change is [`crates/avenger-altair/bench/charge-slices.patch`](crates/avenger-altair/bench/charge-slices.patch)
-(against `f4890be`, behind an environment variable, with the logging).
-`materialize_partition` and `MaterializedValue::size` (`inputs.rs`) use
-`get_array_memory_size` the same way and were not measured. Proposed as
-[jonmmease/avenger#141](https://github.com/jonmmease/avenger/pull/141), on
-`codex/datafusion-dataflow`, with a regression test in Avenger itself:
-`cargo test -p avenger-datafusion-dataflow --test materialization_budget`
-(a projection over one 100k-row batch, with a budget of four times the
-column, fails with `ResourceExhausted` without the change and passes with
-it; the crate's 134 tests pass).
-**Measure:** `python crates/avenger-altair/bench/budget.py 30000 100000 300000 1000000`
-bisects the smallest budget that draws, for JSON rows and for Arrow.
-
-With the fix on `f4890be` (the Python bridge built against it), Avenger's
-own 256 MB default draws the histogram over 1M and 3M rows, as JSON rows and
-as Arrow, and the times are the same as with the budget raised (51 and 88 ms
-with Arrow); the fix changes the accounting, not the work.
-`LARGE_ALL=1 python crates/avenger-altair/bench/large.py 1000000 3000000`
-with `AVENGER_MAX_MATERIALIZED_BYTES=268435456`.
-
-With the budget raised, the same histogram over 1M values draws in 48 ms
-from a pandas frame passed as Arrow, and over 3M in 83 ms (matplotlib's
-`hist`: 37 and 52 ms; Altair with VegaFusion: 519 and 482 ms).
-
-### 23. The spec types accept a JSON array where an object belongs
-
-A derived serde `Deserialize` for a struct also accepts a sequence, with the
-fields in declaration order, and `deny_unknown_fields` does not stop it. So
-`UnitSpec::from_json` takes `"encoding": []` as an empty encoding, and
-`"encoding": [{"field": "category", "type": "nominal"}, {"field": "amount", "type": "quantitative"}]`
-as x and y, and the compiler draws it; the same holds for `axis`, `scale`,
-`data.format` and every other object. Vega-Lite refuses these. Found by
-checking a JSON Schema generated from the same types against them (24):
-this is the only disagreement in 3,008 specs. A `Deserialize` that calls
-`deserialize_map`, or a check on the JSON value before typing it, would
-close it. **Measure:** `python crates/avenger-altair/bench/schema_parity.py <avenger checkout>`.
-
-### 24. The spec types can export their schema, with CEL for the rest
-
-Altair generates its API from Vega-Lite's JSON Schema; to generate it from
-Avenger instead, Avenger's spec types need to export one. A `schema` feature
-on `avenger-vegalite-spec` does it with `schemars` (derives on 31 types, the
-schema of the five with their own `Deserialize` by hand), and puts what JSON
-Schema cannot state (an ordered extent, strictly increasing steps, distinct
-names and aliases) as CEL in `x-avenger-rules`, Kubernetes-style. The
-result is 18.8 KB against the 1.9 MB of Vega-Lite's schema that Altair ships, and a plain `jsonschema` run
-on it takes 155 µs where Altair's takes 705 µs. The change is
-[`crates/avenger-vegalite-spec`](crates/avenger-vegalite-spec/VENDORED.md), a copy
-of Jon's crate at `f4890be` with the additions, with [UPSTREAM.diff](crates/avenger-vegalite-spec/UPSTREAM.diff)
-(the crate's tests pass with and without the feature).
-Not proposed upstream yet.
-
-Altair's own `generate_schema_wrapper.py` reads the result: 35 core classes
-and 9 channel classes, with shorthand, and a chart built with them is
-validated against Avenger's schema and drawn by Avenger, the same PNG byte
-for byte as from Altair's API. Two names had to be Vega-Lite's
-(`FacetedEncoding`, `RepeatRef`), and the mark and config mixins need
-Vega-Lite's `MarkDef` and `Config`. Rules between fields must be CEL, not
-constraint-only `anyOf` branches, which the generator reads as a union of
-types. **Measure:** `python crates/avenger-altair/bench/altair_generator.py <altair checkout> <out>`.
-
-Also: the compiler's `pdf` feature pulls in `krilla` 0.8.2, which needs
-rustc 1.92, so the bridge builds with `svg` and `png` only on this machine's
-1.89.
-
-## From the repin to `d5f9738`, and #209
-
-**Which line to pin.** Avenger now has two lines. `main` moves daily through
-the `claude/*` stack (#206 merged on 31 Oct; #209 and the two PRs on it,
-1 Nov), and is where `avenger-chart`'s protobuf format, `PlotMapping` and the
-mapped brushes live. Neither it nor #209 carries ten crates this repo depends on
-(and #209 lacks `avenger-chart` as well):
-`avenger-datafusion-dataflow`, `-preaggregate`, `-aggregate-state`,
-`avenger-scales-datafusion`, `avenger-vegalite-compiler`, `-spec`,
-`avenger-chart-definition`, `avenger-transform`, `avenger-resource` and
-`avenger-text` (the last dissolved, finding 38). Those live on the `codex/*`
-stack, whose top, #130, is still open and was last rebased on 14 Oct
-(`d5f9738`, 348 commits since `f4890be`). This round pins that. Pinning #209
-would mean dropping experiments 6–10 and the DataFusion half of this repo; we
-would like to know from Jon whether #130's line will merge, or is being
-replaced by `avenger-chart` on `main`. Checked with `git ls-remote` and by
-looking for each crate's `Cargo.toml` at both tips.
-
-Re-measured on `d5f9738` with the two probes, on the container (see Machine):
-
-| Symbols | `set_scene` | `render` (lavapipe) | index, interactive | index, `interactive: Some(false)` |
-|---|---|---|---|---|
-| 10,000 | 1.2 ms | 67.1 ms | 4.1 ms | 0.0 ms |
-| 50,000 | 2.9 ms | 130.7 ms | 26.9 ms | 0.0 ms |
-| 150,000 | 7.4 ms | 254.9 ms | 96.9 ms | 0.0 ms |
-| 300,000 | 14.3 ms | 445.4 ms | 193.0 ms | 0.0 ms |
-
-- **Finding 1, open.** The index still grows with the instances, about
-  0.64 µs each here. `render` is slow only because lavapipe draws on the CPU.
-- **Finding 2, fixed.** A group marked non-interactive now costs nothing in
-  the index: 193 ms to 0.0 ms at 300k. (`interactive` became `Option<bool>`,
-  and a mark takes its group's setting unless it sets its own.)
-- **Finding 3, open, with a new hook.** `SceneBuild` gained `rebuild_geometry`,
-  so a builder can now say whether its geometry changed, and
-  `SceneBuild::new` says it did not. But `render_invalidation.rs` still calls
-  `rebuild_scene_graph(true)` (lines 121 and 164), so a data push still pays
-  finding 1. Read in the source; not measured, as it needs the live viewer.
-- **Finding 4, open.** Every gradient case in `probe_render` is still flat or
-  missing, and the colorbar in `out/probe_guides.png` is one colour. On
-  lavapipe, so a renderer difference cannot be ruled out; Metal not rechecked.
-- **Finding 5, fixed.** The colorbar's group lands where it was asked:
-  `[320, 10]`.
-- **Finding 6, fixed.** A symbol legend now draws at its own group's origin
-  with its title inside it (`LiDAR class` at `(4, 4)` of the legend), and the
-  caller places the group. `inner_width` and `inner_height` are gone.
-- **Finding 7, open.** A three-stop linear domain is still refused
-  (`numeric_interval_domain`).
-
-**Measure:** `cargo run --release -p lidar-probes --bin probe_render` and
-`… --bin probe_guides`. The workspace builds with no warnings and its 135 tests
-pass, with `avenger-selection`'s 85 passing after the upstream change below.
-The `avenger-validate` corpus flags the same (269 pipelines, 39 refused, all
-39 flagged); warm 7.0 µs a pipeline on this machine.
+## Coordinate systems
 
 ### 37. `PlotMapping` (#209) and `avenger-coords`: one trait, two directions
+
+*Status: suggestion, by reading.*
 
 [#209](https://github.com/jonmmease/avenger/pull/209) (`claude/plot-mappings`,
 `14196ff`, base of a three-PR stack with `mapped-navigation` and
@@ -542,115 +338,6 @@ the cut reads back as the long arc; by reading, not run), clipping, and box
 edges along parallels (our `Spatial::project_line` follows great circles,
 which is right for a route and wrong for a lon/lat box).
 
-### 38. `avenger-text` dissolved; the engine is passed everywhere
-
-Found by the compiler, in 34 files; none of it changes what a chart draws.
-`avenger-text` is gone (`dc0e194`): `TextEngine` is
-`avenger_typst_label::LabelEngine`, the text types moved to
-`avenger_common::types`, and `FontWeight` is a CSS number
-(`FontWeight::BOLD`, no `FontWeightNameSpec`). `ScaleFormatting` is gone too:
-an engine gets `with_number_formatting` and `with_datetime_formatting` with
-the D3 providers, and charts take `avenger_chart::ChartFormatting`. Every
-guide (`make_continuous_axis_marks`, `make_colorbar_legend`,
-`make_symbol_legend`), `Canvas::set_scene`, `AvengerApp::try_new` and
-`SceneGraphRTree::from_scene_graph` now take the engine, and
-`CanvasConfig::text_engine` is gone. That answers finding 14's suggestion:
-the requirement now shows at compile time. Also: `AxisConfig` and
-`ColorbarConfig` lost `Default` (`tick_count` moved into `style`,
-`format_number` became `tick_format`), `LinearScale::configured` takes `f64`,
-`interactive` is `Option<bool>`, and `SceneGraphBuilder` has one `build`
-returning a `SceneBuild` (no `build_with_effects`). `lidar_common` keeps the
-short signatures the experiments use (`text_engine`,
-`make_numeric_axis_marks`, `make_colorbar_marks`, `make_symbol_legend`,
-`axis_config`, `colorbar_config`, `linear`, `chart_formatting`).
-
-The vendored `avenger-selection` took upstream's own change for this rebase
-(the pixel grid in `f64`, and the f32-precision test cases dropped);
-`UPSTREAM.diff` is regenerated against `d5f9738` and still lists only this
-repo's additions. `avenger-vegalite-spec` is still carried at `f4890be`.
-
-### 39. A colorbar fails on more than two colours
-
-New at `d5f9738`. `make_colorbar_legend` on a linear colour scale with three
-colours fails with
-`InvalidScale(ScaleOperationNotSupported("numeric_interval_range"))`; two
-colours draw. That holds for `LinearScale::configured_color` and for a numeric
-scale given a colour range with `with_range`; both drew a colorbar at
-`f4890be`. The colorbar now places its axis with
-`scale.with_range_interval(range)`, which a range of more than two colours
-cannot take. Scales themselves still interpolate three colours
-(`probe_render` section 0). With finding 7, a multi-stop ramp now cannot have
-a colorbar at all. **Measure:** `probe_guides`, the three `COLORBAR` lines.
-
-## From experiment 7: charts driven by typed decisions
-
-Experiment 7 drives one chart from typed text (a classifier, and an LLM that
-writes the pipeline). Its [README](experiments/07-chart-decisions/README.md#feedback-for-avenger)
-has the full feedback; the points about Avenger itself:
-
-### 10. One constant fill per mark, no colour scale, no line or arc
-
-At `602b99c`, `RectEncoding` and `SymbolEncoding` take `fill: String`, and
-`Scale` kinds are linear, band and point. A pie, a line per series, a heatmap
-with a colour scale and a log axis could not be described, so the experiment
-draws them on the scenegraph with its own layer (`src/layer/`), although
-`avenger-scales` has log, pow and symlog. Checked by reading
-`avenger-chart-definition/src/model.rs`.
-
-### 11. No per-item key
-
-What makes the experiment's chart feel alive is a key from the data on every
-item: bars curl into a pie, split into a heatmap cell by cell, and come back.
-`avenger-chart` keeps an identity per plot, not per item. A `key` channel,
-carried into the rendered frame, would let a host animate between any two
-frames. Checked by reading; the transitions themselves are measured in the
-experiment's video.
-
-### 12. The vocabulary as data
-
-A classifier needs the option list, and an LLM the grammar; both were written
-by hand from what the layer accepts. A chart definition that could list its
-marks, channels with allowed types, and properties would let deciders,
-editors and prompts be generated, and not drift from the renderer. This repo now does
-that for its own pipelines: [`crates/avenger-validate`](crates/avenger-validate/)
-reads the vocabulary from one spec and checks a pipeline in about 10 µs, from
-Rust, Python and wasm, with the rules exported as CEL. The spec is still
-written by hand, not exported by the steps themselves.
-
-### 13. Refuse unsupported properties, with a path
-
-The LLM loop is safe because everything the layer cannot draw is refused with
-a reason, and the model fixed its tries from that text. The Vega-Lite
-compiler's `CompileError::path()` does this. **Not checked:** what
-`ChartDefinition::finish()` does with a property it cannot honour.
-
-### 16. `geo` 0.29 keeps SedonaDB's spatial predicates out
-
-A structure-aware lasso (CloudLasso) on the tile wanted `st_contains` from
-SedonaDB. The predicates (`st_contains`, `st_within`, `st_intersects`) are
-in `sedona-geo` only; `sedona-functions`, which this repo links, has
-constructors, accessors and affine transforms but no predicate. `sedona-geo`
-cannot join the workspace: it needs `geo` 0.33 → `i_overlay` 4.5 →
-`i_float ~1.16`, while `avenger-geo`, `avenger-geometry` and
-`avenger-guides` at `3065e2a` need `geo` 0.29 → `i_overlay` 1.9 →
-`i_float ~1.6`. Two `geo` versions could coexist, but not two 1.x versions
-of `i_float`, so resolution fails. Moving Avenger to `geo` 0.33 would let a
-host put SedonaDB's spatial SQL next to it; the lasso now tests the polygon in
-Rust on the drawn cells instead. A lasso does not need it: through
-`avenger-selection` it is a query over the raw points (finding 25). What stays
-blocked is spatial SQL against other geometry, such as points in building
-outlines. **Measure:** add
-`sedona-geo = { git = "https://github.com/apache/sedona-db", rev = "2f3e378…" }`
-to `experiments/06-pipelines/Cargo.toml` and run `cargo metadata --format-version 1 >/dev/null`
-(it fails on `i_float`); `cargo tree -i geo@0.29.3 --depth 1` lists the
-Avenger crates.
-
-Also from experiment 7, as things that worked well: `RequestWakeup` with
-`RuntimeWake` for background work, `WriteClipboard`, `MouseUp` and
-`CursorMoved` for text fields (and for a lens that follows the cursor),
-`Clip::Path` for a round magnifier, and headless `PngCanvas` rendering of the same
-`SceneGraph`, which made a video that rebuilds frame for frame from a cache.
-
 ## Selections in `avenger-selection`
 
 Experiment 7's interaction tour draws every selection with its own code, on
@@ -696,6 +383,8 @@ redraw about 50 times cheaper than the direct query.
 
 ### 25. A lasso fits the crate as tuples, but its predicate repeated the cell expression
 
+*Status: added here; cost fixed here.*
+
 `SelectionValue::polygon` (added here) turns a lasso drawn in pixels into one
 tuple per run of pixel cells: the row on `v`, a range on `u`. No new kind of
 test was needed, and cross-filtering, toggles and the split keep working. A
@@ -738,6 +427,8 @@ concave lasso on the tile (the tests cover a concave ring). **Measure:**
 
 ### 26. Soft selection needs a degree, not a predicate
 
+*Status: added here.*
+
 Experiment 7's `--soft` fades what lies near a brush, by a degree of interest
 in [0, 1] that falls linearly with the distance from it. The crate's output is
 a Boolean, so it cannot say this. `ConsumerFilter::degree(state, width)`
@@ -767,6 +458,8 @@ runs; a bounding-box test that settles rows beyond the width brought it to
 has no notion of it. **Measure:** as for 25.
 
 ### 27. Tests over a whole series become keys
+
+*Status: added here.*
 
 A line brush takes the series whose polyline crosses a segment; a timebox
 takes the series that stay inside a box over its x-range. Both judge a
@@ -803,6 +496,8 @@ line brush passes `Some(1)`.
 
 ### 28. CloudLasso: the chart finds the region, the crate takes its voxels
 
+*Status: added here.*
+
 CloudLasso (Yu et al. 2012) keeps, of the points in a lasso, those in the
 largest connected region of dense voxels. Finding regions is a graph walk, not
 a predicate, so it stays with the chart. The crate does the rest:
@@ -825,6 +520,8 @@ counts, 0.6 ms of region finding and 158 ms of selecting, the 422 voxels
 going through the cell lookup of finding 25.
 
 ### 29. What was drawn, and a log to replay it
+
+*Status: added here.*
 
 Two gaps closed together, since a log needs the gesture. A value can carry a
 `Gesture` (a kind, points in the chart's units, named numbers such as
@@ -863,6 +560,8 @@ probe replays on the same data.
 
 ### 30. Soft series: a degree per key
 
+*Status: added here.*
+
 Experiment 7's soft line brush gives a series that crosses it 1, and otherwise
 a degree that falls with its nearest vertex's distance to the segment; its
 soft timebox gives each series the share of its vertices, within the time
@@ -893,6 +592,8 @@ ranges, which are refused.
 
 ### 31. The preaggregation split takes a lasso, a fade and CloudLasso
 
+*Status: added here.*
+
 The crate splits a filter around the producer being dragged: a fixed
 predicate for the other producers, a changing one over interaction
 dimensions, and those dimensions, which the planner of
@@ -920,6 +621,8 @@ redraw.
 
 ### 32. The log in experiment 7's pipeline text
 
+*Status: added here.*
+
 Experiment 7's pipeline now takes a line of the log as a command,
 `selection "<json>"`, beside its own `select` (`src/layer/selection_log.rs`).
 A brush, a line brush, a timebox and a lasso go in as gestures, with `soft`
@@ -935,6 +638,8 @@ Experiment 6's generic pipeline has no selection of its own, so nothing was
 wired there. **Measure:** `cargo run --release -p lidar-decide --bin layer_roundtrip`.
 
 ### 33. An adversarial pass: five edge cases, all broken, all fixed
+
+*Status: fixed here.*
 
 Tests written to break the additions (`tests/adversarial.rs`) failed, all
 five:
@@ -963,6 +668,8 @@ did; both now share one check and one query. Partial degrees kept their keys
 unnormalised, so a NaN or −0.0 key could miss its row.
 
 ### 34. Where a lasso's time goes: the pixel-cell function
+
+*Status: measured.*
 
 Why a Rust loop beats the crate's predicate: the flat lasso over 17.3M points,
 in pieces, each piece adding to the one before (`probe_selection`, "where the
@@ -997,6 +704,8 @@ the cell functions alone.
 
 ### 35. The selections on Jon's flights
 
+*Status: measured.*
+
 The lasso, the soft brush and the split, on the 10M flights of Jon's
 `winit-mosaic-flights`, drawn headlessly with his panels, domains and 1 px
 grids (experiment 10, with figures). They work on his data as on the tile.
@@ -1013,6 +722,8 @@ from experiment 7's Rust (the Float32 voxel edges of finding 28), in 133 ms.
 and `cargo run --release -p lidar-cloudlasso --bin cloudlasso -- $T`.
 
 ### 36. The soft brush in a window: two bugs, both fixed
+
+*Status: fixed here.*
 
 Experiment 10's window (`flights_live`) puts every selection under the mouse
 at once, which the figures never did, and the soft brush broke twice there.
@@ -1048,6 +759,411 @@ table tests are in `degree.rs`), `cargo run --release -p lidar-probes --bin prob
 ("soft lasso"), and `cargo run --release -p lidar-flights --bin flights_live -- data/flights-10m.parquet --snapshots out/flights_live`
 (step 7, every selection at once with the soft brush).
 
+## Chart definitions, Vega-Lite and Altair
+
+Experiment 7 drives one chart from typed text (a classifier, and an LLM that
+writes the pipeline). Its [README](experiments/07-chart-decisions/README.md#feedback-for-avenger)
+has the full feedback; the points about Avenger itself:
+
+### 10. One constant fill per mark, no colour scale, no line or arc
+
+*Status: open, suggestion.*
+
+At `602b99c`, `RectEncoding` and `SymbolEncoding` take `fill: String`, and
+`Scale` kinds are linear, band and point. A pie, a line per series, a heatmap
+with a colour scale and a log axis could not be described, so the experiment
+draws them on the scenegraph with its own layer (`src/layer/`), although
+`avenger-scales` has log, pow and symlog. Checked by reading
+`avenger-chart-definition/src/model.rs`.
+
+### 11. No per-item key
+
+*Status: open, suggestion.*
+
+What makes the experiment's chart feel alive is a key from the data on every
+item: bars curl into a pie, split into a heatmap cell by cell, and come back.
+`avenger-chart` keeps an identity per plot, not per item. A `key` channel,
+carried into the rendered frame, would let a host animate between any two
+frames. Checked by reading; the transitions themselves are measured in the
+experiment's video.
+
+### 12. The vocabulary as data
+
+*Status: open, suggestion.*
+
+A classifier needs the option list, and an LLM the grammar; both were written
+by hand from what the layer accepts. A chart definition that could list its
+marks, channels with allowed types, and properties would let deciders,
+editors and prompts be generated, and not drift from the renderer. This repo now does
+that for its own pipelines: [`crates/avenger-validate`](crates/avenger-validate/)
+reads the vocabulary from one spec and checks a pipeline in about 10 µs, from
+Rust, Python and wasm, with the rules exported as CEL. The spec is still
+written by hand, not exported by the steps themselves.
+
+### 13. Refuse unsupported properties, with a path
+
+*Status: not checked, suggestion.*
+
+The LLM loop is safe because everything the layer cannot draw is refused with
+a reason, and the model fixed its tries from that text. The Vega-Lite
+compiler's `CompileError::path()` does this. **Not checked:** what
+`ChartDefinition::finish()` does with a property it cannot honour.
+
+### 18. The Vega-Lite front end fails on axis labels with default options
+
+*Status: open (by reading at `d5f9738`).*
+
+`Chart::from_vegalite(&spec, &datasets, VegaLiteOptions::default())`, then
+`render`, fails for Altair's plain bar chart with "Invalid axis label format:
+number formatting is not configured"; with
+`VegaLiteOptions { chart: ChartOptions::default().with_formatting(ScaleFormatting::d3(..)), .. }`
+it draws. This is finding 14 reached through the Vega-Lite front end; a
+default that formats numbers the way Vega-Lite does would suit a Vega-Lite
+compiler. The compiler README's example uses the default options; that
+example itself was not run here. **Measure:** in
+`crates/avenger-altair/src/lib.rs`, drop the `chart:` option and run
+`avenger-altair render <spec> out.png`.
+
+### 19. Every Altair chart carries `config`, which the spec types refuse
+
+*Status: open, worked around (`f4890be`).*
+
+Altair's default theme adds `"config": {"view": {"continuousWidth": 300,
+"continuousHeight": 300}}` to every chart, and `avenger-vegalite-spec`
+refuses the key (`config: unknown field`), so no Altair chart passes as
+written. `avenger-altair` writes that one config out as Vega-Lite applies it
+(a width or height of 300 for a continuous axis) and leaves any other config
+to be refused. Reading `config.view` (and ignoring, or reporting, the rest)
+would let Altair's output through unchanged. **Measure:**
+`python crates/avenger-altair/bench/coverage.py ~/vega/altair/tests/examples_methods_syntax`
+(19 of 117 gallery examples stop at `config` even after the default theme is
+written out).
+
+### 20. SVG export spends 340 ms on the font
+
+*Status: open, not profiled (`f4890be`).*
+
+For an 8-bar chart, validating takes 0.05 ms, compiling 0.7–1.8 ms,
+rendering 4–5 ms, PNG export 14 ms, and SVG export 341 ms. The SVG is 148 KB,
+of which 139 KB is one embedded font, subset and encoded as WOFF2 in
+`avenger-svg`'s `font_face_css`; the time is most likely there (not
+profiled). An option to reference fonts instead of embedding them, or a
+cached subset, would make SVG the cheap format it is in Vega. **Measure:**
+`avenger-altair render <spec> out.svg 10` and `… out.png 10` print the
+stages.
+
+### 21. What Altair's gallery needs first
+
+*Status: measured (`f4890be`).*
+
+Of Altair's 120 gallery examples (`tests/examples_methods_syntax`), 117 run
+here and none compiles to Avenger yet. The first refusal of each, with the
+default theme written out and `config` set aside: `layer` 41, `mark.type`
+41 (marks other than bar), `encoding.color` 8, composition (`vconcat`,
+`hconcat`, `concat`, `facet`, `repeat`) 19, sorting by another channel
+(`sort: "-x"`) 3, and one each of `joinaggregate`, `mark.binSpacing`,
+`mark.cursor`, `data.format.parse`, `encoding.row`. By this measure the
+order that opens the most of Altair is: other marks and layering, then
+colour, then composition. The same script reruns it; `coverage.json` has
+every example.
+
+### 23. The spec types accept a JSON array where an object belongs
+
+*Status: open, not proposed (`f4890be`).*
+
+A derived serde `Deserialize` for a struct also accepts a sequence, with the
+fields in declaration order, and `deny_unknown_fields` does not stop it. So
+`UnitSpec::from_json` takes `"encoding": []` as an empty encoding, and
+`"encoding": [{"field": "category", "type": "nominal"}, {"field": "amount", "type": "quantitative"}]`
+as x and y, and the compiler draws it; the same holds for `axis`, `scale`,
+`data.format` and every other object. Vega-Lite refuses these. Found by
+checking a JSON Schema generated from the same types against them (24):
+this is the only disagreement in 3,008 specs. A `Deserialize` that calls
+`deserialize_map`, or a check on the JSON value before typing it, would
+close it. **Measure:** `python crates/avenger-altair/bench/schema_parity.py <avenger checkout>`.
+
+### 24. The spec types can export their schema, with CEL for the rest
+
+*Status: added here, not proposed.*
+
+Altair generates its API from Vega-Lite's JSON Schema; to generate it from
+Avenger instead, Avenger's spec types need to export one. A `schema` feature
+on `avenger-vegalite-spec` does it with `schemars` (derives on 31 types, the
+schema of the five with their own `Deserialize` by hand), and puts what JSON
+Schema cannot state (an ordered extent, strictly increasing steps, distinct
+names and aliases) as CEL in `x-avenger-rules`, Kubernetes-style. The
+result is 18.8 KB against the 1.9 MB of Vega-Lite's schema that Altair ships, and a plain `jsonschema` run
+on it takes 155 µs where Altair's takes 705 µs. The change is
+[`crates/avenger-vegalite-spec`](crates/avenger-vegalite-spec/VENDORED.md), a copy
+of Jon's crate at `f4890be` with the additions, with [UPSTREAM.diff](crates/avenger-vegalite-spec/UPSTREAM.diff)
+(the crate's tests pass with and without the feature).
+Not proposed upstream yet.
+
+Altair's own `generate_schema_wrapper.py` reads the result: 35 core classes
+and 9 channel classes, with shorthand, and a chart built with them is
+validated against Avenger's schema and drawn by Avenger, the same PNG byte
+for byte as from Altair's API. Two names had to be Vega-Lite's
+(`FacetedEncoding`, `RepeatRef`), and the mark and config mixins need
+Vega-Lite's `MarkDef` and `Config`. Rules between fields must be CEL, not
+constraint-only `anyOf` branches, which the generator reads as a union of
+types. **Measure:** `python crates/avenger-altair/bench/altair_generator.py <altair checkout> <out>`.
+
+Also: the compiler's `pdf` feature pulls in `krilla` 0.8.2, which needs
+rustc 1.92, so the bridge builds with `svg` and `png` only on this machine's
+1.89.
+
+## Dataflow and DataFusion
+
+### 22. The materialisation charge counts shared buffers once per batch
+
+*Status: **fixed upstream at `d5f9738`** (in source; not re-measured).*
+
+`ExecutionConfig::max_materialized_bytes` (256 MB by default) is charged by
+what active queries produce. For a Vega-Lite histogram (`bin`, `count()`) over
+one float column, the smallest budget that draws grows roughly quadratically:
+83 bytes a row at 30k rows, 216 at 100k, 628 at 300k, about 2,000 at 1M and
+about 5,900 at 3M (17.7 GB, while the process peaks 121 MB above where it
+started). So the default refuses a histogram over 1M rows ("active
+materialization exceeds the 268435456 byte budget").
+
+**Where.** `avenger-datafusion-dataflow/src/runtime.rs`, where each batch a
+query streams is charged:
+
+```rust
+self.reservation.charge(
+    batch.get_array_memory_size().saturating_add(std::mem::size_of::<RecordBatch>()),
+)?;
+```
+
+`get_array_memory_size` counts the whole buffers a column refers to, and a
+batch that is a slice of a larger array shares them. Logged per node (a
+scratch copy with a counter at that line): at 1M rows every byte of the
+1,968 MB is charged by one node, `__vl_bins_5`, the compiler's bin
+assignment, whose 123 batches of about 8,192 rows each hold 0.26 MB and are
+charged about 16 MB, the buffers of all 1M rows. Handing the input over in
+8,192-row batches only shrinks it (524 MB at 1M, 4.5 GB at 3M): the bin
+node's batches still share buffers of 3.6 to 7.6 MB each.
+
+**Measured fix.** Charging each column's `to_data().get_slice_memory_size()`
+instead makes the charge linear and exact: 3.2 MB at 100k rows, 32 MB at 1M,
+97 MB at 3M, 32 bytes a row, which is the bin node's four 8-byte columns. The
+change is [`crates/avenger-altair/bench/charge-slices.patch`](crates/avenger-altair/bench/charge-slices.patch)
+(against `f4890be`, behind an environment variable, with the logging).
+`materialize_partition` and `MaterializedValue::size` (`inputs.rs`) use
+`get_array_memory_size` the same way and were not measured. Proposed as
+[jonmmease/avenger#141](https://github.com/jonmmease/avenger/pull/141), on
+`codex/datafusion-dataflow`, with a regression test in Avenger itself:
+`cargo test -p avenger-datafusion-dataflow --test materialization_budget`
+(a projection over one 100k-row batch, with a budget of four times the
+column, fails with `ResourceExhausted` without the change and passes with
+it; the crate's 134 tests pass).
+**Measure:** `python crates/avenger-altair/bench/budget.py 30000 100000 300000 1000000`
+bisects the smallest budget that draws, for JSON rows and for Arrow.
+
+With the fix on `f4890be` (the Python bridge built against it), Avenger's
+own 256 MB default draws the histogram over 1M and 3M rows, as JSON rows and
+as Arrow, and the times are the same as with the budget raised (51 and 88 ms
+with Arrow); the fix changes the accounting, not the work.
+`LARGE_ALL=1 python crates/avenger-altair/bench/large.py 1000000 3000000`
+with `AVENGER_MAX_MATERIALIZED_BYTES=268435456`.
+
+With the budget raised, the same histogram over 1M values draws in 48 ms
+from a pandas frame passed as Arrow, and over 3M in 83 ms (matplotlib's
+`hist`: 37 and 52 ms; Altair with VegaFusion: 519 and 482 ms).
+
+### 16. `geo` 0.29 keeps SedonaDB's spatial predicates out
+
+*Status: open (`geo` 0.29.3 at `d5f9738`).*
+
+A structure-aware lasso (CloudLasso) on the tile wanted `st_contains` from
+SedonaDB. The predicates (`st_contains`, `st_within`, `st_intersects`) are
+in `sedona-geo` only; `sedona-functions`, which this repo links, has
+constructors, accessors and affine transforms but no predicate. `sedona-geo`
+cannot join the workspace: it needs `geo` 0.33 → `i_overlay` 4.5 →
+`i_float ~1.16`, while `avenger-geo`, `avenger-geometry` and
+`avenger-guides` at `3065e2a` need `geo` 0.29 → `i_overlay` 1.9 →
+`i_float ~1.6`. Two `geo` versions could coexist, but not two 1.x versions
+of `i_float`, so resolution fails. Moving Avenger to `geo` 0.33 would let a
+host put SedonaDB's spatial SQL next to it; the lasso now tests the polygon in
+Rust on the drawn cells instead. A lasso does not need it: through
+`avenger-selection` it is a query over the raw points (finding 25). What stays
+blocked is spatial SQL against other geometry, such as points in building
+outlines. **Measure:** add
+`sedona-geo = { git = "https://github.com/apache/sedona-db", rev = "2f3e378…" }`
+to `experiments/06-pipelines/Cargo.toml` and run `cargo metadata --format-version 1 >/dev/null`
+(it fails on `i_float`); `cargo tree -i geo@0.29.3 --depth 1` lists the
+Avenger crates.
+
+## API changes between pins
+
+### 9. `NumberFormatContext` removed
+
+*Status: adapted.*
+
+`PreparedNumberFormat::new(spec, overrides, NumberFormatContext::new(&locale))`
+became `PreparedNumberFormat::new(spec, overrides, &locale)` somewhere in the
+formatting rework (`5d1518f` … `e86810b`). One call site in experiment 6
+(`experiments/06-pipelines/src/packages/vega_format.rs`), a one-line change.
+Recorded as drift, not as a defect: the new signature is simpler.
+
+### 14. Number formatting fails at run time when not configured
+
+*Status: addressed at `d5f9738` (38).*
+
+After #139 ("require explicit number formatter setup"), the workspace built
+with no warning about it, and then seven binaries failed when they drew an
+axis: `InvalidAxisLabelFormat("number formatting is not configured")`
+(probe_guides, cross_section, topviews, explorer, cqrs_check, stream_live;
+explorer and stream_live as panics). The short entry points
+`make_numeric_axis_marks`, `make_colorbar_marks` and `ChartOptions::default()`
+use `default_text_engine()`, which has no formatter. Upstream's own examples
+build one: a `NumberFormatRegistry` with `D3NumberFormatProvider`, and
+`default_text_engine().with_number_formatting(NumberFormatConfig::new("d3"), …)`.
+This repo now does the same once, in `lidar_common::text_engine()`, with
+wrappers of the same names.
+
+The suggestion: an entry point that compiles and cannot draw a number is a
+trap. Either `default_text_engine()` could come with D3 formatting, or the
+short entry points could take the engine, so the requirement shows at compile
+time. Measured by running every binary in the cycle.
+
+### 15. The format crates split
+
+*Status: adapted.*
+
+`avenger-format-number` and `avenger-format-datetime` became `avenger-format`
+(the traits) plus `avenger-format-number-d3` and `avenger-format-datetime-d3`.
+For this repo: the crate names;
+`PreparedDateTimeFormat::format_zoned` now returns `Result<String, _>` instead
+of a value with `.text`; and `TextMeasurementConfig`'s five locale fields became
+`number_format` and `datetime_format`. Three small changes, found by the
+compiler.
+
+### 17. Number formatting moved again, and scales now carry it
+
+*Status: adapted; superseded by 38.*
+
+Three changes, found by the compiler. `avenger_text::NumberFormatRegistry`
+and `NumberFormatConfig` are gone; the idiom is
+`ScaleFormatting::d3(Default::default(), Default::default())`, applied to a
+text engine with `configure_text_engine` and to chart options with
+`ChartOptions::with_formatting` (which also gained a `scale_formatting`
+field). `PreparedNumberFormat::new` and `PreparedDateTimeFormat::new` each
+lost one argument. And a scale now needs its own `with_formatting`: a
+colorbar built with a formatted text engine but an unformatted scale fails
+with `InvalidAxisLabelFormat("number formatting is not configured")`
+(`probe_guides` did, until `lidar_common` formatted the scale too). Two
+places must now agree on formatting for one axis. **Measure:**
+`cargo run --release -p lidar-probes --bin probe_guides`.
+
+### 38. `avenger-text` dissolved; the engine is passed everywhere
+
+*Status: adapted.*
+
+Found by the compiler, in 34 files; none of it changes what a chart draws.
+`avenger-text` is gone (`dc0e194`): `TextEngine` is
+`avenger_typst_label::LabelEngine`, the text types moved to
+`avenger_common::types`, and `FontWeight` is a CSS number
+(`FontWeight::BOLD`, no `FontWeightNameSpec`). `ScaleFormatting` is gone too:
+an engine gets `with_number_formatting` and `with_datetime_formatting` with
+the D3 providers, and charts take `avenger_chart::ChartFormatting`. Every
+guide (`make_continuous_axis_marks`, `make_colorbar_legend`,
+`make_symbol_legend`), `Canvas::set_scene`, `AvengerApp::try_new` and
+`SceneGraphRTree::from_scene_graph` now take the engine, and
+`CanvasConfig::text_engine` is gone. That answers finding 14's suggestion:
+the requirement now shows at compile time. Also: `AxisConfig` and
+`ColorbarConfig` lost `Default` (`tick_count` moved into `style`,
+`format_number` became `tick_format`), `LinearScale::configured` takes `f64`,
+`interactive` is `Option<bool>`, and `SceneGraphBuilder` has one `build`
+returning a `SceneBuild` (no `build_with_effects`). `lidar_common` keeps the
+short signatures the experiments use (`text_engine`,
+`make_numeric_axis_marks`, `make_colorbar_marks`, `make_symbol_legend`,
+`axis_config`, `colorbar_config`, `linear`, `chart_formatting`).
+
+The vendored `avenger-selection` took upstream's own change for this rebase
+(the pixel grid in `f64`, and the f32-precision test cases dropped);
+`UPSTREAM.diff` is regenerated against `d5f9738` and still lists only this
+repo's additions. `avenger-vegalite-spec` is still carried at `f4890be`.
+
+## History of the rounds
+
+What each repin changed, newest first. Entries above keep their own notes
+on each round where a number moved.
+
+### `d5f9738` (#130), 1 Nov 2026
+
+Added findings 37–39. **Which line to pin.** Avenger now has two lines. `main` moves daily through
+the `claude/*` stack (#206 merged on 31 Oct; #209 and the two PRs on it,
+1 Nov), and is where `avenger-chart`'s protobuf format, `PlotMapping` and the
+mapped brushes live. Neither it nor #209 carries ten crates this repo depends on
+(and #209 lacks `avenger-chart` as well):
+`avenger-datafusion-dataflow`, `-preaggregate`, `-aggregate-state`,
+`avenger-scales-datafusion`, `avenger-vegalite-compiler`, `-spec`,
+`avenger-chart-definition`, `avenger-transform`, `avenger-resource` and
+`avenger-text` (the last dissolved, finding 38). Those live on the `codex/*`
+stack, whose top, #130, is still open and was last rebased on 14 Oct
+(`d5f9738`, 348 commits since `f4890be`). This round pins that. Pinning #209
+would mean dropping experiments 6–10 and the DataFusion half of this repo; we
+would like to know from Jon whether #130's line will merge, or is being
+replaced by `avenger-chart` on `main`. Checked with `git ls-remote` and by
+looking for each crate's `Cargo.toml` at both tips.
+
+Re-measured on `d5f9738` with the two probes, on the container (see Machine):
+
+| Symbols | `set_scene` | `render` (lavapipe) | index, interactive | index, `interactive: Some(false)` |
+|---|---|---|---|---|
+| 10,000 | 1.2 ms | 67.1 ms | 4.1 ms | 0.0 ms |
+| 50,000 | 2.9 ms | 130.7 ms | 26.9 ms | 0.0 ms |
+| 150,000 | 7.4 ms | 254.9 ms | 96.9 ms | 0.0 ms |
+| 300,000 | 14.3 ms | 445.4 ms | 193.0 ms | 0.0 ms |
+
+- **Finding 1, open.** The index still grows with the instances, about
+  0.64 µs each here. `render` is slow only because lavapipe draws on the CPU.
+- **Finding 2, fixed.** A group marked non-interactive now costs nothing in
+  the index: 193 ms to 0.0 ms at 300k. (`interactive` became `Option<bool>`,
+  and a mark takes its group's setting unless it sets its own.)
+- **Finding 3, open, with a new hook.** `SceneBuild` gained `rebuild_geometry`,
+  so a builder can now say whether its geometry changed, and
+  `SceneBuild::new` says it did not. But `render_invalidation.rs` still calls
+  `rebuild_scene_graph(true)` (lines 121 and 164), so a data push still pays
+  finding 1. Read in the source; not measured, as it needs the live viewer.
+- **Finding 4, open.** Every gradient case in `probe_render` is still flat or
+  missing, and the colorbar in `out/probe_guides.png` is one colour. On
+  lavapipe, so a renderer difference cannot be ruled out; Metal not rechecked.
+- **Finding 5, fixed.** The colorbar's group lands where it was asked:
+  `[320, 10]`.
+- **Finding 6, fixed.** A symbol legend now draws at its own group's origin
+  with its title inside it (`LiDAR class` at `(4, 4)` of the legend), and the
+  caller places the group. `inner_width` and `inner_height` are gone.
+- **Finding 7, open.** A three-stop linear domain is still refused
+  (`numeric_interval_domain`).
+
+**Measure:** `cargo run --release -p lidar-probes --bin probe_render` and
+`… --bin probe_guides`. The workspace builds with no warnings and its 135 tests
+pass, with `avenger-selection`'s 85 passing after the upstream change in finding 38.
+The `avenger-validate` corpus flags the same (269 pipelines, 39 refused, all
+39 flagged); warm 7.0 µs a pipeline on this machine.
+
+### `f4890be` (#130), 26 Sep 2026
+
+Added findings 17–24 (with Altair on Avenger), and 25–36 (selections) in the
+weeks after. Findings 1–7 re-measured on `f4890be` are unchanged: the geometry index
+costs 383 ms for 300k symbols (392 ms before; `interactive: false` the
+same), gradients draw flat, and the three guide pitfalls remain.
+
+### `3065e2a` (#130), 25 Sep 2026
+
+Added findings 14–16. Findings 1–7 were re-measured and are unchanged: the index
+costs 392 ms for 300k symbols (`interactive: false` the same), gradients draw
+flat, and the guide pitfalls remain.
+
+### `602b99c` (#130) and `5f31c58` (#124), 20–25 Sep 2026
+
+Findings 1–9 were first measured on #124 and re-measured on `602b99c`; their
+entries above carry those numbers. The three guide findings (5–7) were present
+on both, and each needed a workaround in this repo's charts. Findings 10–13
+came from experiment 7 at `602b99c`.
+
 ## What worked well
 
 Worth saying, because it is the part that does not generate issues:
@@ -1075,6 +1191,12 @@ Worth saying, because it is the part that does not generate issues:
   matches `re_datafusion` 0.38.1, which makes Rerun interop realistic (its
   MSRV of 1.96 is the only blocker for us).
 
+Also from experiment 7, as things that worked well: `RequestWakeup` with
+`RuntimeWake` for background work, `WriteClipboard`, `MouseUp` and
+`CursorMoved` for text fields (and for a lens that follows the cursor),
+`Clip::Path` for a round magnifier, and headless `PngCanvas` rendering of the same
+`SceneGraph`, which made a video that rebuilds frame for frame from a cache.
+
 ## Chart language (`jonmmease/facet-fresh-start`)
 
 From an earlier round, **not re-verified on the current branch**:
@@ -1089,7 +1211,7 @@ From an earlier round, **not re-verified on the current branch**:
 - `avenger-chart`'s README describes transforms as stubs, which the code has
   moved past.
 
-## What this round did not check
+## What was not checked
 
 - The `d5f9738` round ran in a cloud container whose network policy refuses
   `3d.oslandia.com`, so the tile could not be downloaded. Nothing that reads it
