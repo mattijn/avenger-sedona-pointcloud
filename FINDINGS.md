@@ -25,16 +25,16 @@ made, so other READMEs can cite them. Each entry starts with its status; the
 | # | Finding | Status |
 |---|---|---|
 | | **[Rendering and live charts](#rendering-and-live-charts)** | |
-| 1 | [Rebuilding the geometry index dominates data-driven frames](#1-the-geometry-index-is-the-frame-budget) | open (re-measured at `d5f9738`) |
+| 1 | [Rebuilding the geometry index dominates data-driven frames](#1-the-geometry-index-is-the-frame-budget) | open; index halved on `main` (99.6 ms at 300k) |
 | 2 | [`interactive: false` does not avoid that cost](#2-interactive-false-does-not-avoid-it) | **fixed at `d5f9738`** |
-| 3 | [Invalidation-driven rebuilds always rebuild geometry](#3-invalidation-driven-rebuilds-always-rebuild-geometry) | open (source read at `d5f9738`) |
-| 4 | [Gradient fills do not draw, or draw flat](#4-gradient-fills-do-not-draw-or-draw-flat) | open (lavapipe at `d5f9738`; Metal last at `f4890be`) |
+| 3 | [Invalidation-driven rebuilds always rebuild geometry](#3-invalidation-driven-rebuilds-always-rebuild-geometry) | open at `d5f9738`; the code is gone on `main`, not re-measured |
+| 4 | [Gradient fills do not draw, or draw flat](#4-gradient-fills-do-not-draw-or-draw-flat) | open; the colorbar ramp draws on `main`, probe cases still blank (lavapipe) |
 | | **[Guides and scales](#guides-and-scales)** | |
 | 5 | [Colorbar ignores its `origin`](#5-colorbar-ignores-its-origin) | **fixed at `d5f9738`** |
 | 6 | [Symbol legend title is placed inside the plot](#6-symbol-legend-title-sits-inside-the-plot) | **fixed at `d5f9738`** |
 | 7 | [Linear domains must have exactly two stops](#7-linear-domains-must-have-exactly-two-stops) | open (`d5f9738`) |
 | 8 | [Axis always set a `band` option](#8-fixed-axis-band-option) | fixed in the stack |
-| 39 | [A colorbar fails on a colour scale with more than two colours](#39-a-colorbar-fails-on-more-than-two-colours) | **new at `d5f9738`** |
+| 39 | [A colorbar fails on a colour scale with more than two colours](#39-a-colorbar-fails-on-more-than-two-colours) | new at `d5f9738`; **fixed on `main`** |
 | | **[Coordinate systems](#coordinate-systems)** | |
 | 37 | [`PlotMapping` (#209) against `avenger-coords`; one channel set for every coordinate system](#37-plotmapping-209-and-avenger-coords-one-trait-two-directions) | suggestion, by reading |
 | | **[Selections in `avenger-selection`](#selections-in-avenger-selection)** | |
@@ -63,7 +63,9 @@ made, so other READMEs can cite them. Each entry starts with its status; the
 | 24 | [The spec types can export their schema, with CEL for the rest](#24-the-spec-types-can-export-their-schema-with-cel-for-the-rest) | added here, not proposed |
 | | **[Dataflow and DataFusion](#dataflow-and-datafusion)** | |
 | 22 | [The materialisation charge counts shared buffers once per batch](#22-the-materialisation-charge-counts-shared-buffers-once-per-batch) | **fixed upstream at `d5f9738`** (in source; not re-measured) |
-| 16 | [`geo` 0.29 keeps SedonaDB's spatial predicates out](#16-geo-029-keeps-sedonadbs-spatial-predicates-out) | open (`geo` 0.29.3 at `d5f9738`) |
+| 16 | [`geo` 0.29 keeps SedonaDB's spatial predicates out](#16-geo-029-keeps-sedonadbs-spatial-predicates-out) | open at `d5f9738`; **resolved on `main`** (`geo` 0.33) |
+| 40 | [Arrow 58 data reaches Avenger `main` (Arrow 59) for free](#40-arrow-58-data-reaches-avenger-main-arrow-59-for-free) | measured |
+| 41 | [Avenger `main` and #130's rendering crates cannot share a build](#41-avenger-main-and-130s-rendering-crates-cannot-share-a-build) | open, measured |
 | | **[API changes between pins](#api-changes-between-pins)** | |
 | 9 | [`NumberFormatContext` removed](#9-numberformatcontext-removed) | adapted |
 | 14 | [Number formatting must be configured, and its absence fails at run time](#14-number-formatting-fails-at-run-time-when-not-configured) | addressed at `d5f9738` (38) |
@@ -86,7 +88,7 @@ Building the scene was never the problem: 12 ms of a 235 ms frame.
 
 ### 1. The geometry index is the frame budget
 
-*Status: open (re-measured at `d5f9738`).*
+*Status: open; index halved on `main` (99.6 ms at 300k).*
 
 `probes/src/bin/probe_render.rs` builds one symbol mark of *n* instances and times the pieces
 separately. Best of three, canvas 900 × 900, scale 1.0:
@@ -127,7 +129,7 @@ which fits what we measure.)
 
 ### 3. Invalidation-driven rebuilds always rebuild geometry
 
-*Status: open (source read at `d5f9738`).*
+*Status: open at `d5f9738`; the code is gone on `main`, not re-measured.*
 
 `avenger-winit-wgpu/src/render_invalidation.rs` calls
 `rebuild_scene_graph(true)` for an `EvaluationChanged` invalidation, so every
@@ -160,7 +162,7 @@ marks are the data.
 
 ### 4. Gradient fills do not draw, or draw flat
 
-*Status: open (lavapipe at `d5f9738`; Metal last at `f4890be`).*
+*Status: open; the colorbar ramp draws on `main`, probe cases still blank (lavapipe).*
 
 Two symptoms, both reproducible:
 
@@ -220,7 +222,7 @@ so the ledger records the fix.
 
 ### 39. A colorbar fails on more than two colours
 
-*Status: **new at `d5f9738`**.*
+*Status: new at `d5f9738`; **fixed on `main`**.*
 
 New at `d5f9738`. `make_colorbar_legend` on a linear colour scale with three
 colours fails with
@@ -973,7 +975,7 @@ from a pandas frame passed as Arrow, and over 3M in 83 ms (matplotlib's
 
 ### 16. `geo` 0.29 keeps SedonaDB's spatial predicates out
 
-*Status: open (`geo` 0.29.3 at `d5f9738`).*
+*Status: open at `d5f9738`; **resolved on `main`** (`geo` 0.33).*
 
 A structure-aware lasso (CloudLasso) on the tile wanted `st_contains` from
 SedonaDB. The predicates (`st_contains`, `st_within`, `st_intersects`) are
@@ -993,6 +995,57 @@ outlines. **Measure:** add
 to `experiments/06-pipelines/Cargo.toml` and run `cargo metadata --format-version 1 >/dev/null`
 (it fails on `i_float`); `cargo tree -i geo@0.29.3 --depth 1` lists the
 Avenger crates.
+
+### 40. Arrow 58 data reaches Avenger `main` (Arrow 59) for free
+
+*Status: measured, 2 Nov 2026.*
+
+Avenger `main` moved to Arrow 59 and DataFusion 55; SedonaDB `main` and
+#130's DataFusion crates (`dataflow`, `preaggregate`, `aggregate-state`,
+`scales-datafusion`) are on Arrow 58 and DataFusion 54. Arrow arrays of two
+crate versions are different Rust types, but both export and import the Arrow
+C Data Interface, whose structs are the same C structs in every version. So a
+column built in Arrow 58 is handed to Arrow 59 by moving the exported pair
+across (`FFI_ArrowArray::from_raw`, `FFI_ArrowSchema::from_raw`), and Arrow 59
+releases it through Arrow 58's callback when it is done.
+`probe_bridge` (in `probes/`, with `arrow59` and `avenger-scales` from `main`
+beside the workspace's Arrow 58) does that for a point table of four columns
+and scales `x` with `main`'s `LinearScale`. Best of five, on the container:
+
+| Points | One column | Whole batch | Scaling `x` | Buffers shared | Values equal |
+|---|---|---|---|---|---|
+| 100,000 | 0.5 µs | 2.9 µs | 0.18 ms | yes | yes |
+| 1,000,000 | 0.5 µs | 2.9 µs | 2.25 ms | yes | yes |
+| 4,000,000 | 0.4 µs | 3.0 µs | 11.2 ms | yes | yes |
+| 17,300,000 | 0.4 µs | 3.1 µs | 125.6 ms | yes | yes |
+
+The handover is per column, not per row: no copy (the imported values point
+at the exported buffer), and the scaled values equal those of the same data
+built in Arrow 59. So the data side can stay where SedonaDB is, with
+selections, predicates and preaggregation in DataFusion 54, and only query
+results cross to the renderer. Only data crosses: a DataFusion `Expr` or plan
+has no such interface (`datafusion-ffi` covers table providers and functions,
+and recommends one DataFusion version on both sides). **Measure:**
+`cargo run --release -p lidar-probes --bin probe_bridge`.
+
+### 41. Avenger `main` and #130's rendering crates cannot share a build
+
+*Status: open, measured 2 Nov 2026; the same conflict as 16.*
+
+`main` moved to `geo` 0.33 on 22 Oct (`96cfaf6`, which resolves finding 16
+there). That brings `i_overlay` 4.5 and `i_float ~1.16`; #130's
+`avenger-geometry` and everything that renders through it bring `geo` 0.29,
+`i_overlay` 1.9 and `i_float ~1.6`. Cargo allows one 1.x version of a crate in
+a graph, so a workspace that holds both fails to resolve ("failed to select a
+version for `i_float`"). Crates of #130 that do not reach `geo` mix with `main`
+freely: `probe_bridge` takes `avenger-scales` from `main` beside the whole
+#130 pin. For moving to `main`, this decides the shape: the DataFusion crates
+can stay on #130, but everything that draws moves at once, and what draws only
+through #130's `avenger-chart` (experiment 6's `render`, experiment 9's
+Altair bridge) cannot stay in the same workspace. Until then the `main` probes
+live in their own workspace, [`probes-main/`](probes-main/), excluded from the
+root one. **Measure:** add `probes-main` to the root `members` and run
+`cargo metadata --format-version 1 >/dev/null`.
 
 ## API changes between pins
 
@@ -1089,6 +1142,33 @@ repo's additions. `avenger-vegalite-spec` is still carried at `f4890be`.
 
 What each repin changed, newest first. Entries above keep their own notes
 on each round where a number moved.
+
+### Avenger `main` (`b5e3bce`), 2 Nov 2026: not pinned, measured
+
+The repo stays on `d5f9738`: `main` is on Arrow 59 and DataFusion 55, and has
+none of the DataFusion crates the experiments use (40, 41). `main` also
+rewrote the guides as prepared objects (`Axis`, `Colorbar`, `Legend`): build
+once, then ask for marks at a length and an origin in a slot; the old
+`make_*` functions are private now. The two render probes were ported to that
+and pinned to `main` in [`probes-main/`](probes-main/); same container as the
+`d5f9738` round, so the columns compare:
+
+| Finding | `d5f9738` | `main` |
+|---|---|---|
+| 1. Index, 300k symbols | 193.0 ms | **95.0–99.6 ms** |
+| 2. Index with `interactive: Some(false)` | 0.0 ms | 0.0 ms |
+| 4. Gradient fills, probe cases | white or flat | white or flat |
+| 4. Colorbar gradient (`out/probe_guides*.png`) | one colour | **a ramp** |
+| 5. Colorbar placement | at the origin asked | no origin argument; `Colorbar::origin(slot)` places it, at the slot asked |
+| 6. Legend title | inside the legend | inside the legend |
+| 7. Three-stop domain | refused | refused |
+| 39. Colorbar on three colours | fails | **drawn** |
+
+Read in the source, not measured: `render_invalidation.rs` is gone on `main`
+and the app keeps several hit-test trees, so finding 3 needs a new
+measurement of the new model with the live viewer. **Measure:**
+`cd probes-main && cargo run --release --bin probe_render_main` and
+`… --bin probe_guides_main`.
 
 ### `d5f9738` (#130), 1 Nov 2026
 
@@ -1247,8 +1327,14 @@ What we would like to measure when the stack next moves:
    thing that would make streaming charts cheap.
 3. The chart-language items above, against whatever the language branch has
    become.
-4. Which line to pin: #130's DataFusion stack or `main` with `avenger-chart`
-   (see the `d5f9738` round). If `main`, experiments 6–10 need a new home for
-   dataflow and preaggregation, and #209's `PlotMapping` can replace the
-   inverse half of `avenger-coords`.
+4. Move to Avenger `main` in one step, as findings 40 and 41 shape it:
+   every crate that draws goes to `main` together (guides ported to the
+   prepared `Axis`, `Colorbar` and `Legend`); SedonaDB and #130's DataFusion
+   crates stay on Arrow 58 and DataFusion 54, and query results cross through
+   a `lidar_common` bridge built from `probe_bridge`'s `to_arrow59`.
+   Experiment 6's `render` and experiment 9 draw through #130's
+   `avenger-chart`, which cannot share that build: they move to their own
+   workspace on `d5f9738`, or wait for `avenger-chart` on `main`. Our
+   `crates/avenger-coords` needs a new name once `main`'s own
+   `avenger-coords` lands.
 5. Everything that reads the tile, on a machine that can fetch it.

@@ -25,9 +25,15 @@ gh pr list --repo jonmmease/avenger --state open --limit 20 \
   --template '{{range .}}{{.number}} {{.headRefName}} -> {{.baseRefName}} | {{.title}}{{"\n"}}{{end}}'
 ```
 
-The core work lands as a *stack* of PRs, each based on the previous one. We pin
-the **top of the stack** — the branch nothing else is based on. `main` moves
-rarely and lags far behind; do not pin it without a reason.
+The core work lands as a *stack* of PRs, each based on the previous one. Since
+late October 2026 there are two lines. `main` moves daily (the `claude/*` stack
+merges into it within a day) and is where the renderer, the guides and the
+tools live; it is on Arrow 59 / DataFusion 55. The DataFusion crates this repo
+uses (`dataflow`, `preaggregate`, `aggregate-state`, `scales-datafusion`)
+exist only on #130 (`codex/portable-dataflow-inputs`), on Arrow 58 /
+DataFusion 54 like SedonaDB. The root workspace pins #130; `probes-main/` pins
+`main` in its own workspace, because the two cannot share a build (FINDINGS
+40 and 41, and "Next round" for the plan to move).
 
 To read code on a branch without checking it out, use literal refs:
 `git show 'origin/codex/selection:avenger-guides/src/legend/colorbar.rs'`.
@@ -61,6 +67,8 @@ cargo run --release -p lidar-charts --bin bench_window  -- $T
 cargo run --release -p lidar-charts --bin explorer      -- $T --snapshots out
 cargo run --release -p lidar-probes --bin probe_guides
 cargo run --release -p lidar-probes --bin probe_render
+cargo run --release -p lidar-probes --bin probe_bridge
+(cd probes-main && cargo run --release --bin probe_guides_main && cargo run --release --bin probe_render_main)
 cargo run --release -p lidar-probes --bin probe_selection -- $T
 cargo run --release -p lidar-coords --bin coords -- $T experiments/05-coordinate-systems/images
 cargo run --release -p lidar-coords --bin coords_live -- $T --snapshots out/coords_live

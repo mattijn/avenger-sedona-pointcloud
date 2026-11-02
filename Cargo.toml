@@ -1,4 +1,7 @@
 [workspace]
+# probes-main pins Avenger main, whose geo 0.33 cannot share a graph with the
+# geo 0.29 of the #130 rendering crates pinned below (i_float, FINDINGS 40).
+exclude = ["probes-main"]
 resolver = "2"
 members = [
     "common",

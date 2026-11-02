@@ -1,0 +1,27 @@
+[package]
+name = "lidar-probes-main"
+description = "probe_render and probe_guides against Avenger main (Arrow 59), beside the #130 pin the rest of the repo uses"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Its own workspace: see the root Cargo.toml.
+[workspace]
+
+[dependencies]
+arrow = "59.3"
+image = { version = "0.25.6", default-features = false, features = ["png"] }
+tokio = { version = "1", features = ["full"] }
+avenger-color = { git = "https://github.com/jonmmease/avenger", rev = "b5e3bce93deb6a4e05a7fce5a83509e6cb636fb6" }
+avenger-common = { git = "https://github.com/jonmmease/avenger", rev = "b5e3bce93deb6a4e05a7fce5a83509e6cb636fb6" }
+avenger-geometry = { git = "https://github.com/jonmmease/avenger", rev = "b5e3bce93deb6a4e05a7fce5a83509e6cb636fb6" }
+avenger-guides = { git = "https://github.com/jonmmease/avenger", rev = "b5e3bce93deb6a4e05a7fce5a83509e6cb636fb6" }
+avenger-scales = { git = "https://github.com/jonmmease/avenger", rev = "b5e3bce93deb6a4e05a7fce5a83509e6cb636fb6" }
+avenger-scenegraph = { git = "https://github.com/jonmmease/avenger", rev = "b5e3bce93deb6a4e05a7fce5a83509e6cb636fb6" }
+avenger-wgpu = { git = "https://github.com/jonmmease/avenger", rev = "b5e3bce93deb6a4e05a7fce5a83509e6cb636fb6" }
+avenger-typst-label = { git = "https://github.com/jonmmease/avenger", rev = "b5e3bce93deb6a4e05a7fce5a83509e6cb636fb6", features = ["bundled-fonts"] }
+avenger-format-number-d3 = { git = "https://github.com/jonmmease/avenger", rev = "b5e3bce93deb6a4e05a7fce5a83509e6cb636fb6" }
+avenger-format-datetime-d3 = { git = "https://github.com/jonmmease/avenger", rev = "b5e3bce93deb6a4e05a7fce5a83509e6cb636fb6" }
+
+[profile.release]
+debug = false

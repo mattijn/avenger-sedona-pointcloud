@@ -50,6 +50,8 @@ that when Avenger moves the next pass is a recheck rather than a rediscovery.
 ```sh
 cargo run --release -p lidar-probes --bin probe_guides   # guide and scale pitfalls
 cargo run --release -p lidar-probes --bin probe_render   # render, geometry index, gradients
+cargo run --release -p lidar-probes --bin probe_bridge   # Arrow 58 data into Avenger main (Arrow 59)
+(cd probes-main && cargo run --release --bin probe_guides_main && cargo run --release --bin probe_render_main)   # the same against Avenger main
 ```
 
 Avenger is developed as a stack of open PRs, so this is a cycle: Jon pushes,

@@ -1,4 +1,5 @@
 /target
+/probes-main/target
 /out
 /data/*.laz
 .DS_Store

@@ -7,7 +7,10 @@ publish.workspace = true
 
 [dependencies]
 lidar-common.workspace = true
-arrow.workspace = true
+arrow = { workspace = true, features = ["ffi"] }
+# probe_bridge: Avenger main's scales are on Arrow 59; the rest of the repo is on 58.
+arrow59 = { package = "arrow", version = "59.3", features = ["ffi"] }
+avenger-scales-main = { package = "avenger-scales", git = "https://github.com/jonmmease/avenger", rev = "b5e3bce93deb6a4e05a7fce5a83509e6cb636fb6" }
 image.workspace = true
 tokio.workspace = true
 
